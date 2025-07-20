@@ -1,0 +1,50 @@
+// "hello world"
+wf := import("@platforma-sdk/workflow-tengo:workflow")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets:= import("@platforma-sdk/workflow-tengo:assets")
+render := import("@platforma-sdk/workflow-tengo:render")
+
+inferColumnsTpl := assets.importTemplate(":infer-columns")
+processBulkTpl := assets.importTemplate(":process-bulk")
+
+wf.setPreRun(assets.importTemplate(":prerun"))
+
+wf.body(func(args) {
+	
+	format := args.format
+	dataset := wf.resolve(args.datasetRef)
+	chains := args.chains
+	blockId := wf.blockId().getDataAsJson()
+
+	if chains == undefined {
+		chains = ["IGHeavy", "IGLight", "TRA", "TRB", "TRD", "TRG"]
+	}
+
+	columnsInfo := render.create(inferColumnsTpl, {
+		format: format,
+		dataset: dataset
+	}).output("columnsInfo")
+
+	result := render.createEphemeral(processBulkTpl, {
+		blockId: blockId,
+		format: format,
+		dataset: dataset,
+		columnsInfo: columnsInfo,
+		chains: chains
+	})
+
+	return {
+		outputs: {
+			result: result.output("result"),
+			stats: result.output("stats")
+			// pythonMessage: pythonMessage,
+			// tengoMessage: tengoMessage
+		},
+
+		exports: {
+			result: result.output("result"),
+			stats: result.output("stats")
+		}
+	}
+})
+

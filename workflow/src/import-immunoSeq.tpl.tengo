@@ -1,0 +1,159 @@
+ll := import("@platforma-sdk/workflow-tengo:ll")
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+smart := import("@platforma-sdk/workflow-tengo:smart")
+slices := import("@platforma-sdk/workflow-tengo:slices")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+sets := import("@platforma-sdk/workflow-tengo:sets")
+json := import("json")
+
+self.defineOutputs("tsv", "stats")
+
+self.body(func(inputs) {
+	inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
+	columnsInfo := inputs.columnsInfo
+	chains := inputs.chains
+
+	wf := pt.workflow().mem("8GiB").cpu(4)
+
+	dataFrames := []
+	for key, file in inputFiles.inputs() {
+		dataFrames = append(dataFrames, wf.frame(file, {
+			xsvType: "tsv",
+			id: "table_" + key
+		}))
+	}
+
+	if len(dataFrames) == 0 {
+		ll.panic("no input files found")
+	}
+
+	df := pt.concat(dataFrames)
+
+	// Rename original columns to their target IDs for downstream processing.
+	renameExpressions := []
+	for canonical, original in columnsInfo.columnMapping {
+		renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+	}
+	df = df.withColumns(renameExpressions...)
+
+	// Drop rows with empty j-gene or v-gene from immunoseq 
+	for col in ["j-gene", "v-gene"] {
+		df = df.filter(
+			pt.col(col).isNotNull().and(pt.col(col).neq(""))
+		)
+	}
+	
+	chainToLocusMap := {
+		"IGHeavy": "IGH",
+		"IGLight": "IGL", // Default to IGL, IGK is handled below
+		"TRA": "TCRA",
+		"TRB": "TCRB",
+		"TRG": "TCRG",
+		"TRD": "TCRD"
+	}
+
+	keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
+	
+	clonotypeKeyExpr := pt.
+							concatStr(keyComponents, {delimiter: "|"}).
+							hash("sha256", "base64_alphanumeric", 120).
+							alias("clonotypeKey")
+
+	for chain in chains {
+		prefix := chainToLocusMap[chain]
+		
+		chainDf := undefined
+		if chain == "IGLight" {
+			chainDf = df.filter(
+				pt.col("v-gene").strSlice(0, 3).eq("IGK").or(pt.col("v-gene").strSlice(0, 3).eq("IGL"))
+			)
+		} else {
+			chainDf = df.filter(pt.col("v-gene").strSlice(0, len(prefix)).eq(prefix))
+		}
+
+		// Calculate "is-productive" column based on CDR3 AA sequence presence.
+		chainDf = chainDf.withColumns(
+			pt.col("cdr3-aa").isNotNull().
+				and(pt.col("cdr3-aa").neq("")).
+				and(pt.col("cdr3-aa").strContains("*", {literal: true}).not()).
+				and(pt.col("cdr3-aa").strContains("_", {literal: true}).not()).
+				alias("is-productive")
+		)
+
+		// Filter for productive sequences.
+		// In the future, we may decide to import non-productive sequences as well.
+		chainDf = chainDf.filter(pt.col("is-productive"))
+
+		chainDf = chainDf.withColumns(
+			pt.col("sequence").strSlice(
+				pt.col("v-begin"),
+				pt.col("cdr3-aa").strLenChars().multiply(3)
+			).alias("cdr3-nt")
+		)
+		chainDf = chainDf.withColumns(
+			pt.col("cdr3-aa").strLenChars().alias("cdr3-aa-length")
+		)
+		chainDf = chainDf.withColumns(
+			pt.col("cdr3-nt").strLenChars().alias("cdr3-nt-length")
+		)
+		
+		chainDf = chainDf.withColumns(clonotypeKeyExpr)
+
+		// Aggregate by clonotype key, since immunoSeq defines clonotypes by "sequence" not cdr3 or vdj region
+		// Crucial to ensure clonotypeKey uniqueness
+		aggregations := []
+		for col in (columnsInfo.hasUMIs ? ["read-count", "umi-count"] : ["read-count"]) {
+			aggregations = append(aggregations, pt.col(col).sum().alias(col))
+		}
+		for col in columnsInfo.propertyColumns {
+			aggregations = append(aggregations, pt.col(col.column).maxBy("read-count").alias(col.column))
+		}
+		chainDf = chainDf.groupBy("clonotypeKey").agg(aggregations...)
+
+		chainDf = chainDf.withColumns(pt.col("read-count").truediv(pt.col("read-count").sum()).alias("read-fraction"))
+		if columnsInfo.hasUMIs {
+			chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).alias("umi-fraction"))
+		}
+
+		// Keep only property and abundance columns
+		keepColumns := ["clonotypeKey"]
+		for col in columnsInfo.propertyColumns {
+			keepColumns = append(keepColumns, col.column)
+		}
+		for col in columnsInfo.abundanceColumns {
+			keepColumns = append(keepColumns, col.column)
+		}
+		chainDf = chainDf.select(keepColumns...)
+		
+		chainDf.save(chain + ".tsv")
+
+		statsExprs := [
+			pt.col("clonotypeKey").count().alias("clonotype-count"),
+			pt.col("read-count").sum().alias("read-count")
+		]
+		if columnsInfo.hasUMIs {
+			statsExprs = append(statsExprs, pt.col("umi-count").sum().alias("umi-count"))
+		}
+		stats := chainDf.select(statsExprs...)
+
+		stats.saveContent("stats-" + chain + ".tsv")
+	}
+
+	wf = wf.run()
+
+	tsv := {}
+	stats := {}
+	for chain in chains {
+		tsv[chain] = wf.getFile(chain + ".tsv")
+		stats[chain] = wf.getFileContent("stats-" + chain + ".tsv")
+	}
+
+    return {
+		tsv: tsv,
+		stats: stats
+	}
+})

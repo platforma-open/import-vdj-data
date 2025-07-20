@@ -1,0 +1,57 @@
+// parse list of available columns from mixcr or immunoseq
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+render := import("@platforma-sdk/workflow-tengo:render")
+
+parseHeaderSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.software:parse-header")
+
+inferColumnsTpl := assets.importTemplate(":infer-columns-from-header")
+columnInfoToLabelsTpl := assets.importTemplate(":column-info-to-labels")
+
+self.defineOutputs("columnsInfo", "columnDescriptions")
+
+self.body(func(inputs) {
+
+    format := inputs.format
+    dataset := inputs.dataset
+    fileExtension := dataset.spec.domain["pl7.app/fileExtension"]
+
+    inputFile := undefined
+    
+    // get first file from the dataset //@TODO take first non-empty file
+    for _, v in dataset.data.inputs() {
+        inputFile = v
+        break
+    }
+    if inputFile == undefined {
+        ll.panic("No inputs found in the dataset")
+    }
+
+    inputFileName := "input." + fileExtension
+
+    header := exec.builder().
+                software(parseHeaderSw).
+                inUiQueue().
+                arg(inputFileName).
+                addFile(inputFileName, inputFile).
+                saveStdoutContent().
+                run().
+                getStdoutFileContent()
+    
+    columnsInfo := render.create(inferColumnsTpl, {
+                        format: format,
+                        header: header
+    }).output("columnsInfo")
+
+    columnDescriptions := render.create(columnInfoToLabelsTpl, {
+        columnsInfo: columnsInfo
+    }).output("columnDescriptions")
+
+    return {
+        columnsInfo: columnsInfo,
+        columnDescriptions: columnDescriptions
+    }
+})

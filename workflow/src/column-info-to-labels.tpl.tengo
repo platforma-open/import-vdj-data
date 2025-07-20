@@ -1,0 +1,22 @@
+self := import("@platforma-sdk/workflow-tengo:tpl")
+
+self.defineOutputs("columnDescriptions")
+
+self.body(func(args) {
+    columnDescriptions := []
+    for _, col in args.columnsInfo.abundanceColumns {
+        columnDescriptions = append(columnDescriptions, {
+            label: col.spec.annotations["pl7.app/label"],
+            description: col.spec.annotations["pl7.app/description"]
+        })
+    }
+    for _, col in args.columnsInfo.propertyColumns {
+        columnDescriptions = append(columnDescriptions, {
+            label: col.spec.annotations["pl7.app/label"],
+            description: col.spec.annotations["pl7.app/description"]
+        })
+    }
+    return {
+        columnDescriptions: columnDescriptions
+    }
+})

@@ -1,0 +1,23 @@
+self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+json := import("json")
+
+immunoSeqImport := import(":infer-columns-immunoSeq")
+
+self.defineOutputs("columnsInfo")
+
+self.body(func(inputs) {
+    format := inputs.format
+    header := inputs.header.getDataAsJson()
+    if format == "immunoSeq" {
+        return {
+            columnsInfo: immunoSeqImport.getColumns(header)
+        }
+    } else {
+        ll.panic("Unsupported format: " + format)
+    }
+
+    return {
+        columnsInfo: header
+    }
+})

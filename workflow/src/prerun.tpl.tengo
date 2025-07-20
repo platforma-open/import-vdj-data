@@ -1,0 +1,37 @@
+// pre-run
+
+wf := import("@platforma-sdk/workflow-tengo:workflow")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+render := import("@platforma-sdk/workflow-tengo:render")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+smart := import("@platforma-sdk/workflow-tengo:smart")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+file := import("@platforma-sdk/workflow-tengo:file")
+
+inferColumnsTpl := assets.importTemplate(":infer-columns")
+
+wf.body(func(args) {
+
+	if args.datasetRef == undefined {
+		return {
+			outputs: {},
+			exports: {}
+		}
+	}
+
+	inferColumns := render.create(inferColumnsTpl, {
+		format: args.format,
+		dataset: wf.resolve(args.datasetRef)
+	})
+
+	columnsInfo := inferColumns.output("columnsInfo")
+	columnDescriptions := inferColumns.output("columnDescriptions")
+
+	return {
+		outputs: {
+			columnsInfo: columnsInfo,
+			columnDescriptions: columnDescriptions
+		},
+		exports: {}
+	}
+})
