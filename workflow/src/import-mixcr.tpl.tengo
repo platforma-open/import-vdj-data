@@ -84,7 +84,8 @@ self.body(func(inputs) {
 	columnsToClean := ["cdr3-nt", "cdr3-aa", "n-seq-fr1", "aa-seq-fr1",
      "n-seq-cdr1", "aa-seq-cdr1", "n-seq-fr2", "aa-seq-fr2", "n-seq-cdr2",
      "aa-seq-cdr2", "n-seq-fr3", "aa-seq-fr3", "n-seq-fr4", "aa-seq-fr4"]
-	
+
+	// @TODO: Do not replace, remove this rows as said in task
 	replaceExpressions := slices.map(columnsToClean, func(colName) {
 		return pt.when(pt.col(colName).eq("region_not_covered")).then(pt.lit(undefined)).otherwise(pt.col(colName)).alias(colName)
 	})
@@ -132,6 +133,7 @@ self.body(func(inputs) {
 		// In the future, we may decide to import non-productive sequences as well.
 		chainDf = chainDf.filter(pt.col("is-productive"))
 
+		// @TODO: get length of all available nt and aa columns
 		chainDf = chainDf.withColumns(
 			pt.col("cdr3-aa").strLenChars().alias("cdr3-aa-length")
 		)
