@@ -450,20 +450,6 @@ getColumns := func(header) {
 	propertyColumns["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
 	propertyColumns["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
 
-	// Filter abundance columns to only include those present in the input file
-	// detectedAbundanceColumns := []
-	// for key, col in abundanceColumns {
-	// 	if !is_undefined(columnMapping[key]) {
-	// 		detectedAbundanceColumns = append(detectedAbundanceColumns, col)
-	// 	}
-	// }
-
-	// clonotype_key_columns := ["cdr3-nt", "best-v-gene", "best-j-gene"]
-	// @TODO: check purpose of this and make sure its working
-	// if header["by_c_gene"] != undefined {
-	// 	clonotype_key_columns = append(clonotype_key_columns, "best-c-gene")
-	// }
-
 	return {
 		hasUMIs: hasUMIs,
 		abundanceColumns: maps.getValues(abundanceColumns),
