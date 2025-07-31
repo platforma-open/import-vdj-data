@@ -45,20 +45,19 @@ self.body(func(inputs) {
 	// create x-gene and -gene-allele columns from the best-x-hit column (format: VGene*allele(score),VGenesecond*allele(score),...)
 	// Keep only first gene (the one with highest score)
 	df = df.withColumns(
-		// For ?-gene, extract the part of the first hit before the '*'. Example: "IGHD2-21*00(25)..." -> "IGHD2-21"
-		pt.col("best-v-hit").strExtract("^([^*]+)", {groupIndex: 1}).alias("v-gene"),
-		pt.col("best-j-hit").strExtract("^([^*]+)", {groupIndex: 1}).alias("j-gene"),
-		pt.col("best-d-hit").strExtract("^([^*]+)", {groupIndex: 1}).alias("d-gene"),
-		pt.col("best-c-hit").strExtract("^([^*]+)", {groupIndex: 1}).alias("c-gene"),
-
 		// For ?-gene-allele, extract the part of the first hit before the '('. Example: "IGHD2-21*00(25)..." -> "IGHD2-21*00"
-		pt.col("best-v-hit").strExtract("^([^(]+)", {groupIndex: 1}).alias("v-gene-allele"),
-		pt.col("best-j-hit").strExtract("^([^(]+)", {groupIndex: 1}).alias("j-gene-allele"),
-		pt.col("best-d-hit").strExtract("^([^(]+)", {groupIndex: 1}).alias("d-gene-allele"),
-		pt.col("best-c-hit").strExtract("^([^(]+)", {groupIndex: 1}).alias("c-gene-allele")
+		pt.col("v-gene-allele").strExtract("^([^(]+)", {groupIndex: 1}).alias("v-gene-allele"),
+		pt.col("j-gene-allele").strExtract("^([^(]+)", {groupIndex: 1}).alias("j-gene-allele"),
+		pt.col("d-gene-allele").strExtract("^([^(]+)", {groupIndex: 1}).alias("d-gene-allele"),
+		pt.col("c-gene-allele").strExtract("^([^(]+)", {groupIndex: 1}).alias("c-gene-allele")
 	)
-	newColumns := ["v-gene", "j-gene", "d-gene", "c-gene", "v-gene-allele", 
-					"j-gene-allele", "d-gene-allele", "c-gene-allele"]
+	df = df.withColumns(
+		// For ?-gene, extract the part of the first hit before the '*'. Example: "IGHD2-21*00" -> "IGHD2-21"
+		pt.col("v-gene-allele").strExtract("^([^*]+)", {groupIndex: 1}).alias("v-gene"),
+		pt.col("j-gene-allele").strExtract("^([^*]+)", {groupIndex: 1}).alias("j-gene"),
+		pt.col("d-gene-allele").strExtract("^([^*]+)", {groupIndex: 1}).alias("d-gene"),
+		pt.col("c-gene-allele").strExtract("^([^*]+)", {groupIndex: 1}).alias("c-gene")
+	)
 
 	// Drop rows with empty j-gene or v-gene from immunoseq 
 	// @TODO: should this only be done for immunoseq?
@@ -68,15 +67,16 @@ self.body(func(inputs) {
 		)
 	}
 
-	// Convert numeric columns to a numeric type.
-	// We cast to Float64 because the string values might contain decimals (e.g., "10.0"),
-	// which would fail a direct cast to Int64.
+	// Convert numeric columns to a numeric type (this columns shouldn't have floating points)
 	castExpressions := [
 		pt.col("read-count").strReplace("\\..*", "").cast("Int64").alias("read-count"),
 		pt.col("read-fraction").cast("Float64").alias("read-fraction")
 	]
 	if columnsInfo.hasUMIs {
-		castExpressions = append(castExpressions, pt.col("umi-count").strReplace("\\..*", "").cast("Int64").alias("umi-count"))
+		castExpressions = append(castExpressions,
+			pt.col("umi-count").strReplace("\\..*", "").cast("Int64").alias("umi-count"),
+			pt.col("umi-fraction").cast("Float64").alias("umi-fraction")
+		)
 	}
 	df = df.withColumns(castExpressions...)
 	
@@ -152,10 +152,6 @@ self.body(func(inputs) {
 		}
 		// Also aggregate read-fraction to preserve its value from the most abundant read
 		aggregations = append(aggregations, pt.col("read-fraction").maxBy("read-count").alias("read-fraction"))
-		// Also aggregate the gene columns we created to ensure they are not dropped
-		for colName in newColumns {
-			aggregations = append(aggregations, pt.col(colName).maxBy("read-count").alias(colName))
-		}
 		
 		chainDf = chainDf.groupBy("clonotypeKey").agg(aggregations...)
 
@@ -172,8 +168,6 @@ self.body(func(inputs) {
 		for col in columnsInfo.abundanceColumns {
 			keepColumns = append(keepColumns, col.column)
 		}
-		// Add the columns we have created in this template
-		keepColumns = append(keepColumns, newColumns...)
 		chainDf = chainDf.select(keepColumns...)
 		
 		chainDf.save(chain + ".tsv")
