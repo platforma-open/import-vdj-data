@@ -10,7 +10,7 @@ catalogs:
       specifier: ^2.29.5
       version: 2.29.5
     '@platforma-open/milaboratories.runenv-python-3':
-      specifier: ^1.1.7
+      specifier: ^1.1.16
       version: 1.1.17
     '@platforma-sdk/block-tools':
       specifier: ^2.5.71
