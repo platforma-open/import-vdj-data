@@ -14,6 +14,7 @@ json := import("json")
 text := import("text")
 
 immunoSeqTpl := assets.importTemplate(":import-immunoSeq")
+mixcrTpl := assets.importTemplate(":import-mixcr")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
 
 // Helper to add common annotations for table view properties
@@ -108,6 +109,8 @@ self.body(func(inputs) {
     importTpl := undefined
     if format == "immunoSeq" {
         importTpl = immunoSeqTpl
+    } else if format == "mixcr" {
+        importTpl = mixcrTpl
     }
     
     if importTpl == undefined {

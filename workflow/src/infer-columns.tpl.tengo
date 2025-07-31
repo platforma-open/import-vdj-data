@@ -32,6 +32,7 @@ self.body(func(inputs) {
 
     inputFileName := "input." + fileExtension
 
+    // Get input file column headres in JSON format
     header := exec.builder().
                 software(parseHeaderSw).
                 inUiQueue().
@@ -41,11 +42,13 @@ self.body(func(inputs) {
                 run().
                 getStdoutFileContent()
     
+    // Dataset-specific mapping of file column names to our internal canonical names & spec creation
     columnsInfo := render.create(inferColumnsTpl, {
                         format: format,
                         header: header
     }).output("columnsInfo")
 
+    // Get column descriptions to be displayed in the UI (list of columns that will be imported)
     columnDescriptions := render.create(columnInfoToLabelsTpl, {
         columnsInfo: columnsInfo
     }).output("columnDescriptions")

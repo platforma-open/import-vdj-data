@@ -3,15 +3,21 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 json := import("json")
 
 immunoSeqImport := import(":infer-columns-immunoSeq")
+mixcrImport := import(":infer-columns-mixcr")
 
 self.defineOutputs("columnsInfo")
 
 self.body(func(inputs) {
     format := inputs.format
     header := inputs.header.getDataAsJson()
+
     if format == "immunoSeq" {
         return {
             columnsInfo: immunoSeqImport.getColumns(header)
+        }
+    } else if format == "mixcr" {
+        return {
+            columnsInfo: mixcrImport.getColumns(header)
         }
     } else {
         ll.panic("Unsupported format: " + format)

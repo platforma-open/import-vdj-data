@@ -20,6 +20,7 @@ wf.body(func(args) {
 		chains = ["IGHeavy", "IGLight", "TRA", "TRB", "TRD", "TRG"]
 	}
 
+	// Get inferred file column specs, same as in prerun
 	columnsInfo := render.create(inferColumnsTpl, {
 		format: format,
 		dataset: dataset

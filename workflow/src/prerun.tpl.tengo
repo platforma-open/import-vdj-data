@@ -12,7 +12,7 @@ inferColumnsTpl := assets.importTemplate(":infer-columns")
 
 wf.body(func(args) {
 
-	if args.datasetRef == undefined {
+	if args.datasetRef == undefined || args.format == undefined {
 		return {
 			outputs: {},
 			exports: {}
