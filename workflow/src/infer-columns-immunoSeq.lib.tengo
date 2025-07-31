@@ -334,13 +334,15 @@ sourceAliases := {
 	// alleles 
 	"vMaxResolved": "v-allele",
 	"vResolved": "v-allele",
+	"v_resolved": "v-allele",
 
 	"dMaxResolved": "d-allele",
 	"dResolved": "d-allele",
+	"d_resolved": "d-allele",
 
 	"jMaxResolved": "j-allele",
 	"jResolved": "j-allele",
-
+	"j_resolved": "j-allele",
 
 	// v begin
 	"v-index": "v-begin",
