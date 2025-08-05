@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.1.1
+
+### Patch Changes
+
+- 56144f8: bugfix for empty read count in immunoSeq
+
 ## 1.1.0
 
 ### Minor Changes
