@@ -6,7 +6,8 @@ import { computed, ref } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
-const settingsOpen = ref(false);
+
+const settingsOpen = ref(app.model.args.datasetRef === undefined);
 
 const formatOptions = [
   { label: 'ImmunoSeq', value: 'immunoSeq' },
