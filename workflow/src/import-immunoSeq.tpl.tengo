@@ -103,6 +103,11 @@ self.body(func(inputs) {
 		
 		chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
+		// Ensure correct data type
+		for col in (columnsInfo.hasUMIs ? ["read-count", "umi-count"] : ["read-count"]) {
+			chainDf = chainDf.withColumns(pt.col(col).cast("Int64").alias(col))
+		}
+
 		// Aggregate by clonotype key, since immunoSeq defines clonotypes by "sequence" not cdr3 or vdj region
 		// Crucial to ensure clonotypeKey uniqueness
 		aggregations := []
@@ -114,9 +119,9 @@ self.body(func(inputs) {
 		}
 		chainDf = chainDf.groupBy("clonotypeKey").agg(aggregations...)
 
-		chainDf = chainDf.withColumns(pt.col("read-count").truediv(pt.col("read-count").sum()).alias("read-fraction"))
+		chainDf = chainDf.withColumns(pt.col("read-count").truediv(pt.col("read-count").sum()).fillNaN(0).alias("read-fraction"))
 		if columnsInfo.hasUMIs {
-			chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).alias("umi-fraction"))
+			chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
 		}
 
 		// Keep only property and abundance columns
