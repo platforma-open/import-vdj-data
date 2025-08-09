@@ -51,6 +51,23 @@ const optionalCanonical = [
   { key: 'is-productive', label: 'Productive' },
   { key: 'cdr3-aa-length', label: 'CDR3 length (aa)' },
   { key: 'cdr3-nt-length', label: 'CDR3 length (nt)' },
+  // Newly added optional fields
+  { key: 'c-gene', label: 'C gene' },
+  { key: 'c-allele', label: 'C allele' },
+  { key: 'isotype', label: 'Isotype' },
+  { key: 'top-chains', label: 'Top chains' },
+  { key: 'n-length-vj-junction', label: 'VJ junction length (nt)' },
+  { key: 'n-length-vd-junction', label: 'VD junction length (nt)' },
+  { key: 'n-length-dj-junction', label: 'DJ junction length (nt)' },
+  { key: 'n-length-total-added', label: 'Total added nt' },
+  { key: 'aa-mutations-count-v', label: 'AA mutations count (V)' },
+  { key: 'aa-mutations-rate-v', label: 'AA mutations rate (V)' },
+  { key: 'nt-mutations-count-v', label: 'NT mutations count (V)' },
+  { key: 'nt-mutations-rate-v', label: 'NT mutations rate (V)' },
+  { key: 'aa-mutations-count-j', label: 'AA mutations count (J)' },
+  { key: 'aa-mutations-rate-j', label: 'AA mutations rate (J)' },
+  { key: 'nt-mutations-count-j', label: 'NT mutations count (J)' },
+  { key: 'nt-mutations-rate-j', label: 'NT mutations rate (J)' },
 ] as const;
 
 watch(

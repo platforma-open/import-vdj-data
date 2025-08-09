@@ -273,6 +273,183 @@ self.body(func(inputs) {
                     domain: { "pl7.app/vdj/reference": "JGene" },
                     annotations: a(49000, true, { "pl7.app/label": "J Allele", "pl7.app/description": "The name of the best-matching J gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
                 }
+            },
+            // Additional optional fields aligned with MiXCR exports
+            "c-gene": {
+                id: "c-gene",
+                column: "c-gene",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/geneHit",
+                    valueType: "String",
+                    domain: { "pl7.app/vdj/reference": "CGene" },
+                    annotations: a(48000, false, { "pl7.app/label": "C Gene", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "c-allele": {
+                id: "c-allele",
+                column: "c-allele",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/geneHitWithAllele",
+                    valueType: "String",
+                    domain: { "pl7.app/vdj/reference": "CGene" },
+                    annotations: a(47900, false, { "pl7.app/label": "C Allele", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "isotype": {
+                id: "isotype",
+                column: "isotype",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/isotype",
+                    valueType: "String",
+                    annotations: a(47000, true, { "pl7.app/label": "IG isotype", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "top-chains": {
+                id: "top-chains",
+                column: "top-chains",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/chain",
+                    valueType: "String",
+                    annotations: a(46900, false, { "pl7.app/label": "Chain", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            // Junction lengths
+            "n-length-vj-junction": {
+                id: "n-length-vj-junction",
+                column: "n-length-vj-junction",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequenceLength",
+                    valueType: "Int",
+                    domain: { "pl7.app/vdj/feature": "VJJunction", "pl7.app/alphabet": "nucleotide" },
+                    annotations: a(46000, false, { "pl7.app/label": "Length of VJ Junction nt", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "n-length-vd-junction": {
+                id: "n-length-vd-junction",
+                column: "n-length-vd-junction",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequenceLength",
+                    valueType: "Int",
+                    domain: { "pl7.app/vdj/feature": "VDJunction", "pl7.app/alphabet": "nucleotide" },
+                    annotations: a(45900, false, { "pl7.app/label": "Length of VD Junction nt", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "n-length-dj-junction": {
+                id: "n-length-dj-junction",
+                column: "n-length-dj-junction",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequenceLength",
+                    valueType: "Int",
+                    domain: { "pl7.app/vdj/feature": "DJJunction", "pl7.app/alphabet": "nucleotide" },
+                    annotations: a(45800, false, { "pl7.app/label": "Length of DJ Junction nt", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "n-length-total-added": {
+                id: "n-length-total-added",
+                column: "n-length-total-added",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequenceLength",
+                    valueType: "Int",
+                    domain: { "pl7.app/alphabet": "nucleotide" },
+                    annotations: a(45700, false, { "pl7.app/label": "Total number of added nt", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            // Mutations (per V/J, aa/nt, count/rate)
+            "aa-mutations-count-v": {
+                id: "aa-mutations-count-v",
+                column: "aa-mutations-count-v",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequence/aaMutationsCount",
+                    valueType: "Int",
+                    domain: { "pl7.app/vdj/gene": "V" },
+                    annotations: a(45000, false, { "pl7.app/label": "AA mutations count in V gene", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "aa-mutations-rate-v": {
+                id: "aa-mutations-rate-v",
+                column: "aa-mutations-rate-v",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequence/aaMutationsRate",
+                    valueType: "Double",
+                    domain: { "pl7.app/vdj/gene": "V" },
+                    annotations: a(44900, false, { "pl7.app/label": "AA mutations rate in V gene", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "nt-mutations-count-v": {
+                id: "nt-mutations-count-v",
+                column: "nt-mutations-count-v",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequence/nMutationsCount",
+                    valueType: "Int",
+                    domain: { "pl7.app/vdj/gene": "V" },
+                    annotations: a(44800, false, { "pl7.app/label": "NT mutations count in V gene", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "nt-mutations-rate-v": {
+                id: "nt-mutations-rate-v",
+                column: "nt-mutations-rate-v",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequence/nMutationsRate",
+                    valueType: "Double",
+                    domain: { "pl7.app/vdj/gene": "V" },
+                    annotations: a(44700, false, { "pl7.app/label": "NT mutations rate in V gene", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "aa-mutations-count-j": {
+                id: "aa-mutations-count-j",
+                column: "aa-mutations-count-j",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequence/aaMutationsCount",
+                    valueType: "Int",
+                    domain: { "pl7.app/vdj/gene": "J" },
+                    annotations: a(44600, false, { "pl7.app/label": "AA mutations count in J gene", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "aa-mutations-rate-j": {
+                id: "aa-mutations-rate-j",
+                column: "aa-mutations-rate-j",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequence/aaMutationsRate",
+                    valueType: "Double",
+                    domain: { "pl7.app/vdj/gene": "J" },
+                    annotations: a(44500, false, { "pl7.app/label": "AA mutations rate in J gene", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "nt-mutations-count-j": {
+                id: "nt-mutations-count-j",
+                column: "nt-mutations-count-j",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequence/nMutationsCount",
+                    valueType: "Int",
+                    domain: { "pl7.app/vdj/gene": "J" },
+                    annotations: a(44400, false, { "pl7.app/label": "NT mutations count in J gene", "pl7.app/table/visibility": "optional" })
+                }
+            },
+            "nt-mutations-rate-j": {
+                id: "nt-mutations-rate-j",
+                column: "nt-mutations-rate-j",
+                allowNA: true,
+                spec: {
+                    name: "pl7.app/vdj/sequence/nMutationsRate",
+                    valueType: "Double",
+                    domain: { "pl7.app/vdj/gene": "J" },
+                    annotations: a(44300, false, { "pl7.app/label": "NT mutations rate in J gene", "pl7.app/table/visibility": "optional" })
+                }
             }
         }
 
