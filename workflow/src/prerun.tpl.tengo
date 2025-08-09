@@ -21,16 +21,19 @@ wf.body(func(args) {
 
 	inferColumns := render.create(inferColumnsTpl, {
 		format: args.format,
-		dataset: wf.resolve(args.datasetRef)
+		dataset: wf.resolve(args.datasetRef),
+		customMapping: args.customMapping
 	})
 
 	columnsInfo := inferColumns.output("columnsInfo")
 	columnDescriptions := inferColumns.output("columnDescriptions")
+	headerColumns := inferColumns.output("headerColumns")
 
 	return {
 		outputs: {
 			columnsInfo: columnsInfo,
-			columnDescriptions: columnDescriptions
+			columnDescriptions: columnDescriptions,
+			headerColumns: headerColumns
 		},
 		exports: {}
 	}

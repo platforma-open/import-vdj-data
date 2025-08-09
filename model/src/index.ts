@@ -3,13 +3,15 @@ import { BlockModel, createPlDataTableStateV2, createPlDataTableV2, PColumnColle
 
 export type BlockArgs = {
   datasetRef?: PlRef;
-  format?: 'immunoSeq' | 'mixcr' | 'airr';
+  format?: 'immunoSeq' | 'mixcr' | 'airr' | 'custom';
   chains: string[];
+  customMapping?: Record<string, string | undefined>;
 };
 
 export type UiState = {
   tableState: PlDataTableStateV2;
   title: string;
+  settingsOpen: boolean;
 };
 
 export type ColumnDescription = {
@@ -26,9 +28,27 @@ export const model = BlockModel.create()
   .withUiState<UiState>({
     tableState: createPlDataTableStateV2(),
     title: 'Import V(D)J Data',
+    settingsOpen: true,
   })
 
-  .argsValid((ctx) => ctx.args.datasetRef !== undefined && ctx.args.format !== undefined)
+  .argsValid((ctx) => {
+    const { datasetRef, format, chains, customMapping } = ctx.args as BlockArgs;
+    if (datasetRef === undefined) return false;
+    if (format === undefined) return false;
+    if (!Array.isArray(chains) || chains.length === 0) return false;
+
+    if (format === 'custom') {
+      const m = customMapping ?? {};
+      const hasSeq = !!m['cdr3-nt'] || !!m['cdr3-aa'];
+      const hasV = !!m['v-gene'];
+      const hasJ = !!m['j-gene'];
+      const hasAbundance = !!m['read-count'] || !!m['umi-count'];
+      return hasSeq && hasV && hasJ && hasAbundance;
+    }
+
+    // Non-custom formats: dataset + format + chains are sufficient
+    return true;
+  })
 
   .retentiveOutput('datasetOptions', (ctx) => {
     return ctx.resultPool.getOptions((v) => {
@@ -49,6 +69,13 @@ export const model = BlockModel.create()
       field: 'columnDescriptions',
       allowPermanentAbsence: true,
     })?.getDataAsJson<ColumnDescription[]>();
+  })
+
+  .retentiveOutput('headerColumns', (ctx) => {
+    return ctx.prerun?.resolve({
+      field: 'headerColumns',
+      allowPermanentAbsence: true,
+    })?.getDataAsJson<string[]>();
   })
 
   .output('stats', (ctx) => {

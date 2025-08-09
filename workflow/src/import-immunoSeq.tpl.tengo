@@ -59,9 +59,9 @@ self.body(func(inputs) {
 	keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
 	
 	clonotypeKeyExpr := pt.
-							concatStr(keyComponents, {delimiter: "|"}).
-							hash("sha256", "base64_alphanumeric", 120).
-							alias("clonotypeKey")
+						concatStr(keyComponents, {delimiter: "|"}).
+						hash("sha256", "base64_alphanumeric", 120).
+						alias("clonotypeKey")
 
 	for chain in chains {
 		prefix := chainToLocusMap[chain]
