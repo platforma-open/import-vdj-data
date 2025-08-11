@@ -16,25 +16,6 @@ wf.body(func(args) {
 	chains := args.chains
 	blockId := wf.blockId().getDataAsJson()
 
-	// Do nothing until format is selected
-	if format == undefined {
-		return {
-			outputs: {},
-			exports: {}
-		}
-	}
-
-	// For custom format, wait until mapping is complete before running main workflow
-	if format == "custom" {
-		m := args.customMapping
-		if m == undefined || ((is_undefined(m["cdr3-nt"]) || m["cdr3-nt"] == "") && (is_undefined(m["cdr3-aa"]) || m["cdr3-aa"] == "")) || is_undefined(m["v-gene"]) || is_undefined(m["j-gene"]) || ((is_undefined(m["read-count"]) || m["read-count"] == "") && (is_undefined(m["umi-count"]) || m["umi-count"] == "")) {
-			return {
-				outputs: {},
-				exports: {}
-			}
-		}
-	}
-
 	if chains == undefined {
 		chains = ["IGHeavy", "IGLight", "TRA", "TRB", "TRD", "TRG"]
 	}
