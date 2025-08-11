@@ -120,14 +120,14 @@ self.body(func(inputs) {
             spec: {
                 name: "pl7.app/vdj/uniqueMoleculeCount",
                 valueType: "Long",
-                annotations: a(90000, true, {
+                annotations: a(90000, false, {
                     "pl7.app/isAbundance": "true",
                     "pl7.app/min": "0",
                     "pl7.app/abundance/unit": "molecules",
                     "pl7.app/abundance/normalized": "false",
                     "pl7.app/label": "Number Of UMIs",
                     "pl7.app/description": "The number of unique molecules (UMIs) in the sample assigned to the clonotype.",
-                    "pl7.app/table/visibility": "default"
+                    "pl7.app/table/visibility": "optional"
                 })
             }
         }
@@ -147,7 +147,7 @@ self.body(func(inputs) {
                     "pl7.app/label": "UMI Fraction",
                     "pl7.app/description": "The fraction of total UMIs in the sample assigned to the clonotype.",
                     "pl7.app/format": ".2p",
-                    "pl7.app/table/visibility": "default"
+                    "pl7.app/table/visibility": "optional"
                 })
             }
         }

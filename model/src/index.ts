@@ -32,7 +32,7 @@ export const model = BlockModel.create()
   })
 
   .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping } = ctx.args as BlockArgs;
+    const { datasetRef, format, chains, customMapping } = ctx.args;
     if (datasetRef === undefined) return false;
     if (format === undefined) return false;
     if (!Array.isArray(chains) || chains.length === 0) return false;
@@ -42,7 +42,7 @@ export const model = BlockModel.create()
       const hasSeq = !!m['cdr3-nt'] || !!m['cdr3-aa'];
       const hasV = !!m['v-gene'];
       const hasJ = !!m['j-gene'];
-      const hasAbundance = !!m['read-count'] || !!m['umi-count'];
+      const hasAbundance = !!m['read-count'];
       return hasSeq && hasV && hasJ && hasAbundance;
     }
 

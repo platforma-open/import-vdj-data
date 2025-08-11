@@ -40,10 +40,10 @@ const requiredCanonical = [
   { key: 'v-gene', label: 'V gene' },
   { key: 'j-gene', label: 'J gene' },
   { key: 'read-count', label: 'Read count' },
-  { key: 'umi-count', label: 'UMI count' },
 ] as const;
 
 const optionalCanonical = [
+  { key: 'umi-count', label: 'UMI count' },
   { key: 'v-allele', label: 'V allele' },
   { key: 'd-gene', label: 'D gene' },
   { key: 'd-allele', label: 'D allele' },
