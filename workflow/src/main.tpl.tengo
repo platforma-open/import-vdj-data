@@ -22,7 +22,8 @@ wf.body(func(args) {
 
 	columnsInfo := render.create(inferColumnsTpl, {
 		format: format,
-		dataset: dataset
+		dataset: dataset,
+		customMapping: args.customMapping
 	}).output("columnsInfo")
 
 	result := render.createEphemeral(processBulkTpl, {
@@ -37,8 +38,6 @@ wf.body(func(args) {
 		outputs: {
 			result: result.output("result"),
 			stats: result.output("stats")
-			// pythonMessage: pythonMessage,
-			// tengoMessage: tengoMessage
 		},
 
 		exports: {

@@ -14,6 +14,7 @@ json := import("json")
 text := import("text")
 
 immunoSeqTpl := assets.importTemplate(":import-immunoSeq")
+customTpl := assets.importTemplate(":import-custom")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
 
 // Helper to add common annotations for table view properties
@@ -108,6 +109,8 @@ self.body(func(inputs) {
     importTpl := undefined
     if format == "immunoSeq" {
         importTpl = immunoSeqTpl
+    } else if format == "custom" {
+        importTpl = customTpl
     }
     
     if importTpl == undefined {
@@ -141,6 +144,8 @@ self.body(func(inputs) {
             }
         ]
 
+        hasReads := columnsInfo.columnMapping["read-count"] != undefined
+
         statsColumns := [{
             id: "clonotype-count",
             column: "clonotype-count",
@@ -156,23 +161,26 @@ self.body(func(inputs) {
                     "pl7.app/description": "The number of clonotypes in the dataset."
                 }
             }
-        },
-        {
-            id: "read-count",
-            column: "read-count",
-            spec: {
-                name: "pl7.app/vdj/stat/readCount",
-                valueType: "Int",
-                domain: {
-                    "pl7.app/vdj/chain": chain,
-                    "pl7.app/vdj/vdjImport": blockId
-                },
-                annotations: {
-                    "pl7.app/label": "Number of Reads",
-                    "pl7.app/description": "The number of reads in the dataset."
-                }
-            }
         }]
+
+        if hasReads {
+            statsColumns += [{
+                id: "read-count",
+                column: "read-count",
+                spec: {
+                    name: "pl7.app/vdj/stat/readCount",
+                    valueType: "Int",
+                    domain: {
+                        "pl7.app/vdj/chain": chain,
+                        "pl7.app/vdj/vdjImport": blockId
+                    },
+                    annotations: {
+                        "pl7.app/label": "Number of Reads",
+                        "pl7.app/description": "The number of reads in the dataset."
+                    }
+                }
+            }]
+        }
 
         if columnsInfo.hasUMIs {
             statsColumns += [{

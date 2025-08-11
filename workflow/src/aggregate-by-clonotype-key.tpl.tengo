@@ -34,7 +34,8 @@ self.body(func(inputs) {
 
 	dataFrames := []
 
-	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" } ]
+	// Ensure the read schema includes keys, primary abundance and its fraction
+	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" }, { column: primaryAbundance, type: "Int64" }, { column: primaryFraction, type: "Double" } ]
 
 	for sKey in maps.getKeys(inputMap) {
 		inputFile := inputMap[sKey]
@@ -65,8 +66,8 @@ self.body(func(inputs) {
 		currentDf = pt.concat(dataFrames)
 	}
 
-	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast("Int64", {strict: true}).alias(primaryAbundance))		
-
+	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast("Int64", {strict: true}).alias(primaryAbundance))
+	
 	aggExpressions := []
 	
 	for colDef in schema {
@@ -81,7 +82,7 @@ self.body(func(inputs) {
 	aggExpressions = append(aggExpressions,
 		pt.col(primaryAbundance).count().alias("sampleCount"),
 		pt.col(primaryAbundance).sum().alias(primaryAbundance + "-total"),
-		pt.col(primaryAbundance).mean().alias(primaryFraction + "-mean")
+		pt.col(primaryFraction).multiply(100).mean().alias(primaryFraction + "-mean")
 	)
 
 	aggregatedDf := currentDf.groupBy("clonotypeKey").agg(aggExpressions...)
