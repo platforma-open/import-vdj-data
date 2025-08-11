@@ -34,7 +34,8 @@ self.body(func(inputs) {
 
 	dataFrames := []
 
-	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" } ]
+	// Ensure the read schema includes keys and the primary abundance column
+	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" }, { column: primaryAbundance, type: "Int64" } ]
 
 	for sKey in maps.getKeys(inputMap) {
 		inputFile := inputMap[sKey]
@@ -66,7 +67,7 @@ self.body(func(inputs) {
 	}
 
 	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast("Int64", {strict: true}).alias(primaryAbundance))		
-
+	
 	aggExpressions := []
 	
 	for colDef in schema {

@@ -366,7 +366,7 @@ self.body(func(inputs) {
                 extra: {
                     primaryAbundance: mainAbundanceUnit + "-count",
                     primaryFraction: mainAbundanceUnit + "-fraction",
-                    schema: columnsToSchema(propertyColumns + columnsInfo.abundanceColumns)
+                    schema: columnsToSchema(propertyColumns)
                 }
             }
         )
