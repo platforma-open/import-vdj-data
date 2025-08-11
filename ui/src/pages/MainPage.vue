@@ -154,12 +154,13 @@ watch(
         :options="app.model.outputs.datasetOptions"
         label="Select dataset"
         clearable
+        required
         @update:model-value="setDataset"
       />
 
-      <PlDropdown v-model="app.model.args.format" :options="formatOptions" label="Data format" />
+      <PlDropdown v-model="app.model.args.format" :options="formatOptions" label="Data format" required />
 
-      <PlDropdownMulti v-if="!isSingleCell" v-model="app.model.args.chains" :options="chainsOptions" label="Chains to import" />
+      <PlDropdownMulti v-if="!isSingleCell" v-model="app.model.args.chains" :options="chainsOptions" label="Chains to import" required />
 
       <template v-if="app.model.args.format === 'custom'">
         <PlSectionSeparator>Required columns</PlSectionSeparator>
@@ -171,6 +172,7 @@ watch(
             :options="headerOptions"
             :label="f.label"
             clearable
+            required
             @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
           />
         </div>
