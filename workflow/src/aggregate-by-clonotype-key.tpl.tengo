@@ -82,7 +82,7 @@ self.body(func(inputs) {
 	aggExpressions = append(aggExpressions,
 		pt.col(primaryAbundance).count().alias("sampleCount"),
 		pt.col(primaryAbundance).sum().alias(primaryAbundance + "-total"),
-		pt.col(primaryFraction).multiply(100).mean().alias(primaryFraction + "-mean")
+		pt.col(primaryFraction).mean().alias(primaryFraction + "-mean")
 	)
 
 	aggregatedDf := currentDf.groupBy("clonotypeKey").agg(aggExpressions...)

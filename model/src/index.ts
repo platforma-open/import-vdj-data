@@ -3,9 +3,10 @@ import { BlockModel, createPlDataTableStateV2, createPlDataTableV2, PColumnColle
 
 export type BlockArgs = {
   datasetRef?: PlRef;
-  format?: 'immunoSeq' | 'mixcr' | 'airr' | 'custom';
+  format?: 'immunoSeq' | 'qiagen' | 'mixcr' | 'airr' | 'custom';
   chains: string[];
   customMapping?: Record<string, string | undefined>;
+  qiagenColumnsPresent?: boolean;
 };
 
 export type UiState = {
@@ -32,7 +33,7 @@ export const model = BlockModel.create()
   })
 
   .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping } = ctx.args;
+    const { datasetRef, format, chains, customMapping, qiagenColumnsPresent } = ctx.args;
     if (datasetRef === undefined) return false;
     if (format === undefined) return false;
     if (!Array.isArray(chains) || chains.length === 0) return false;
@@ -46,7 +47,11 @@ export const model = BlockModel.create()
       return hasSeq && hasV && hasJ && hasAbundance;
     }
 
-    // Non-custom formats: dataset + format + chains are sufficient
+    if (format === 'qiagen') {
+      return qiagenColumnsPresent === true;
+    }
+
+    // Other non-custom formats: dataset + format + chains are sufficient
     return true;
   })
 

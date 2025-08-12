@@ -1,0 +1,341 @@
+maps := import("@platforma-sdk/workflow-tengo:maps")
+slices := import("@platforma-sdk/workflow-tengo:slices")
+sets := import("@platforma-sdk/workflow-tengo:sets")
+json := import("json")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+
+// Helper to add common annotations for table view properties
+a := func(order, defaultVisibility, spec) {
+	return maps.merge(spec, {
+		"pl7.app/table/orderPriority": string(order),
+		"pl7.app/table/visibility": is_undefined(defaultVisibility) ? "hidden" : defaultVisibility ? "default" : "optional"
+	})
+}
+
+umiColumnSpecs := {
+	"umi-count": {
+		id: "umi-count",
+		column: "umi-count",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/uniqueMoleculeCount",
+			valueType: "Long",
+			annotations: a(90000, true, {
+				"pl7.app/isAbundance": "true",
+				"pl7.app/min": "0",
+				"pl7.app/abundance/unit": "molecules",
+				"pl7.app/abundance/normalized": "false",
+				"pl7.app/label": "Number Of UMIs",
+				"pl7.app/description": "The number of unique molecules (UMIs) in the sample assigned to the clonotype.",
+				"pl7.app/table/visibility": "default"
+			})
+		}
+	},
+	"umi-fraction": {
+		id: "umi-fraction",
+		column: "umi-fraction",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/uniqueMoleculeFraction",
+			valueType: "Double",
+			annotations: a(89999, false, {
+				"pl7.app/isAbundance": "true",
+				"pl7.app/min": "0",
+				"pl7.app/max": "1",
+				"pl7.app/abundance/unit": "molecules",
+				"pl7.app/abundance/normalized": "true",
+				"pl7.app/label": "UMI Fraction",
+				"pl7.app/description": "The fraction of total UMIs in the sample assigned to the clonotype.",
+				"pl7.app/format": ".2p",
+				"pl7.app/table/visibility": "default"
+			})
+		}
+	}
+}
+
+propertyColumnSpecs := {
+	"cdr3-nt": {
+		id: "cdr3-nt",
+		column: "cdr3-nt",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: {
+				"pl7.app/alphabet": "nucleotide",
+				"pl7.app/vdj/feature": "CDR3"
+			},
+			annotations: a(100000, true, {
+				"pl7.app/label": "CDR3 nt",
+				"pl7.app/description": "The nucleotide sequence of the CDR3 region.",
+				"pl7.app/table/visibility": "optional"
+			})
+		}
+	},
+	"cdr3-aa": {
+		id: "cdr3-aa",
+		column: "cdr3-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: {
+				"pl7.app/alphabet": "aminoacid",
+				"pl7.app/vdj/feature": "CDR3"
+			},
+			annotations: a(99000, true, {
+				"pl7.app/label": "CDR3 aa",
+				"pl7.app/description": "The amino acid sequence of the CDR3 region.",
+				"pl7.app/table/visibility": "default"
+			})
+		}
+	},
+	"cdr3-aa-length": {
+		id: "cdr3-aa-length",
+		column: "cdr3-aa-length",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequenceLength",
+			valueType: "Int",
+			domain: {
+				"pl7.app/alphabet": "aminoacid",
+				"pl7.app/vdj/feature": "CDR3"
+			},
+			annotations: a(80000, true, {
+				"pl7.app/label": "CDR3 Length, aa",
+				"pl7.app/description": "The length of the CDR3 amino acid sequence.",
+				"pl7.app/table/visibility": "optional"
+			})
+		}
+	},
+	"cdr3-nt-length": {
+		id: "cdr3-nt-length",
+		column: "cdr3-nt-length",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/sequenceLength",
+			valueType: "Int",
+			domain: {
+				"pl7.app/alphabet": "nucleotide",
+				"pl7.app/vdj/feature": "CDR3"
+			},
+			annotations: a(79999, false, {
+				"pl7.app/label": "CDR3 Length, nt",
+				"pl7.app/description": "The length of the CDR3 nucleotide sequence.",
+				"pl7.app/table/visibility": "optional"
+			})
+		}
+	},
+	"is-productive": {
+		id: "is-productive",
+		column: "is-productive",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/sequence/productive",
+			valueType: "String",
+			annotations: a(79000, true, {
+				"pl7.app/label": "Productive",
+				"pl7.app/description": "A flag indicating whether the main sequence is productive (in-frame and without stop codons).",
+				"pl7.app/table/visibility": "optional",
+				"pl7.app/isDiscreteFilter": "true",
+				"pl7.app/discreteValues": string(json.encode(["True", "False"]))
+			})
+		}
+	},
+	"v-gene": {
+		id: "v-gene",
+		column: "v-gene",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/geneHit",
+			valueType: "String",
+			domain: { "pl7.app/vdj/reference": "VGene" },
+			annotations: a(69000, true, {
+				"pl7.app/label": "V Gene",
+				"pl7.app/description": "The name of the best-matching V gene.",
+				"pl7.app/isDiscreteFilter": "true",
+				"pl7.app/table/visibility": "default"
+			})
+		}
+	},
+	"j-gene": {
+		id: "j-gene",
+		column: "j-gene",
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/geneHit",
+			valueType: "String",
+			domain: { "pl7.app/vdj/reference": "JGene" },
+			annotations: a(49000, true, {
+				"pl7.app/label": "J Gene",
+				"pl7.app/description": "The name of the best-matching J gene.",
+				"pl7.app/isDiscreteFilter": "true",
+				"pl7.app/table/visibility": "default"
+			})
+		}
+	},
+	"chain": {
+		id: "chain",
+		column: "chain",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/chain",
+			valueType: "String",
+			annotations: a(46900, false, {
+				"pl7.app/label": "Chain",
+				"pl7.app/description": "The chain that data originated from.",
+				"pl7.app/isDiscreteFilter": "true",
+				"pl7.app/table/visibility": "optional"
+			})
+		}
+	},
+	"read-set": {
+		id: "read-set",
+		column: "read-set",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/string",
+			valueType: "String",
+			annotations: a(46890, false, {
+				"pl7.app/label": "Read Set",
+				"pl7.app/description": "ID of the read set.",
+				"pl7.app/table/visibility": "optional"
+			})
+		}
+	},
+	"rank": {
+		id: "rank",
+		column: "rank",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/int",
+			valueType: "Int",
+			annotations: a(46880, false, {
+				"pl7.app/label": "Rank",
+				"pl7.app/description": "Clonotype rank.",
+				"pl7.app/table/visibility": "optional"
+			})
+		}
+	}
+}
+
+// sourceAliases maps Qiagen column names to our internal canonical names
+sourceAliases := {
+	// CDR3 sequences
+	"CDR3 nucleotide seq": "cdr3-nt",
+	"CDR3 amino acid seq": "cdr3-aa",
+	
+	// Lengths
+	"nucleotide length": "cdr3-nt-length",
+	"amino acid length": "cdr3-aa-length",
+	
+	// Genes
+	"V-region": "v-gene",
+	"J-region": "j-gene",
+	
+	// Abundance
+	"UMIs with analytical threshold": "umi-count",
+	"frequency": "umi-fraction",
+	
+	// Metadata
+	"chain": "chain",
+	"read set": "read-set",
+	"rank": "rank"
+}
+
+getColumns := func(header) {
+	columnMapping := {}
+	for h in header {
+		s := sourceAliases[h]
+		if s != undefined && columnMapping[s] == undefined {
+			columnMapping[s] = h
+		}
+	}
+
+	// No required columns validation - work with whatever is available
+
+	// Provide allele fallbacks if not present
+	if is_undefined(columnMapping["v-allele"]) {
+		columnMapping["v-allele"] = columnMapping["v-gene"]
+	}
+	if is_undefined(columnMapping["j-allele"]) {
+		columnMapping["j-allele"] = columnMapping["j-gene"]
+	}
+
+	hasUMIs := columnMapping["umi-count"] != undefined
+
+	// Set abundance columns based on what's available
+	abundanceColumns := {}
+	if hasUMIs {
+		// Both count and fraction available
+		abundanceColumns = umiColumnSpecs
+		abundanceColumns["umi-count"].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+		abundanceColumns["umi-count"].spec.annotations["pl7.app/isAnchor"] = "true"
+		abundanceColumns["umi-fraction"].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+	} else if columnMapping["umi-fraction"] != undefined {
+		// Only fraction available 
+		abundanceColumns = {
+			"umi-fraction": umiColumnSpecs["umi-fraction"]
+		}
+		abundanceColumns["umi-fraction"].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+		abundanceColumns["umi-fraction"].spec.annotations["pl7.app/isAnchor"] = "true"
+	}
+
+	// Select property columns that are available
+	propertyColumns := []
+	for _, col in propertyColumnSpecs {
+		if columnMapping[col.id] != undefined {
+			propertyColumns = append(propertyColumns, col)
+		}
+	}
+
+	// Always include length columns (derived) if not already added
+	lengthColumnsToAdd := ["cdr3-nt-length", "cdr3-aa-length"]
+	for _, lengthCol in lengthColumnsToAdd {
+		found := false
+		for _, existingCol in propertyColumns {
+			if existingCol.id == lengthCol {
+				found = true
+				break
+			}
+		}
+		if !found {
+			propertyColumns = append(propertyColumns, propertyColumnSpecs[lengthCol])
+		}
+	}
+	
+	// Mark main sequences if they exist
+	if columnMapping["cdr3-nt"] != undefined {
+		propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+		propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+	}
+	if columnMapping["cdr3-aa"] != undefined {
+		propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+		propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+	}
+
+	// Build clonotype key based on available columns
+	clonotypeKeyColumns := []
+	if columnMapping["cdr3-nt"] != undefined {
+		clonotypeKeyColumns = append(clonotypeKeyColumns, "cdr3-nt")
+	}
+	if columnMapping["v-gene"] != undefined {
+		clonotypeKeyColumns = append(clonotypeKeyColumns, "v-gene")
+	}
+	if columnMapping["j-gene"] != undefined {
+		clonotypeKeyColumns = append(clonotypeKeyColumns, "j-gene")
+	}
+
+	return {
+		hasUMIs: hasUMIs,
+		abundanceColumns: maps.getValues(abundanceColumns),
+		propertyColumns: propertyColumns,
+		columnMapping: columnMapping,
+		clonotypeKeyStructure: "CDR3-nt-VGene-JGene-CGene",
+		clonotypeKeyColumns: clonotypeKeyColumns
+	}
+}
+
+export {
+	getColumns: getColumns
+}
