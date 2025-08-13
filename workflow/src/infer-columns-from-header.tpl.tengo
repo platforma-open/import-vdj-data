@@ -3,6 +3,7 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 json := import("json")
 
 immunoSeqImport := import(":infer-columns-immunoSeq")
+qiagenImport := import(":infer-columns-qiagen")
 
 self.defineOutputs("columnsInfo")
 
@@ -12,6 +13,10 @@ self.body(func(inputs) {
     if format == "immunoSeq" {
         return {
             columnsInfo: immunoSeqImport.getColumns(header)
+        }
+    } else if format == "qiagen" {
+        return {
+            columnsInfo: qiagenImport.getColumns(header)
         }
     } else if format == "custom" {
         // For custom format, downstream step will build columnsInfo from user mapping

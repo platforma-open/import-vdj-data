@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
 import { plRefsEqual } from '@platforma-sdk/model';
-import { PlAgDataTableV2, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlElementList, PlMaskIcon24, PlSectionSeparator, PlSlideModal, usePlDataTableSettingsV2, PlAccordion, PlAccordionSection } from '@platforma-sdk/ui-vue';
+import { PlAgDataTableV2, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlElementList, PlMaskIcon24, PlSectionSeparator, PlSlideModal, usePlDataTableSettingsV2, PlAccordion, PlAccordionSection, PlAlert } from '@platforma-sdk/ui-vue';
 import { computed, watch } from 'vue';
 import { useApp } from '../app';
 
@@ -9,6 +9,7 @@ const app = useApp();
 
 const formatOptions = [
   { label: 'ImmunoSeq', value: 'immunoSeq' },
+  { label: 'QIAseq Immune Repertoire Analysis', value: 'qiagen' },
   { label: 'Custom', value: 'custom' },
 ];
 
@@ -106,6 +107,63 @@ const mappingComplete = computed(() => {
   return hasOneSeq && hasV && hasJ && hasAbundance;
 });
 
+const qiagenColumnsPresent = computed(() => {
+  if (app.model.args.format !== 'qiagen') return true;
+
+  const headers = app.model.outputs.headerColumns ?? [];
+  const qiagenColumns = [
+    'read set',
+    'chain',
+    'V-region',
+    'J-region',
+    'CDR3 nucleotide seq',
+    'CDR3 amino acid seq',
+    'frequency',
+    'rank',
+    'UMIs with analytical threshold',
+    'nucleotide length',
+    'amino acid length',
+  ];
+
+  // Check if ALL Qiagen-specific columns are present
+  const hasAllQiagenColumns = qiagenColumns.every((col) => headers.includes(col));
+  return hasAllQiagenColumns;
+});
+
+// Watch qiagenColumnsPresent and update the args
+watch(
+  qiagenColumnsPresent,
+  (newValue) => {
+    if (app.model.args.format === 'qiagen') {
+      app.model.args.qiagenColumnsPresent = newValue;
+    }
+  },
+  { immediate: true },
+);
+
+const qiagenValidationMessage = computed(() => {
+  if (app.model.args.format !== 'qiagen' || qiagenColumnsPresent.value) return '';
+
+  const headers = app.model.outputs.headerColumns ?? [];
+  const qiagenColumns = [
+    'read set',
+    'chain',
+    'V-region',
+    'J-region',
+    'CDR3 nucleotide seq',
+    'CDR3 amino acid seq',
+    'frequency',
+    'rank',
+    'UMIs with analytical threshold',
+    'nucleotide length',
+    'amino acid length',
+  ];
+
+  const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
+
+  return `The selected dataset is missing required Qiagen columns: ${missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
+});
+
 const forceSettingsOpen = computed(() => {
   const mustStayOpen = app.model.args.format === 'custom' && !mappingComplete.value;
   return app.model.ui.settingsOpen || mustStayOpen;
@@ -127,6 +185,10 @@ watch(
       app.model.ui.settingsOpen = true;
       const a = app.model.args as unknown as { customMapping?: Record<string, string> };
       if (!a.customMapping) a.customMapping = {};
+    }
+    // Reset qiagenColumnsPresent when format changes away from qiagen
+    if (fmt !== 'qiagen') {
+      app.model.args.qiagenColumnsPresent = undefined;
     }
   },
   { immediate: true },
@@ -159,6 +221,11 @@ watch(
       />
 
       <PlDropdown v-model="app.model.args.format" :options="formatOptions" label="Data format" required />
+
+      <PlAlert v-if="qiagenValidationMessage" type="warn" :style="{ width: '100%' }">
+        <template #title>Invalid Qiagen dataset</template>
+        {{ qiagenValidationMessage }}
+      </PlAlert>
 
       <PlDropdownMulti v-if="!isSingleCell" v-model="app.model.args.chains" :options="chainsOptions" label="Chains to import" required />
 

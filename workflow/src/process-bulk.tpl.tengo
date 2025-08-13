@@ -14,6 +14,7 @@ json := import("json")
 text := import("text")
 
 immunoSeqTpl := assets.importTemplate(":import-immunoSeq")
+qiagenTpl := assets.importTemplate(":import-qiagen")
 customTpl := assets.importTemplate(":import-custom")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
 
@@ -109,6 +110,8 @@ self.body(func(inputs) {
     importTpl := undefined
     if format == "immunoSeq" {
         importTpl = immunoSeqTpl
+    } else if format == "qiagen" {
+        importTpl = qiagenTpl
     } else if format == "custom" {
         importTpl = customTpl
     }
