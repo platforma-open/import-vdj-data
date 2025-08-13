@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.3.0
+
+### Minor Changes
+
+- de3f3b9: support qiagen data format
+
 ## 1.2.0
 
 ### Minor Changes

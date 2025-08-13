@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.2.0
+
+### Minor Changes
+
+- de3f3b9: support qiagen data format
+
+### Patch Changes
+
+- Updated dependencies [de3f3b9]
+  - @platforma-open/milaboratories.import-vdj.model@1.2.0
+
 ## 1.1.0
 
 ### Minor Changes
