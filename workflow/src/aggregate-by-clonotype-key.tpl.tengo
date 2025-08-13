@@ -35,7 +35,7 @@ self.body(func(inputs) {
 	dataFrames := []
 
 	// Ensure the read schema includes keys, primary abundance and its fraction
-	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" }, { column: primaryAbundance, type: "Int64" }, { column: primaryFraction, type: "Double" } ]
+	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" }, { column: primaryAbundance, type: "Float64" }, { column: primaryFraction, type: "Double" } ]
 
 	for sKey in maps.getKeys(inputMap) {
 		inputFile := inputMap[sKey]
@@ -66,7 +66,7 @@ self.body(func(inputs) {
 		currentDf = pt.concat(dataFrames)
 	}
 
-	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast("Int64", {strict: true}).alias(primaryAbundance))
+	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast("Int64").alias(primaryAbundance))
 	
 	aggExpressions := []
 	

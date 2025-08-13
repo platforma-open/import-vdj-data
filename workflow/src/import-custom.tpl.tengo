@@ -59,7 +59,12 @@ self.body(func(inputs) {
     hasReads := columnsInfo.columnMapping["read-count"] != undefined
     hasAA := columnsInfo.columnMapping["cdr3-aa"] != undefined
     hasNT := columnsInfo.columnMapping["cdr3-nt"] != undefined
+
+    // Determine primary abundance
     primaryAbundance := hasUMIs ? "umi-count" : "read-count"
+    if inputs.primaryCountType != undefined {
+        primaryAbundance = inputs.primaryCountType == "umi" ? "umi-count" : "read-count"
+    }
 
     for chain in chains {
         prefix := chainToLocusMap[chain]
@@ -95,7 +100,7 @@ self.body(func(inputs) {
 
         chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
-        // Cast abundance columns
+        // Cast abundance columns present
         if hasUMIs {
             chainDf = chainDf.withColumns(pt.col("umi-count").cast("Int64").alias("umi-count"))
         }

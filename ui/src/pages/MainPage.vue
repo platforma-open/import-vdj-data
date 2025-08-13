@@ -22,6 +22,18 @@ const chainsOptions = [
   { label: 'TRG', value: 'TRG' },
 ];
 
+const countTypeOptions = [
+  { label: 'Reads', value: 'read' },
+  { label: 'UMIs', value: 'umi' },
+];
+
+const secondaryTypeOptions = computed(() => {
+  const p = (app.model.args as any).primaryCountType as 'read' | 'umi' | undefined;
+  if (p === 'read') return [{ label: 'UMIs', value: 'umi' }];
+  if (p === 'umi') return [{ label: 'Reads', value: 'read' }];
+  return countTypeOptions;
+});
+
 const isSingleCell = computed(() => false);
 
 const tableSettings = usePlDataTableSettingsV2({
@@ -35,16 +47,14 @@ const setDataset = (datasetRef: PlRef | undefined) => {
     app.model.ui.title = 'Import V(D)J Data - ' + app.model.outputs.datasetOptions?.find((o) => plRefsEqual(o.ref, datasetRef))?.label;
 };
 
-const requiredCanonical = [
+const requiredCanonicalBase = [
   { key: 'cdr3-aa', label: 'CDR3 aa' },
   { key: 'cdr3-nt', label: 'CDR3 nt' },
   { key: 'v-gene', label: 'V gene' },
   { key: 'j-gene', label: 'J gene' },
-  { key: 'read-count', label: 'Read count' },
 ] as const;
 
 const optionalCanonical = [
-  { key: 'umi-count', label: 'UMI count' },
   { key: 'v-allele', label: 'V allele' },
   { key: 'd-gene', label: 'D gene' },
   { key: 'd-allele', label: 'D allele' },
@@ -74,8 +84,10 @@ const optionalCanonical = [
 watch(
   () => app.model.args,
   (args) => {
-    const a = args as unknown as { customMapping?: Record<string, string> };
+    const a = args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
     if (!a.customMapping) a.customMapping = {};
+    if (!a.primaryCountType) a.primaryCountType = 'read';
+    if (a.secondaryCountType && a.secondaryCountType === a.primaryCountType) a.secondaryCountType = undefined;
   },
   { immediate: true, deep: false },
 );
@@ -94,17 +106,16 @@ function setMapping(key: string, value: string | undefined) {
 }
 
 const mappingComplete = computed(() => {
-  const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined> };
+  const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined>; primaryCountType?: 'read' | 'umi' };
   const m = a.customMapping ?? {};
   const hasAA = !!m['cdr3-aa'];
   const hasNT = !!m['cdr3-nt'];
   const hasV = !!m['v-gene'];
   const hasJ = !!m['j-gene'];
-  const hasReads = !!m['read-count'];
-  const hasUmi = !!m['umi-count'];
-  const hasAbundance = hasReads || hasUmi;
+  const pct = a.primaryCountType ?? 'read';
+  const hasPrimary = pct === 'umi' ? !!m['umi-count'] : !!m['read-count'];
   const hasOneSeq = hasAA || hasNT;
-  return hasOneSeq && hasV && hasJ && hasAbundance;
+  return hasOneSeq && hasV && hasJ && hasPrimary;
 });
 
 const qiagenColumnsPresent = computed(() => {
@@ -183,8 +194,10 @@ watch(
   (fmt) => {
     if (fmt === 'custom') {
       app.model.ui.settingsOpen = true;
-      const a = app.model.args as unknown as { customMapping?: Record<string, string> };
+      const a = app.model.args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
       if (!a.customMapping) a.customMapping = {};
+      if (!a.primaryCountType) a.primaryCountType = 'read';
+      if (a.secondaryCountType && a.secondaryCountType === a.primaryCountType) a.secondaryCountType = undefined;
     }
     // Reset qiagenColumnsPresent when format changes away from qiagen
     if (fmt !== 'qiagen') {
@@ -233,7 +246,7 @@ watch(
         <PlSectionSeparator>Required columns</PlSectionSeparator>
         <div class="field-col">
           <PlDropdown
-            v-for="f in requiredCanonical"
+            v-for="f in requiredCanonicalBase"
             :key="f.key"
             :model-value="getMapping(f.key)"
             :options="headerOptions"
@@ -241,6 +254,32 @@ watch(
             clearable
             required
             @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+          />
+
+          <PlDropdown
+            v-model="(app.model.args as any).primaryCountType"
+            :options="countTypeOptions"
+            label="Primary count type"
+            required
+          />
+
+          <PlDropdown
+            v-if="(app.model.args as any).primaryCountType === 'read'"
+            :model-value="getMapping('read-count')"
+            :options="headerOptions"
+            label="Read count column (primary)"
+            clearable
+            required
+            @update:model-value="(v) => setMapping('read-count', v as string | undefined)"
+          />
+          <PlDropdown
+            v-if="(app.model.args as any).primaryCountType === 'umi'"
+            :model-value="getMapping('umi-count')"
+            :options="headerOptions"
+            label="UMI count column (primary)"
+            clearable
+            required
+            @update:model-value="(v) => setMapping('umi-count', v as string | undefined)"
           />
         </div>
 
@@ -255,6 +294,30 @@ watch(
                 :label="f.label"
                 clearable
                 @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+              />
+
+              <PlDropdown
+                v-model="(app.model.args as any).secondaryCountType"
+                :options="secondaryTypeOptions"
+                label="Secondary count type"
+                clearable
+              />
+
+              <PlDropdown
+                v-if="(app.model.args as any).secondaryCountType === 'umi'"
+                :model-value="getMapping('umi-count')"
+                :options="headerOptions"
+                label="UMI count column (secondary, optional)"
+                clearable
+                @update:model-value="(v) => setMapping('umi-count', v as string | undefined)"
+              />
+              <PlDropdown
+                v-if="(app.model.args as any).secondaryCountType === 'read'"
+                :model-value="getMapping('read-count')"
+                :options="headerOptions"
+                label="Read count column (secondary, optional)"
+                clearable
+                @update:model-value="(v) => setMapping('read-count', v as string | undefined)"
               />
             </div>
           </PlAccordionSection>

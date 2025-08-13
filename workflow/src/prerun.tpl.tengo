@@ -22,7 +22,8 @@ wf.body(func(args) {
 	inferColumns := render.create(inferColumnsTpl, {
 		format: args.format,
 		dataset: wf.resolve(args.datasetRef),
-		customMapping: args.customMapping
+		customMapping: args.customMapping,
+		primaryCountType: args.primaryCountType
 	})
 
 	columnsInfo := inferColumns.output("columnsInfo")

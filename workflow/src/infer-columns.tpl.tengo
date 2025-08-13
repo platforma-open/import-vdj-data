@@ -57,6 +57,7 @@ self.body(func(inputs) {
     // Build columnsInfo
     if format == "custom" {
         customMapping := inputs.customMapping
+        primaryCountType := inputs.primaryCountType
         // Treat undefined or empty/incomplete mapping as not ready
         if customMapping == undefined || (is_undefined(customMapping["cdr3-nt"]) && is_undefined(customMapping["cdr3-aa"])) {
             return {
@@ -465,14 +466,17 @@ self.body(func(inputs) {
             abundanceColumns = append(abundanceColumns, umiCountSpec, umiFractionSpec)
         }
 
-        // Determine primary abundance and anchor
+        // Determine primary abundance and anchor using user selection if provided
         mainAbundance := hasUMIs ? "umi-count" : "read-count"
+        if primaryCountType != undefined {
+            mainAbundance = primaryCountType == "umi" ? "umi-count" : "read-count"
+        }
         for _, col in abundanceColumns {
             if col.column == mainAbundance {
                 col.spec.annotations["pl7.app/abundance/isPrimary"] = "true"
                 col.spec.annotations["pl7.app/isAnchor"] = "true"
             }
-            if col.column == (hasUMIs ? "umi-fraction" : "read-fraction") {
+            if col.column == (mainAbundance == "umi-count" ? "umi-fraction" : "read-fraction") {
                 col.spec.annotations["pl7.app/abundance/isPrimary"] = "true"
             }
         }

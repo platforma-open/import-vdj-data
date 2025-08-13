@@ -350,11 +350,16 @@ self.body(func(inputs) {
             path: ["tsv"]
         }]
 
-        mainAbundanceUnit := undefined
-        if columnsInfo.hasUMIs {
-            mainAbundanceUnit = "umi"
-        } else {
-            mainAbundanceUnit = "read"
+        // Derive primary abundance names from columnsInfo primary flags to keep consistency
+        mainAbundanceCount := "read-count"
+        mainAbundanceFraction := "read-fraction"
+        for col in columnsInfo.abundanceColumns {
+            if col.spec.annotations["pl7.app/abundance/isPrimary"] == "true" && col.spec.annotations["pl7.app/abundance/normalized"] == "false" {
+                mainAbundanceCount = col.column
+            }
+            if col.spec.annotations["pl7.app/abundance/isPrimary"] == "true" && col.spec.annotations["pl7.app/abundance/normalized"] == "true" {
+                mainAbundanceFraction = col.column
+            }
         }
 
         aggResults := pframes.processColumn(
@@ -367,8 +372,8 @@ self.body(func(inputs) {
                 traceSteps: [{type: "milaboratories.importVDJ",  id: blockId + "." + chain, importance: 81, label: chain}],
 
                 extra: {
-                    primaryAbundance: mainAbundanceUnit + "-count",
-                    primaryFraction: mainAbundanceUnit + "-fraction",
+                    primaryAbundance: mainAbundanceCount,
+                    primaryFraction: mainAbundanceFraction,
                     schema: columnsToSchema(propertyColumns)
                 }
             }
