@@ -9,7 +9,7 @@ const app = useApp();
 
 const formatOptions = [
   { label: 'ImmunoSeq', value: 'immunoSeq' },
-  { label: 'Qiagen', value: 'qiagen' },
+  { label: 'QIAseq Immune Repertoire Analysis', value: 'qiagen' },
   { label: 'Custom', value: 'custom' },
 ];
 
