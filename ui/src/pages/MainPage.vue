@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { PlRef } from '@platforma-sdk/model';
 import { plRefsEqual } from '@platforma-sdk/model';
-import { PlAgDataTableV2, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlElementList, PlMaskIcon24, PlSectionSeparator, PlSlideModal, usePlDataTableSettingsV2, PlAccordion, PlAccordionSection, PlAlert } from '@platforma-sdk/ui-vue';
+import { PlAccordion, PlAccordionSection, PlAgDataTableV2, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlElementList, PlMaskIcon24, PlSectionSeparator, PlSlideModal, usePlDataTableSettingsV2 } from '@platforma-sdk/ui-vue';
 import { computed, watch } from 'vue';
 import { useApp } from '../app';
 
@@ -94,7 +94,7 @@ function setMapping(key: string, value: string | undefined) {
 }
 
 const mappingComplete = computed(() => {
-  const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined> };
+  const a = app.model.args as { customMapping?: Record<string, string | undefined> };
   const m = a.customMapping ?? {};
   const hasAA = !!m['cdr3-aa'];
   const hasNT = !!m['cdr3-nt'];
