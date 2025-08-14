@@ -144,7 +144,11 @@ watch(
 const qiagenValidationMessage = computed(() => {
   if (app.model.args.format !== 'qiagen' || qiagenColumnsPresent.value) return '';
 
-  const headers = app.model.outputs.headerColumns ?? [];
+  const headers = app.model.outputs.headerColumns;
+
+  // Don't show validation message until headers have been loaded
+  if (!headers || headers.length === 0) return '';
+
   const qiagenColumns = [
     'read set',
     'chain',
