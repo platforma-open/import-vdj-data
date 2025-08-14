@@ -23,7 +23,8 @@ self.body(func(inputs) {
 	for key, file in inputFiles.inputs() {
 		dataFrames = append(dataFrames, wf.frame(file, {
 			xsvType: "tsv",
-			id: "table_" + key
+			id: "table_" + key,
+			schema: [{column: "read set", type: "String"}]
 		}))
 	}
 

@@ -107,65 +107,20 @@ const mappingComplete = computed(() => {
   return hasOneSeq && hasV && hasJ && hasAbundance;
 });
 
-const qiagenColumnsPresent = computed(() => {
-  if (app.model.args.format !== 'qiagen') return true;
-
-  const headers = app.model.outputs.headerColumns ?? [];
-  const qiagenColumns = [
-    'read set',
-    'chain',
-    'V-region',
-    'J-region',
-    'CDR3 nucleotide seq',
-    'CDR3 amino acid seq',
-    'frequency',
-    'rank',
-    'UMIs with analytical threshold',
-    'nucleotide length',
-    'amino acid length',
-  ];
-
-  // Check if ALL Qiagen-specific columns are present
-  const hasAllQiagenColumns = qiagenColumns.every((col) => headers.includes(col));
-  return hasAllQiagenColumns;
+const validationResult = computed(() => {
+  const outputs = app.model.outputs as { validationResult?: { isValid: boolean; missingColumns: string[]; format: string } };
+  return outputs.validationResult;
 });
 
-// Watch qiagenColumnsPresent and update the args
-watch(
-  qiagenColumnsPresent,
-  (newValue) => {
-    if (app.model.args.format === 'qiagen') {
-      app.model.args.qiagenColumnsPresent = newValue;
-    }
-  },
-  { immediate: true },
-);
+const validationMessage = computed(() => {
+  const result = validationResult.value;
+  if (!result || result.isValid) return '';
 
-const qiagenValidationMessage = computed(() => {
-  if (app.model.args.format !== 'qiagen' || qiagenColumnsPresent.value) return '';
+  const formatName = result.format === 'qiagen'
+    ? 'QIAseq Immune Repertoire Analysis'
+    : result.format;
 
-  const headers = app.model.outputs.headerColumns;
-
-  // Don't show validation message until headers have been loaded
-  if (!headers || headers.length === 0) return '';
-
-  const qiagenColumns = [
-    'read set',
-    'chain',
-    'V-region',
-    'J-region',
-    'CDR3 nucleotide seq',
-    'CDR3 amino acid seq',
-    'frequency',
-    'rank',
-    'UMIs with analytical threshold',
-    'nucleotide length',
-    'amino acid length',
-  ];
-
-  const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
-
-  return `The selected dataset is missing required Qiagen columns: ${missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
+  return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
 });
 
 const forceSettingsOpen = computed(() => {
@@ -192,7 +147,18 @@ watch(
     }
     // Reset qiagenColumnsPresent when format changes away from qiagen
     if (fmt !== 'qiagen') {
-      app.model.args.qiagenColumnsPresent = undefined;
+      app.model.ui.qiagenColumnsPresent = false;
+    }
+  },
+  { immediate: true },
+);
+
+// Watch validation result and update the UI state
+watch(
+  validationResult,
+  (result) => {
+    if (result && result.format === 'qiagen') {
+      app.model.ui.qiagenColumnsPresent = result.isValid;
     }
   },
   { immediate: true },
@@ -226,9 +192,9 @@ watch(
 
       <PlDropdown v-model="app.model.args.format" :options="formatOptions" label="Data format" required />
 
-      <PlAlert v-if="qiagenValidationMessage" type="warn" :style="{ width: '100%' }">
-        <template #title>Invalid Qiagen dataset</template>
-        {{ qiagenValidationMessage }}
+      <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
+        <template #title>Invalid {{ validationResult?.format === 'qiagen' ? 'QIAseq Immune Repertoire Analysis' : validationResult?.format }} dataset</template>
+        {{ validationMessage }}
       </PlAlert>
 
       <PlDropdownMulti v-if="!isSingleCell" v-model="app.model.args.chains" :options="chainsOptions" label="Chains to import" required />
@@ -244,7 +210,7 @@ watch(
             :label="f.label"
             clearable
             required
-            @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+            @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
           />
         </div>
 
@@ -258,7 +224,7 @@ watch(
                 :options="headerOptions"
                 :label="f.label"
                 clearable
-                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+                @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
               />
             </div>
           </PlAccordionSection>

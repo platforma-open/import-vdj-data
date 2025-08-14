@@ -10,7 +10,7 @@ def get_column_names(file_path: str, separator: str) -> list[str]:
     """
     try:
         # n_rows=0 is an efficient way to read only the header
-        df = pl.read_csv(file_path, has_header=True, separator=separator, n_rows=0)
+        df = pl.read_csv(file_path, has_header=True, separator=separator, n_rows=0, infer_schema_length=10000)
         return df.columns
     except Exception as e:
         print(f"Error reading file with polars: {e}", file=sys.stderr)
