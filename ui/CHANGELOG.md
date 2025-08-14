@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.2.1
+
+### Patch Changes
+
+- bc586e9: Fixes
+- Updated dependencies [bc586e9]
+  - @platforma-open/milaboratories.import-vdj.model@1.2.1
+
 ## 1.2.0
 
 ### Minor Changes
