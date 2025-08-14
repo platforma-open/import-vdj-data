@@ -7,6 +7,7 @@ export type BlockArgs = {
   chains: string[];
   customMapping?: Record<string, string | undefined>;
   qiagenColumnsPresent?: boolean;
+  immunoSeqColumnsPresent?: boolean;
 };
 
 export type UiState = {
@@ -18,6 +19,12 @@ export type UiState = {
 export type ColumnDescription = {
   label: string;
   description: string;
+};
+
+export type ValidationResult = {
+  isValid: boolean;
+  missingColumns: string[];
+  format: string;
 };
 
 export const model = BlockModel.create()
@@ -33,7 +40,7 @@ export const model = BlockModel.create()
   })
 
   .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping, qiagenColumnsPresent } = ctx.args;
+    const { datasetRef, format, chains, customMapping, qiagenColumnsPresent, immunoSeqColumnsPresent } = ctx.args;
     if (datasetRef === undefined) return false;
     if (format === undefined) return false;
     if (!Array.isArray(chains) || chains.length === 0) return false;
@@ -49,6 +56,10 @@ export const model = BlockModel.create()
 
     if (format === 'qiagen') {
       return qiagenColumnsPresent === true;
+    }
+
+    if (format === 'immunoSeq') {
+      return immunoSeqColumnsPresent === true;
     }
 
     // Other non-custom formats: dataset + format + chains are sufficient
@@ -81,6 +92,140 @@ export const model = BlockModel.create()
       field: 'headerColumns',
       allowPermanentAbsence: true,
     })?.getDataAsJson<string[]>();
+  })
+
+  .retentiveOutput('validationResult', (ctx) => {
+    const headerColumns = ctx.prerun?.resolve({
+      field: 'headerColumns',
+      allowPermanentAbsence: true,
+    })?.getDataAsJson<string[]>();
+
+    if (!headerColumns || !ctx.args.format) {
+      return undefined;
+    }
+
+    const format = ctx.args.format;
+    const headers = headerColumns;
+
+    if (format === 'immunoSeq') {
+      // Define ImmunoSeq source aliases for column mapping
+      const sourceAliases: Record<string, string> = {
+        // sequence (not necessarily cdr3)
+        'rearrangement': 'sequence',
+        'nucleotide': 'sequence',
+
+        // cdr3 aa
+        'amino_acid_sequence': 'cdr3-aa',
+        'amino_acid': 'cdr3-aa',
+        'aminoAcid': 'cdr3-aa',
+
+        // read count columns
+        'count (templates/reads)': 'read-count',
+        'count (reads)': 'read-count',
+        'seq_reads': 'read-count',
+        'reads': 'read-count',
+        'count': 'read-count',
+
+        // umi count columns
+        'count (templates)': 'umi-count',
+        'templates': 'umi-count',
+        'estimatedNumberGenomes': 'umi-count',
+
+        // genes
+        'v_gene': 'v-gene',
+        'v-gene': 'v-gene',
+        'vGene': 'v-gene',
+        'vGeneName': 'v-gene',
+
+        'd_gene': 'd-gene',
+        'd-gene': 'd-gene',
+        'dGene': 'd-gene',
+        'dGeneName': 'd-gene',
+
+        'j_gene': 'j-gene',
+        'j-gene': 'j-gene',
+        'jGene': 'j-gene',
+        'jGeneName': 'j-gene',
+
+        // alleles
+        'vMaxResolved': 'v-allele',
+        'vResolved': 'v-allele',
+
+        'dMaxResolved': 'd-allele',
+        'dResolved': 'd-allele',
+
+        'jMaxResolved': 'j-allele',
+        'jResolved': 'j-allele',
+
+        // v begin
+        'v-index': 'v-begin',
+        'v_index': 'v-begin',
+        'vIndex': 'v-begin',
+      };
+
+      const requiredColumns = ['sequence', 'cdr3-aa', 'v-gene', 'd-gene', 'j-gene', 'v-begin'];
+
+      // Map headers to canonical column names
+      const columnMapping: Record<string, string> = {};
+      for (const h of headers) {
+        const canonicalName = sourceAliases[h];
+        if (canonicalName && !columnMapping[canonicalName]) {
+          columnMapping[canonicalName] = h;
+        }
+      }
+
+      // Check for required columns
+      const missingColumns: string[] = [];
+      for (const col of requiredColumns) {
+        if (!columnMapping[col]) {
+          missingColumns.push(col);
+        }
+      }
+
+      // Check for abundance columns
+      const hasReadCount = !!columnMapping['read-count'];
+      const hasUmiCount = !!columnMapping['umi-count'];
+      const hasAbundance = hasReadCount || hasUmiCount;
+
+      if (!hasAbundance) {
+        missingColumns.push('read-count or umi-count');
+      }
+
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'immunoSeq',
+      };
+    } else if (format === 'qiagen') {
+      const qiagenColumns = [
+        'read set',
+        'chain',
+        'V-region',
+        'J-region',
+        'CDR3 nucleotide seq',
+        'CDR3 amino acid seq',
+        'frequency',
+        'rank',
+        'UMIs with analytical threshold',
+        'nucleotide length',
+        'amino acid length',
+      ];
+
+      const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
+
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'qiagen',
+      };
+    }
+
+    // No validation for other formats
+    return {
+      isValid: true,
+      missingColumns: [],
+      format,
+    };
   })
 
   .output('stats', (ctx) => {

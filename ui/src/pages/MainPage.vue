@@ -107,61 +107,34 @@ const mappingComplete = computed(() => {
   return hasOneSeq && hasV && hasJ && hasAbundance;
 });
 
-const qiagenColumnsPresent = computed(() => {
-  if (app.model.args.format !== 'qiagen') return true;
+const validationResult = computed(() => (app.model.outputs as any).validationResult);
 
-  const headers = app.model.outputs.headerColumns ?? [];
-  const qiagenColumns = [
-    'read set',
-    'chain',
-    'V-region',
-    'J-region',
-    'CDR3 nucleotide seq',
-    'CDR3 amino acid seq',
-    'frequency',
-    'rank',
-    'UMIs with analytical threshold',
-    'nucleotide length',
-    'amino acid length',
-  ];
-
-  // Check if ALL Qiagen-specific columns are present
-  const hasAllQiagenColumns = qiagenColumns.every((col) => headers.includes(col));
-  return hasAllQiagenColumns;
-});
-
-// Watch qiagenColumnsPresent and update the args
+// Watch validation result and update the args flags
 watch(
-  qiagenColumnsPresent,
-  (newValue) => {
-    if (app.model.args.format === 'qiagen') {
-      app.model.args.qiagenColumnsPresent = newValue;
+  validationResult,
+  (result) => {
+    if (!result) return;
+    
+    if (result.format === 'qiagen') {
+      app.model.args.qiagenColumnsPresent = result.isValid;
+    } else if (result.format === 'immunoSeq') {
+      app.model.args.immunoSeqColumnsPresent = result.isValid;
     }
   },
   { immediate: true },
 );
 
-const qiagenValidationMessage = computed(() => {
-  if (app.model.args.format !== 'qiagen' || qiagenColumnsPresent.value) return '';
+const validationMessage = computed(() => {
+  const result = validationResult.value;
+  if (!result || result.isValid) return '';
 
-  const headers = app.model.outputs.headerColumns ?? [];
-  const qiagenColumns = [
-    'read set',
-    'chain',
-    'V-region',
-    'J-region',
-    'CDR3 nucleotide seq',
-    'CDR3 amino acid seq',
-    'frequency',
-    'rank',
-    'UMIs with analytical threshold',
-    'nucleotide length',
-    'amino acid length',
-  ];
+  const formatName = result.format === 'immunoSeq'
+    ? 'ImmunoSeq'
+    : result.format === 'qiagen'
+    ? 'Qiagen'
+    : result.format;
 
-  const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
-
-  return `The selected dataset is missing required Qiagen columns: ${missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
+  return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
 });
 
 const forceSettingsOpen = computed(() => {
@@ -186,9 +159,12 @@ watch(
       const a = app.model.args as unknown as { customMapping?: Record<string, string> };
       if (!a.customMapping) a.customMapping = {};
     }
-    // Reset qiagenColumnsPresent when format changes away from qiagen
+    // Reset validation flags when format changes
     if (fmt !== 'qiagen') {
       app.model.args.qiagenColumnsPresent = undefined;
+    }
+    if (fmt !== 'immunoSeq') {
+      app.model.args.immunoSeqColumnsPresent = undefined;
     }
   },
   { immediate: true },
@@ -222,9 +198,9 @@ watch(
 
       <PlDropdown v-model="app.model.args.format" :options="formatOptions" label="Data format" required />
 
-      <PlAlert v-if="qiagenValidationMessage" type="warn" :style="{ width: '100%' }">
-        <template #title>Invalid Qiagen dataset</template>
-        {{ qiagenValidationMessage }}
+      <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
+        <template #title>Invalid {{ validationResult?.format === 'immunoSeq' ? 'ImmunoSeq' : validationResult?.format === 'qiagen' ? 'Qiagen' : '' }} dataset</template>
+        {{ validationMessage }}
       </PlAlert>
 
       <PlDropdownMulti v-if="!isSingleCell" v-model="app.model.args.chains" :options="chainsOptions" label="Chains to import" required />
@@ -240,7 +216,7 @@ watch(
             :label="f.label"
             clearable
             required
-            @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+            @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
           />
         </div>
 
@@ -254,7 +230,7 @@ watch(
                 :options="headerOptions"
                 :label="f.label"
                 clearable
-                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+                @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
               />
             </div>
           </PlAccordionSection>
