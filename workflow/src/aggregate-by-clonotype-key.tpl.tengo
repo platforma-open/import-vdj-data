@@ -34,8 +34,12 @@ self.body(func(inputs) {
 
 	dataFrames := []
 
+	// Determine the correct type for primary abundance
+	// UMI counts can be fractional in ImmunoSeq (estimated genome counts), while read counts are always integers
+	primaryAbundanceType := primaryAbundance == "umi-count" ? "Float64" : "Int64"
+	
 	// Ensure the read schema includes keys, primary abundance and its fraction
-	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" }, { column: primaryAbundance, type: "Int64" }, { column: primaryFraction, type: "Double" } ]
+	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" }, { column: primaryAbundance, type: primaryAbundanceType }, { column: primaryFraction, type: "Double" } ]
 
 	for sKey in maps.getKeys(inputMap) {
 		inputFile := inputMap[sKey]
@@ -66,7 +70,7 @@ self.body(func(inputs) {
 		currentDf = pt.concat(dataFrames)
 	}
 
-	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast("Int64", {strict: true}).alias(primaryAbundance))
+	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast(primaryAbundanceType, {strict: true}).alias(primaryAbundance))
 	
 	aggExpressions := []
 	

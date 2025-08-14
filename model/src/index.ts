@@ -6,13 +6,13 @@ export type BlockArgs = {
   format?: 'immunoSeq' | 'qiagen' | 'mixcr' | 'airr' | 'custom';
   chains: string[];
   customMapping?: Record<string, string | undefined>;
-  qiagenColumnsPresent?: boolean;
 };
 
 export type UiState = {
   tableState: PlDataTableStateV2;
   title: string;
   settingsOpen: boolean;
+  qiagenColumnsPresent: boolean;
 };
 
 export type ColumnDescription = {
@@ -30,10 +30,11 @@ export const model = BlockModel.create()
     tableState: createPlDataTableStateV2(),
     title: 'Import V(D)J Data',
     settingsOpen: true,
+    qiagenColumnsPresent: false,
   })
 
   .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping, qiagenColumnsPresent } = ctx.args;
+    const { datasetRef, format, chains, customMapping } = ctx.args;
     if (datasetRef === undefined) return false;
     if (format === undefined) return false;
     if (!Array.isArray(chains) || chains.length === 0) return false;
@@ -48,10 +49,10 @@ export const model = BlockModel.create()
     }
 
     if (format === 'qiagen') {
-      return qiagenColumnsPresent === true;
+      return ctx.uiState.qiagenColumnsPresent === true;
     }
 
-    // Other non-custom formats: dataset + format + chains are sufficient
+    // For other formats, basic args are sufficient
     return true;
   })
 
@@ -81,6 +82,51 @@ export const model = BlockModel.create()
       field: 'headerColumns',
       allowPermanentAbsence: true,
     })?.getDataAsJson<string[]>();
+  })
+
+  .retentiveOutput('validationResult', (ctx) => {
+    const headerColumns = ctx.prerun?.resolve({
+      field: 'headerColumns',
+      allowPermanentAbsence: true,
+    })?.getDataAsJson<string[]>();
+
+    if (!headerColumns || !ctx.args.format) {
+      return undefined;
+    }
+
+    const format = ctx.args.format;
+    const headers = headerColumns;
+
+    if (format === 'qiagen') {
+      const qiagenColumns = [
+        'read set',
+        'chain',
+        'V-region',
+        'J-region',
+        'CDR3 nucleotide seq',
+        'CDR3 amino acid seq',
+        'frequency',
+        'rank',
+        'UMIs with analytical threshold',
+        'nucleotide length',
+        'amino acid length',
+      ];
+
+      const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
+
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'qiagen',
+      };
+    }
+
+    // For other formats, validation is handled elsewhere or not needed
+    return {
+      isValid: true,
+      missingColumns: [],
+      format: format,
+    };
   })
 
   .output('stats', (ctx) => {
