@@ -1,0 +1,15 @@
+self := import("@platforma-sdk/workflow-tengo:tpl")
+text := import("text")
+smart := import("@platforma-sdk/workflow-tengo:smart")
+
+self.defineOutputs("result")
+
+self.body(func(inputs) {
+    separator := inputs.separator
+    headerLine := text.trim_space(string(inputs.header.getData()))
+    columns := smart.createJsonResource(text.split(headerLine, separator))
+
+    return {
+        result: columns
+    }
+})

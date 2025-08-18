@@ -3,15 +3,14 @@ packages:
   - model
   - ui
   - test
-  - software
   - block
 
 catalog:
   "@platforma-sdk/model": 1.42.25
   "@platforma-sdk/ui-vue": 1.42.26
-  "@platforma-sdk/workflow-tengo": ^5.0.3
-  "@platforma-sdk/block-tools": ^2.5.83
-  "@platforma-sdk/test": 1.42.27
+  "@platforma-sdk/workflow-tengo": 5.1.0
+  "@platforma-sdk/block-tools": 2.5.84
+  "@platforma-sdk/test": 1.42.29
   "@platforma-sdk/tengo-builder": 2.1.16
   "@platforma-sdk/package-builder": 2.17.2
   "@platforma-sdk/eslint-config": ^1.0.3
