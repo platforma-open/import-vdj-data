@@ -21,7 +21,7 @@ self.body(func(inputs) {
     fileExtension := dataset.spec.domain["pl7.app/fileExtension"]
 
     inputFile := undefined
-    
+
     // get first file from the dataset //@TODO take first non-empty file
     for _, v in dataset.data.inputs() {
         inputFile = v
@@ -41,7 +41,7 @@ self.body(func(inputs) {
                 saveStdoutContent().
                 run().
                 getStdoutFileContent()
-    
+
     // Always expose parsed header to UI
     headerColumns := header
 
@@ -53,7 +53,7 @@ self.body(func(inputs) {
             headerColumns: headerColumns
         }
     }
-    
+
     // Build columnsInfo
     if format == "custom" {
         customMapping := inputs.customMapping
