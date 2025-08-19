@@ -8,6 +8,7 @@ assets := import("@platforma-sdk/workflow-tengo:assets")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 sets := import("@platforma-sdk/workflow-tengo:sets")
+strings := import("@platforma-sdk/workflow-tengo:strings")
 json := import("json")
 
 self.defineOutputs("tsv", "stats")
@@ -20,18 +21,25 @@ self.body(func(inputs) {
 	wf := pt.workflow().mem("8GiB").cpu(4)
 
 	dataFrames := []
-	for key, file in inputFiles.inputs() {
+	maps.forEach(inputFiles.inputs(), func(key, file) {
 		dataFrames = append(dataFrames, wf.frame(file, {
 			xsvType: "tsv",
-			id: "table_" + key
+			id: "table_" + strings.substituteSpecialCharacters(key),
+			inferSchema: false // Disable schema inference to prevent inconsistent column types during concatenation
+			                   // Casting for needed numeric columns is done below
 		}))
-	}
+	})
 
 	if len(dataFrames) == 0 {
 		ll.panic("no input files found")
 	}
 
-	df := pt.concat(dataFrames)
+	df := undefined
+	if len(dataFrames) > 1 {
+		df = pt.concat(dataFrames)
+	} else {
+		df = dataFrames[0]
+	}
 
 	// Rename original columns to their target IDs for downstream processing.
 	renameExpressions := []
@@ -40,13 +48,13 @@ self.body(func(inputs) {
 	}
 	df = df.withColumns(renameExpressions...)
 
-	// Drop rows with empty j-gene or v-gene from immunoseq 
+	// Drop rows with empty j-gene or v-gene from immunoseq
 	for col in ["j-gene", "v-gene"] {
 		df = df.filter(
 			pt.col(col).isNotNull().and(pt.col(col).neq(""))
 		)
 	}
-	
+
 	chainToLocusMap := {
 		"IGHeavy": "IGH",
 		"IGLight": "IGL", // Default to IGL, IGK is handled below
@@ -57,7 +65,7 @@ self.body(func(inputs) {
 	}
 
 	keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
-	
+
 	clonotypeKeyExpr := pt.
 						concatStr(keyComponents, {delimiter: "|"}).
 						hash("sha256", "base64_alphanumeric", 120).
@@ -65,7 +73,7 @@ self.body(func(inputs) {
 
 	for chain in chains {
 		prefix := chainToLocusMap[chain]
-		
+
 		chainDf := undefined
 		if chain == "IGLight" {
 			chainDf = df.filter(
@@ -88,6 +96,7 @@ self.body(func(inputs) {
 		// In the future, we may decide to import non-productive sequences as well.
 		chainDf = chainDf.filter(pt.col("is-productive"))
 
+		chainDf = chainDf.withColumns(pt.col("v-begin").cast("Int32").alias("v-begin"))
 		chainDf = chainDf.withColumns(
 			pt.col("sequence").strSlice(
 				pt.col("v-begin"),
@@ -100,7 +109,7 @@ self.body(func(inputs) {
 		chainDf = chainDf.withColumns(
 			pt.col("cdr3-nt").strLenChars().alias("cdr3-nt-length")
 		)
-		
+
 		chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
 		// Ensure correct data type
@@ -136,7 +145,7 @@ self.body(func(inputs) {
 			keepColumns = append(keepColumns, col.column)
 		}
 		chainDf = chainDf.select(keepColumns...)
-		
+
 		chainDf.save(chain + ".tsv")
 
 		statsExprs := [

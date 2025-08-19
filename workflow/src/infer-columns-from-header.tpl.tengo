@@ -9,7 +9,7 @@ self.defineOutputs("columnsInfo")
 
 self.body(func(inputs) {
     format := inputs.format
-    header := inputs.header.getDataAsJson()
+    header := inputs.header
     if format == "immunoSeq" {
         return {
             columnsInfo: immunoSeqImport.getColumns(header)
