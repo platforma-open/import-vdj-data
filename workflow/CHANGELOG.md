@@ -1,5 +1,15 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.4.0
+
+### Minor Changes
+
+- bae17e4: - migration to txt.head() for header parsing, fixes window compatibility issues
+  - schema handling fixes (schema not used in reading operations anymore)
+    - fixes concatenation crashes
+    - fixes incorrect calculation of mean fractions
+  - result reproducibility improvements, with maps.forEach
+
 ## 1.3.1
 
 ### Patch Changes
