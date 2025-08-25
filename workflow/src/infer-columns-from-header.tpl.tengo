@@ -4,6 +4,7 @@ json := import("json")
 
 immunoSeqImport := import(":infer-columns-immunoSeq")
 qiagenImport := import(":infer-columns-qiagen")
+mixcrImport := import(":infer-columns-mixcr")
 
 self.defineOutputs("columnsInfo")
 
@@ -17,6 +18,10 @@ self.body(func(inputs) {
     } else if format == "qiagen" {
         return {
             columnsInfo: qiagenImport.getColumns(header)
+        }
+    } else if format == "mixcr" {
+        return {
+            columnsInfo: mixcrImport.getColumns(header)
         }
     } else if format == "custom" {
         // For custom format, downstream step will build columnsInfo from user mapping
