@@ -1,0 +1,232 @@
+ll := import("@platforma-sdk/workflow-tengo:ll")
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+smart := import("@platforma-sdk/workflow-tengo:smart")
+slices := import("@platforma-sdk/workflow-tengo:slices")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+sets := import("@platforma-sdk/workflow-tengo:sets")
+json := import("json")
+
+self.defineOutputs("tsv", "stats")
+
+self.body(func(inputs) {
+    inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
+    columnsInfo := inputs.columnsInfo
+    chains := inputs.chains
+
+    wf := pt.workflow().mem("8GiB").cpu(4)
+
+    dataFrames := []
+    for key, file in inputFiles.inputs() {
+        dataFrames = append(dataFrames, wf.frame(file, {
+            xsvType: "tsv",
+            id: "table_" + key,
+            inferSchema: false
+        }))
+    }
+
+    if len(dataFrames) == 0 {
+        ll.panic("no input files found")
+    }
+
+    df := undefined
+    if len(dataFrames) > 1 { df = pt.concat(dataFrames) } else { df = dataFrames[0] }
+
+    // Rename original columns to canonical IDs used downstream
+    renameExpressions := []
+    for canonical, original in columnsInfo.columnMapping {
+        if original != undefined {
+            renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+        }
+    }
+    df = df.withColumns(renameExpressions...)
+
+    // Ensure allele columns presence according to rules:
+    // If any of bestXHit/allXHits/allXHitsWithScore exist in input, create x-allele.
+    // Value equals bestXHit when available; otherwise set to empty string.
+    alleleExpressions := []
+    ensureAlleleCol := func(prefix) {
+        keyBest := prefix + "-allele"
+        keyAllWS := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "HitsWithScore"
+        keyAll := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Hits"
+        hasAny := columnsInfo.columnMapping[keyBest] != undefined || columnsInfo.columnMapping[keyAllWS] != undefined || columnsInfo.columnMapping[keyAll] != undefined
+        if hasAny {
+            if columnsInfo.columnMapping[keyBest] != undefined {
+                // Already renamed above; nothing to add
+                return
+            }
+            alleleExpressions = append(alleleExpressions, pt.lit("").alias(keyBest))
+        }
+    }
+    ensureAlleleCol("v")
+    ensureAlleleCol("d")
+    ensureAlleleCol("j")
+    ensureAlleleCol("c")
+    if len(alleleExpressions) > 0 {
+        df = df.withColumns(alleleExpressions...)
+    }
+
+    // bestXGene derivation if missing: prefer bestXHit (strip allele), then allXHitsWithScore (first, strip),
+    // then allXGenes (first), then allXHits (first, strip). Only reference columns that exist in header.
+    deriveBestGene := func(prefix) {
+        bestGene := prefix + "-gene"
+        bestHit := prefix + "-allele"
+        allWithScore := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "HitsWithScore"
+        allHits := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Hits"
+        allGenes := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Genes"
+
+        // Strip after first comma, then strip score parens, then strip allele part after '*'
+        firstItem := func(col) { return pt.col(col).strReplace(",.*$", "", { replaceAll: true }) }
+        stripParens := func(expr) { return expr.strReplace("\\(.*$", "", { replaceAll: true }) }
+        stripAllele := func(expr) { return expr.strReplace("\\*.*$", "", { replaceAll: true }) }
+
+        hasBestHit := columnsInfo.columnMapping[bestHit] != undefined
+        hasAllWithScore := columnsInfo.columnMapping[allWithScore] != undefined
+        hasAllGenes := columnsInfo.columnMapping[allGenes] != undefined
+        hasAllHits := columnsInfo.columnMapping[allHits] != undefined
+
+        if hasBestHit {
+            return stripAllele(pt.col(bestHit)).alias(bestGene)
+        }
+        if hasAllWithScore {
+            return stripAllele(stripParens(firstItem(allWithScore))).alias(bestGene)
+        }
+        if hasAllGenes {
+            return firstItem(allGenes).alias(bestGene)
+        }
+        if hasAllHits {
+            return stripAllele(firstItem(allHits)).alias(bestGene)
+        }
+        return pt.lit("").alias(bestGene)
+    }
+
+    // Ensure best gene columns exist
+    df = df.withColumns(
+        deriveBestGene("v"),
+        deriveBestGene("d"),
+        deriveBestGene("j"),
+        deriveBestGene("c")
+    )
+
+    // Allele columns: we only keep/use them if bestXHit was present in the header (renamed to x-allele above).
+    // If bestXHit is absent, do not synthesize allele columns from other lists.
+
+    // Drop rows with empty v/j genes
+    for col in ["j-gene", "v-gene"] {
+        df = df.filter(pt.col(col).isNotNull().and(pt.col(col).neq("")))
+    }
+
+    // Compute productivity from AA CDR3
+    df = df.withColumns(
+        pt.col("cdr3-aa").isNotNull().
+            and(pt.col("cdr3-aa").neq("")).
+            and(pt.col("cdr3-aa").strContains("*", {literal: true}).not()).
+            and(pt.col("cdr3-aa").strContains("_", {literal: true}).not()).
+            alias("is-productive")
+    )
+
+    // Build clonotypeKey
+    keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
+    clonotypeKeyExpr := pt.concatStr(keyComponents, {delimiter: "|"}).hash("sha256", "base64_alphanumeric", 120).alias("clonotypeKey")
+
+    // Filter by chains using V gene prefix
+    chainToLocusMap := {
+        "IGHeavy": "IGH",
+        "IGLight": "IGL", // IGK handled below as well
+        "TRA": "TRA",
+        "TRB": "TRB",
+        "TRG": "TRG",
+        "TRD": "TRD"
+    }
+
+    for chain in chains {
+        prefix := chainToLocusMap[chain]
+
+        chainDf := undefined
+        if chain == "IGLight" {
+            chainDf = df.filter(pt.col("v-gene").strSlice(0, 3).eq("IGK").or(pt.col("v-gene").strSlice(0, 3).eq("IGL")))
+        } else {
+            chainDf = df.filter(pt.col("v-gene").strSlice(0, len(prefix)).eq(prefix))
+        }
+
+        // Filter productive
+        chainDf = chainDf.filter(pt.col("is-productive"))
+
+        // Length cols
+        chainDf = chainDf.withColumns(pt.col("cdr3-aa").strLenChars().alias("cdr3-aa-length"))
+        chainDf = chainDf.withColumns(pt.col("cdr3-nt").strLenChars().alias("cdr3-nt-length"))
+
+        chainDf = chainDf.withColumns(clonotypeKeyExpr)
+
+        // Cast abundance columns and decide primary: prefer UMI if present, else reads
+        primaryCountCol := "read-count"
+        primaryFractionCol := "read-fraction"
+        if !is_undefined(columnsInfo.columnMapping["read-count"]) {
+            chainDf = chainDf.withColumns(pt.col("read-count").cast("Int64").alias("read-count"))
+        }
+        if !is_undefined(columnsInfo.columnMapping["umi-count"]) {
+            chainDf = chainDf.withColumns(pt.col("umi-count").cast("Int64").alias("umi-count"))
+        }
+        if columnsInfo.hasUMIs && !is_undefined(columnsInfo.columnMapping["umi-count"]) {
+            primaryCountCol = "umi-count"
+            primaryFractionCol = "umi-fraction"
+        }
+        if primaryFractionCol == "umi-fraction" {
+            if !is_undefined(columnsInfo.columnMapping["umi-fraction"]) {
+                chainDf = chainDf.withColumns(pt.col("umi-fraction").cast("Double").alias("umi-fraction"))
+            } else if !is_undefined(columnsInfo.columnMapping["umi-count"]) {
+                // Create umi-fraction if missing in input
+                chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
+            }
+        }
+
+        // Aggregate by clonotype key
+        aggregations := []
+        // Always sum both if they exist so downstream stats are available
+        if !is_undefined(columnsInfo.columnMapping["read-count"]) { aggregations = append(aggregations, pt.col("read-count").sum().alias("read-count")) }
+        if !is_undefined(columnsInfo.columnMapping["umi-count"]) { aggregations = append(aggregations, pt.col("umi-count").sum().alias("umi-count")) }
+        for col in columnsInfo.propertyColumns {
+            aggregations = append(aggregations, pt.col(col.column).maxBy(primaryCountCol).alias(col.column))
+        }
+        chainDf = chainDf.groupBy("clonotypeKey").agg(aggregations...)
+
+        // Fractions
+        if !is_undefined(columnsInfo.columnMapping["read-count"]) {
+            chainDf = chainDf.withColumns(pt.col("read-count").truediv(pt.col("read-count").sum()).fillNaN(0).alias("read-fraction"))
+        }
+        if !is_undefined(columnsInfo.columnMapping["umi-count"]) {
+            chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
+        }
+
+        // Build stats BEFORE pruning columns
+        statsExprs := [ pt.col("clonotypeKey").count().alias("clonotype-count") ]
+        if !is_undefined(columnsInfo.columnMapping["read-count"]) { statsExprs = append(statsExprs, pt.col("read-count").sum().alias("read-count")) }
+        if !is_undefined(columnsInfo.columnMapping["umi-count"]) { statsExprs = append(statsExprs, pt.col("umi-count").sum().alias("umi-count")) }
+        stats := chainDf.select(statsExprs...)
+        stats.saveContent("stats-" + chain + ".tsv")
+
+        // Keep columns for final TSV
+        keepColumns := ["clonotypeKey"]
+        for col in columnsInfo.propertyColumns { keepColumns = append(keepColumns, col.column) }
+        for col in columnsInfo.abundanceColumns { keepColumns = append(keepColumns, col.column) }
+        chainDf = chainDf.select(keepColumns...)
+
+        chainDf.save(chain + ".tsv")
+    }
+
+    wf = wf.run()
+
+    tsv := {}
+    stats := {}
+    for chain in chains {
+        tsv[chain] = wf.getFile(chain + ".tsv")
+        stats[chain] = wf.getFileContent("stats-" + chain + ".tsv")
+    }
+
+    return { tsv: tsv, stats: stats }
+})
+
+
