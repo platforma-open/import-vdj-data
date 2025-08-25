@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.1.1
+
+### Patch Changes
+
+- 73cb27d: Fixed block metadata url
+
 ## 1.1.0
 
 ### Minor Changes
