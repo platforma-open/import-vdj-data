@@ -58,7 +58,20 @@ self.body(func(inputs) {
                 // Already renamed above; nothing to add
                 return
             }
-            alleleExpressions = append(alleleExpressions, pt.lit("").alias(keyBest))
+            // Fallback: derive allele value from available lists or best gene
+            // Order: allXHitsWithScore (first, strip parens) > allXHits (first) > bestXGene > ""
+            firstItem := func(col) { return pt.col(col).strReplace(",.*$", "", { replaceAll: true }) }
+            stripParens := func(expr) { return expr.strReplace("\\(.*$", "", { replaceAll: true }) }
+            bestGene := prefix + "-gene"
+            if columnsInfo.columnMapping[keyAllWS] != undefined {
+                alleleExpressions = append(alleleExpressions, stripParens(firstItem(keyAllWS)).alias(keyBest))
+            } else if columnsInfo.columnMapping[keyAll] != undefined {
+                alleleExpressions = append(alleleExpressions, firstItem(keyAll).alias(keyBest))
+            } else if columnsInfo.columnMapping[bestGene] != undefined {
+                alleleExpressions = append(alleleExpressions, pt.col(bestGene).alias(keyBest))
+            } else {
+                alleleExpressions = append(alleleExpressions, pt.lit("").alias(keyBest))
+            }
         }
     }
     ensureAlleleCol("v")
@@ -69,8 +82,8 @@ self.body(func(inputs) {
         df = df.withColumns(alleleExpressions...)
     }
 
-    // bestXGene derivation if missing: prefer bestXHit (strip allele), then allXHitsWithScore (first, strip),
-    // then allXGenes (first), then allXHits (first, strip). Only reference columns that exist in header.
+    // bestXGene derivation: only reference columns that exist in header
+    // Order: bestXGene (if present) > bestXHit (strip allele) > allXHitsWithScore (first, strip) > allXGenes (first) > allXHits (first, strip) > ""
     deriveBestGene := func(prefix) {
         bestGene := prefix + "-gene"
         bestHit := prefix + "-allele"
@@ -78,16 +91,19 @@ self.body(func(inputs) {
         allHits := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Hits"
         allGenes := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Genes"
 
-        // Strip after first comma, then strip score parens, then strip allele part after '*'
         firstItem := func(col) { return pt.col(col).strReplace(",.*$", "", { replaceAll: true }) }
         stripParens := func(expr) { return expr.strReplace("\\(.*$", "", { replaceAll: true }) }
         stripAllele := func(expr) { return expr.strReplace("\\*.*$", "", { replaceAll: true }) }
 
+        hasBestGene := columnsInfo.columnMapping[bestGene] != undefined
         hasBestHit := columnsInfo.columnMapping[bestHit] != undefined
         hasAllWithScore := columnsInfo.columnMapping[allWithScore] != undefined
         hasAllGenes := columnsInfo.columnMapping[allGenes] != undefined
         hasAllHits := columnsInfo.columnMapping[allHits] != undefined
 
+        if hasBestGene {
+            return pt.col(bestGene).alias(bestGene)
+        }
         if hasBestHit {
             return stripAllele(pt.col(bestHit)).alias(bestGene)
         }
@@ -102,6 +118,8 @@ self.body(func(inputs) {
         }
         return pt.lit("").alias(bestGene)
     }
+
+    // Note: We now synthesize allele columns when bestXHit is missing using lists or best gene
 
     // Ensure best gene columns exist
     df = df.withColumns(
@@ -161,54 +179,67 @@ self.body(func(inputs) {
 
         chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
-        // Cast abundance columns and decide primary: prefer UMI if present, else reads
-        primaryCountCol := "read-count"
-        primaryFractionCol := "read-fraction"
-        if !is_undefined(columnsInfo.columnMapping["read-count"]) {
-            chainDf = chainDf.withColumns(pt.col("read-count").cast("Int64").alias("read-count"))
+        // Check what abundance data is actually available
+        hasUmiCount := columnsInfo.hasUMIs && !is_undefined(columnsInfo.columnMapping["umi-count"])
+        hasReadCount := !is_undefined(columnsInfo.columnMapping["read-count"])
+        
+        // Cast abundance columns - only cast what exists
+        // Be robust to potential formatting (e.g., thousand separators) and ensure correct numeric types
+        if hasReadCount {
+            chainDf = chainDf.withColumns(
+                pt.col("read-count").
+                    strReplace(",", "", { replaceAll: true }).
+                    cast("Float64").
+                    fillNull(0).
+                    cast("Int64").
+                    alias("read-count")
+            )
         }
-        if !is_undefined(columnsInfo.columnMapping["umi-count"]) {
-            chainDf = chainDf.withColumns(pt.col("umi-count").cast("Int64").alias("umi-count"))
-        }
-        if columnsInfo.hasUMIs && !is_undefined(columnsInfo.columnMapping["umi-count"]) {
-            primaryCountCol = "umi-count"
-            primaryFractionCol = "umi-fraction"
-        }
-        if primaryFractionCol == "umi-fraction" {
-            if !is_undefined(columnsInfo.columnMapping["umi-fraction"]) {
-                chainDf = chainDf.withColumns(pt.col("umi-fraction").cast("Double").alias("umi-fraction"))
-            } else if !is_undefined(columnsInfo.columnMapping["umi-count"]) {
-                // Create umi-fraction if missing in input
-                chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
-            }
+        if hasUmiCount {
+            chainDf = chainDf.withColumns(
+                pt.col("umi-count").strReplace("[^0-9]", "", { replaceAll: true }).cast("Int64").fillNull(0).alias("umi-count")
+            )
         }
 
         // Aggregate by clonotype key
         aggregations := []
-        // Always sum both if they exist so downstream stats are available
-        if !is_undefined(columnsInfo.columnMapping["read-count"]) { aggregations = append(aggregations, pt.col("read-count").sum().alias("read-count")) }
-        if !is_undefined(columnsInfo.columnMapping["umi-count"]) { aggregations = append(aggregations, pt.col("umi-count").sum().alias("umi-count")) }
+        
+        // Aggregate only the abundance types that actually exist
+        if hasReadCount {
+            aggregations = append(aggregations, pt.col("read-count").sum().alias("read-count"))
+        }
+        if hasUmiCount {
+            aggregations = append(aggregations, pt.col("umi-count").sum().alias("umi-count"))
+        }
+        // Use primary abundance column for maxBy (prefer UMI if available)
+        primaryAbundanceCol := hasUmiCount ? "umi-count" : "read-count"
         for col in columnsInfo.propertyColumns {
-            aggregations = append(aggregations, pt.col(col.column).maxBy(primaryCountCol).alias(col.column))
+            aggregations = append(aggregations, pt.col(col.column).maxBy(primaryAbundanceCol).alias(col.column))
         }
         chainDf = chainDf.groupBy("clonotypeKey").agg(aggregations...)
 
-        // Fractions
-        if !is_undefined(columnsInfo.columnMapping["read-count"]) {
-            chainDf = chainDf.withColumns(pt.col("read-count").truediv(pt.col("read-count").sum()).fillNaN(0).alias("read-fraction"))
+        // Generate stats (include only abundance types that exist)
+        statsExprs := [
+            pt.col("clonotypeKey").count().alias("clonotype-count")
+        ]
+        if hasReadCount {
+            statsExprs = append(statsExprs, pt.col("read-count").sum().alias("read-count"))
         }
-        if !is_undefined(columnsInfo.columnMapping["umi-count"]) {
-            chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
+        if hasUmiCount {
+            statsExprs = append(statsExprs, pt.col("umi-count").sum().alias("umi-count"))
         }
-
-        // Build stats BEFORE pruning columns
-        statsExprs := [ pt.col("clonotypeKey").count().alias("clonotype-count") ]
-        if !is_undefined(columnsInfo.columnMapping["read-count"]) { statsExprs = append(statsExprs, pt.col("read-count").sum().alias("read-count")) }
-        if !is_undefined(columnsInfo.columnMapping["umi-count"]) { statsExprs = append(statsExprs, pt.col("umi-count").sum().alias("umi-count")) }
         stats := chainDf.select(statsExprs...)
         stats.saveContent("stats-" + chain + ".tsv")
 
-        // Keep columns for final TSV
+        // Calculate fractions only for abundance types that exist
+        if hasReadCount {
+            chainDf = chainDf.withColumns(pt.col("read-count").truediv(pt.col("read-count").sum()).fillNaN(0).alias("read-fraction"))
+        }
+        if hasUmiCount {
+            chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
+        }
+
+        // Keep columns (using canonical names) - include all abundance columns
         keepColumns := ["clonotypeKey"]
         for col in columnsInfo.propertyColumns { keepColumns = append(keepColumns, col.column) }
         for col in columnsInfo.abundanceColumns { keepColumns = append(keepColumns, col.column) }
