@@ -14,7 +14,7 @@ a := func(order, defaultVisibility, spec) {
 
 // Define spec templates (subset aligned with immunoSeq lib)
 readColumnSpecs := {
-    "readCountSpec": {
+    "read-count": {
         id: "read-count",
         column: "read-count",
         allowNA: false,
@@ -32,7 +32,7 @@ readColumnSpecs := {
             })
         }
     },
-    "readFractionSpec": {
+    "read-fraction": {
         id: "read-fraction",
         column: "read-fraction",
         allowNA: false,
@@ -55,7 +55,7 @@ readColumnSpecs := {
 }
 
 umiColumnSpecs := {
-    "umiCountSpec": {
+    "umi-count": {
         id: "umi-count",
         column: "umi-count",
         allowNA: false,
@@ -73,7 +73,7 @@ umiColumnSpecs := {
             })
         }
     },
-    "umiFractionSpec": {
+    "umi-fraction": {
         id: "umi-fraction",
         column: "umi-fraction",
         allowNA: false,
@@ -421,23 +421,13 @@ getColumns := func(header, customMapping, primaryCountType) {
 
     // Build arrays based on provided mapping
     hasUMIs := !is_undefined(customMapping["umi-count"]) && customMapping["umi-count"] != ""
-    hasUMIFractions := !is_undefined(customMapping["umi-fraction"]) && customMapping["umi-fraction"] != ""
     hasReads := !is_undefined(customMapping["read-count"]) && customMapping["read-count"] != ""
-    hasReadFractions := !is_undefined(customMapping["read-fraction"]) && customMapping["read-fraction"] != ""
 
     if hasUMIs {
 		for _, col in readColumnSpecs {
 			col.spec.annotations["pl7.app/table/visibility"] = "optional"
 		}
 	}
-
-    // Remove fraction information if missing
-    if hasReadFractions != true {
-        readColumnSpecs = {"readCountSpec": readColumnSpecs["readCountSpec"]}
-    }
-    if hasUMIFractions != true {
-        umiColumnSpecs = {"umiCountSpec": umiColumnSpecs["umiCountSpec"]}
-    }
 
     abundanceColumns := {}
     if hasReads {
@@ -449,9 +439,7 @@ getColumns := func(header, customMapping, primaryCountType) {
 
     // Determine primary abundance and anchor using user selection if provided
     mainAbundance := hasUMIs ? "umi-count" : "read-count"
-    mainFractionAbundance := hasUMIFractions ? "umi-fraction" : "read-fraction"
-    mainFractionAbundance = (mainFractionAbundance == "read-fraction" && 
-                                hasReadFractions) ? "read-fraction" : undefined
+    mainFractionAbundance := hasUMIs ? "umi-fraction" : "read-fraction"
     if primaryCountType != undefined {
         mainAbundance = primaryCountType == "umi" ? "umi-count" : "read-count"
     }
@@ -459,8 +447,6 @@ getColumns := func(header, customMapping, primaryCountType) {
     if abundanceColumns[mainAbundance] != undefined {
         abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
         abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
-    }
-    if mainFractionAbundance != undefined {
         abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
     }
 

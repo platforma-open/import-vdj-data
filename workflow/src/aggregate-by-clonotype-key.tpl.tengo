@@ -48,11 +48,9 @@ self.body(func(inputs) {
 
 		df := wf.frame({
 			file: inputFile,
-			xsvType: "tsv",
-			schema: baseSchemaForRead
+			xsvType: "tsv"
 		}, {
-			id: dfId,
-			inferSchema: false
+			id: dfId
 		})
 		dataFrames = append(dataFrames, df)
 	}
