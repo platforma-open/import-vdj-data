@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { PlRef, PlDataTableStateV2 } from '@platforma-sdk/model';
+import type { PlRef } from '@platforma-sdk/model';
 import { plRefsEqual } from '@platforma-sdk/model';
 import { PlAccordion, PlAccordionSection, PlAgDataTableV2, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlElementList, PlMaskIcon24, PlSectionSeparator, PlSlideModal, usePlDataTableSettingsV2 } from '@platforma-sdk/ui-vue';
 import { computed, watch } from 'vue';
@@ -7,24 +7,10 @@ import { useApp } from '../app';
 
 const app = useApp();
 
-type UiLike = {
-  tableState: PlDataTableStateV2;
-  title: string;
-  settingsOpen: boolean;
-  qiagenColumnsPresent: boolean;
-};
-const ui = app.model.ui as unknown as UiLike;
-
-type OutputsLike = {
-  headerColumns?: string[];
-  validationResult?: { isValid: boolean; missingColumns: string[]; format: string };
-};
-const outputs = app.model.outputs as unknown as OutputsLike;
-
 const formatOptions = [
   { label: 'ImmunoSeq', value: 'immunoSeq' },
   { label: 'QIAseq Immune Repertoire Analysis', value: 'qiagen' },
-  { label: 'MiXCR', value: 'mixcr' },
+  { label: 'MiXCR bulk immune repertoire format', value: 'mixcr' },
   { label: 'Custom', value: 'custom' },
 ];
 
@@ -95,7 +81,7 @@ watch(
   { immediate: true, deep: false },
 );
 
-const headerOptions = computed(() => (outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })));
+const headerOptions = computed(() => (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })));
 
 function getMapping(key: string): string | undefined {
   const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined> };
@@ -122,7 +108,10 @@ const mappingComplete = computed(() => {
   return hasOneSeq && hasV && hasJ && hasAbundance;
 });
 
-const validationResult = computed(() => outputs.validationResult);
+const validationResult = computed(() => {
+  const outputs = app.model.outputs as { validationResult?: { isValid: boolean; missingColumns: string[]; format: string } };
+  return outputs.validationResult;
+});
 
 const validationMessage = computed(() => {
   const result = validationResult.value;
@@ -136,30 +125,30 @@ const validationMessage = computed(() => {
 });
 
 const forceSettingsOpen = computed(() => {
-  const mustStayOpen = String(app.model.args.format) === 'custom' && !mappingComplete.value;
-  return ui.settingsOpen || mustStayOpen;
+  const mustStayOpen = app.model.args.format === 'custom' && !mappingComplete.value;
+  return app.model.ui.settingsOpen || mustStayOpen;
 });
 
 function onModalUpdate(val: boolean) {
-  const mustStayOpen = String(app.model.args.format) === 'custom' && !mappingComplete.value;
+  const mustStayOpen = app.model.args.format === 'custom' && !mappingComplete.value;
   if (mustStayOpen) {
-    ui.settingsOpen = true;
+    app.model.ui.settingsOpen = true;
     return;
   }
-  ui.settingsOpen = val;
+  app.model.ui.settingsOpen = val;
 }
 
 watch(
   () => app.model.args.format,
   (fmt) => {
-    if (String(fmt) === 'custom') {
-      ui.settingsOpen = true;
+    if (fmt === 'custom') {
+      app.model.ui.settingsOpen = true;
       const a = app.model.args as unknown as { customMapping?: Record<string, string> };
       if (!a.customMapping) a.customMapping = {};
     }
     // Reset qiagenColumnsPresent when format changes away from qiagen
-    if (String(fmt) !== 'qiagen') {
-      ui.qiagenColumnsPresent = false;
+    if (fmt !== 'qiagen') {
+      app.model.ui.qiagenColumnsPresent = false;
     }
   },
   { immediate: true },
@@ -170,13 +159,11 @@ watch(
   validationResult,
   (result) => {
     if (result && result.format === 'qiagen') {
-      ui.qiagenColumnsPresent = result.isValid;
+      app.model.ui.qiagenColumnsPresent = result.isValid;
     }
   },
   { immediate: true },
 );
-
-const isCustom = computed(() => String(app.model.args.format) === 'custom');
 
 </script>
 
@@ -184,7 +171,7 @@ const isCustom = computed(() => String(app.model.args.format) === 'custom');
   <PlBlockPage>
     <template #title>{{ app.model.ui.title }}</template>
     <template #append>
-      <PlBtnGhost @click.stop="() => (ui.settingsOpen = true)">
+      <PlBtnGhost @click.stop="() => (app.model.ui.settingsOpen = true)">
         Settings
         <template #append>
           <PlMaskIcon24 name="settings" />
@@ -213,7 +200,7 @@ const isCustom = computed(() => String(app.model.args.format) === 'custom');
 
       <PlDropdownMulti v-if="!isSingleCell" v-model="app.model.args.chains" :options="chainsOptions" label="Chains to import" required />
 
-      <template v-if="isCustom">
+      <template v-if="app.model.args.format === 'custom'">
         <PlSectionSeparator>Required columns</PlSectionSeparator>
         <div class="field-col">
           <PlDropdown
