@@ -250,16 +250,16 @@ propertyColumnSpecs := {
             annotations: a(47000, true, { "pl7.app/label": "IG isotype", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
         }
     },
-    "top-chains": {
-        id: "top-chains",
-        column: "top-chains",
-        allowNA: true,
-        spec: {
-            name: "pl7.app/vdj/chain",
-            valueType: "String",
-            annotations: a(46900, false, { "pl7.app/label": "Chain", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
-        }
-    },
+    // "top-chains": {
+    //     id: "top-chains",
+    //     column: "top-chains",
+    //     allowNA: true,
+    //     spec: {
+    //         name: "pl7.app/vdj/chain",
+    //         valueType: "String",
+    //         annotations: a(46900, false, { "pl7.app/label": "Chain", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+    //     }
+    // },
     // Junction lengths
     "n-length-vj-junction": {
         id: "n-length-vj-junction",

@@ -58,7 +58,8 @@ self.body(func(inputs) {
         (is_undefined(inputs.customMapping["v-gene"]) ||
             is_undefined(inputs.customMapping["j-gene"]) ||
             inputs.primaryCountType == undefined ||
-            is_undefined(inputs.customMapping["umi-count"]))) {
+            (is_undefined(inputs.customMapping["umi-count"]) &&
+            is_undefined(inputs.customMapping["read-count"])))) {
         return {
             columnsInfo: header,
             columnDescriptions: [],
