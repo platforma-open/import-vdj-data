@@ -119,7 +119,9 @@ const validationMessage = computed(() => {
 
   const formatName = result.format === 'qiagen'
     ? 'QIAseq Immune Repertoire Analysis'
-    : result.format;
+    : result.format === 'mixcr'
+      ? 'MiXCR bulk immune repertoire format'
+      : result.format;
 
   return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
 });
@@ -150,6 +152,10 @@ watch(
     if (fmt !== 'qiagen') {
       app.model.ui.qiagenColumnsPresent = false;
     }
+    // Reset mixcrColumnsPresent when format changes away from mixcr
+    if (fmt !== 'mixcr') {
+      app.model.ui.mixcrColumnsPresent = false;
+    }
   },
   { immediate: true },
 );
@@ -160,6 +166,9 @@ watch(
   (result) => {
     if (result && result.format === 'qiagen') {
       app.model.ui.qiagenColumnsPresent = result.isValid;
+    }
+    if (result && result.format === 'mixcr') {
+      app.model.ui.mixcrColumnsPresent = result.isValid;
     }
   },
   { immediate: true },
@@ -194,7 +203,7 @@ watch(
       <PlDropdown v-model="app.model.args.format" :options="formatOptions" label="Data format" required />
 
       <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
-        <template #title>Invalid {{ validationResult?.format === 'qiagen' ? 'QIAseq Immune Repertoire Analysis' : validationResult?.format }} dataset</template>
+        <template #title>Invalid {{ validationResult?.format === 'qiagen' ? 'QIAseq Immune Repertoire Analysis' : (validationResult?.format === 'mixcr' ? 'MiXCR bulk immune repertoire format' : validationResult?.format) }} dataset</template>
         {{ validationMessage }}
       </PlAlert>
 

@@ -449,10 +449,11 @@ getColumns := func(header) {
         }
     }
 
-    // Validate minimal requirements
+    // Validate minimal requirements (do not panic; UI will show alert)
+    missingRequired := []
     for col in requiredColumns {
         if is_undefined(columnMapping[col]) {
-            ll.panic("Missing required column in MiXCR input: %v", col)
+            missingRequired = append(missingRequired, col)
         }
     }
 
@@ -460,17 +461,25 @@ getColumns := func(header) {
 
     hasUMIs := !is_undefined(columnMapping["umi-count"]) || !is_undefined(columnMapping["umi-fraction"])
 
-    // Include both abundance types when available (non-exclusive)
-    abundanceColumns := readColumnSpecs
+    // Include available abundance types only; avoid referencing missing specs
+    abundanceColumns := {}
+    hasReads := !is_undefined(columnMapping["read-count"]) || !is_undefined(columnMapping["read-fraction"])
+    if hasReads {
+        abundanceColumns = maps.merge(abundanceColumns, readColumnSpecs)
+    }
     if hasUMIs {
         abundanceColumns = maps.merge(abundanceColumns, umiColumnSpecs)
     }
-    mainAbundance := !is_undefined(columnMapping["umi-count"]) ? "umi-count" : "read-count"
-    mainFractionAbundance := !is_undefined(columnMapping["umi-count"]) ? "umi-fraction" : "read-fraction"
+    mainAbundance := hasUMIs ? "umi-count" : (hasReads ? "read-count" : "")
+    mainFractionAbundance := hasUMIs ? "umi-fraction" : (hasReads ? "read-fraction" : "")
 
-    abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
-    abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
-    abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+    if mainAbundance != "" && abundanceColumns[mainAbundance] != undefined {
+        abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+        abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
+    }
+    if mainFractionAbundance != "" && abundanceColumns[mainFractionAbundance] != undefined {
+        abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+    }
 
     // Property columns we will show
     // Always include main sequences and gene hits (v/d/j/c)
