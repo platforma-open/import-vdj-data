@@ -371,6 +371,30 @@ propertyColumnSpecs := {
 		}
 	},
 
+	// Optional VDJ region sequences
+	"vdj-nt": {
+		id: "vdj-nt",
+		column: "vdj-nt",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "VDJRegion" },
+			annotations: a(46880, false, { "pl7.app/label": "VDJRegion nt", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"vdj-aa": {
+		id: "vdj-aa",
+		column: "vdj-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "VDJRegion" },
+			annotations: a(46870, false, { "pl7.app/label": "VDJRegion aa", "pl7.app/table/visibility": "optional" })
+		}
+	},
+
 	// Optional isotype
 	"isotype": {
 		id: "isotype",
@@ -407,6 +431,8 @@ sourceAliases := {
     "aaSeqCDR2": "cdr2-aa",
     "aaSeqFR3": "fr3-aa",
     "aaSeqFR4": "fr4-aa",
+    "nSeqVDJRegion": "vdj-nt",
+    "aaSeqVDJRegion": "vdj-aa",
     "isotype": "isotype",
 
     // Best genes (desired outputs)
@@ -511,6 +537,7 @@ getColumns := func(header) {
 	optKeys := [
 		"fr1-nt", "cdr1-nt", "fr2-nt", "fr3-nt", "fr4-nt",
 		"fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "fr4-aa",
+		"vdj-nt", "vdj-aa",
 		"isotype"
 	]
 	for k in optKeys {
@@ -519,11 +546,49 @@ getColumns := func(header) {
 		}
 	}
 
-    // Mark main sequences
-    propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-    propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
-    propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-    propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+	// Include synthesized VDJ region columns when all fragments exist
+	hasAllFragmentsNt := columnMapping["fr1-nt"] != undefined && columnMapping["cdr1-nt"] != undefined && columnMapping["fr2-nt"] != undefined && columnMapping["cdr2-nt"] != undefined && columnMapping["fr3-nt"] != undefined && columnMapping["cdr3-nt"] != undefined && columnMapping["fr4-nt"] != undefined
+	if columnMapping["vdj-nt"] != undefined || hasAllFragmentsNt {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["vdj-nt"])
+	}
+	hasAllFragmentsAa := columnMapping["fr1-aa"] != undefined && columnMapping["cdr1-aa"] != undefined && columnMapping["fr2-aa"] != undefined && columnMapping["cdr2-aa"] != undefined && columnMapping["fr3-aa"] != undefined && columnMapping["cdr3-aa"] != undefined && columnMapping["fr4-aa"] != undefined
+	if columnMapping["vdj-aa"] != undefined || hasAllFragmentsAa {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["vdj-aa"])
+	}
+
+    // Mark main sequences: default all sequence columns to not main; set VDJ main if available, otherwise CDR3
+    // Default: other sequencing columns are not assembling features
+    seqKeys := [
+        "cdr3-nt", "cdr3-aa",
+        "fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "fr4-nt",
+        "fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "fr4-aa",
+        "vdj-nt", "vdj-aa"
+    ]
+    for k in seqKeys {
+        if propertyColumnSpecs[k] != undefined {
+            propertyColumnSpecs[k].spec.annotations["pl7.app/vdj/isMainSequence"] = "false"
+            propertyColumnSpecs[k].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "false"
+        }
+    }
+
+    // Prefer VDJ region as main and assembling feature if present or can be synthesized from fragments; otherwise use CDR3
+    canUseVdjNt := columnMapping["vdj-nt"] != undefined || hasAllFragmentsNt
+    canUseVdjAa := columnMapping["vdj-aa"] != undefined || hasAllFragmentsAa
+    if canUseVdjNt || canUseVdjAa {
+        if propertyColumnSpecs["vdj-nt"] != undefined {
+            propertyColumnSpecs["vdj-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+            propertyColumnSpecs["vdj-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+        }
+        if propertyColumnSpecs["vdj-aa"] != undefined {
+            propertyColumnSpecs["vdj-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+            propertyColumnSpecs["vdj-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+        }
+    } else {
+        propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+        propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+        propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+        propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+    }
 
     // Build clonotype key based on AA or NT (prefer NT if present), plus V/J and optional C gene
     keyColumns := []
@@ -538,13 +603,20 @@ getColumns := func(header) {
 	} else if columnMapping["cdr3-aa"] != undefined {
 		keyColumns = append(keyColumns, "cdr3-aa")
 	}
+	// Append FR4 nt if present
+	if columnMapping["fr4-nt"] != undefined { keyColumns = append(keyColumns, "fr4-nt") }
 	if columnMapping["v-gene"] != undefined { keyColumns = append(keyColumns, "v-gene") }
 	if columnMapping["j-gene"] != undefined { keyColumns = append(keyColumns, "j-gene") }
 	includeCGene := columnMapping["c-gene"] != undefined || columnMapping["allCHitsWithScore"] != undefined || columnMapping["allCHits"] != undefined || columnMapping["allCGenes"] != undefined
 	if includeCGene { keyColumns = append(keyColumns, "c-gene") }
 
-	keyStructure := "CDR3-VGene-JGene"
-	if useFrCdr { keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-" + (hasCdr3Nt ? "CDR3nt" : "CDR3aa") + "-VGene-JGene" }
+	hasFr4Nt := columnMapping["fr4-nt"] != undefined
+	keyStructure := "CDR3" + (hasFr4Nt ? "-FR4nt" : "") + "-VGene-JGene"
+	if useFrCdr { keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-" + (hasCdr3Nt ? "CDR3nt" : "CDR3aa") + (hasFr4Nt ? "-FR4nt" : "") + "-VGene-JGene" }
+	// If full FR/CDR set is present (FR1-4 and CDR1-3 nt), rename the key structure to VDJRegion
+	if presentFrCdrNt && hasCdr3Nt && hasFr4Nt {
+		keyStructure = "VDJRegion-VGene-JGene"
+	}
 	if includeCGene { keyStructure = keyStructure + "-CGene" }
 
     return {

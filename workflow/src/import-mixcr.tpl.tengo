@@ -44,6 +44,37 @@ self.body(func(inputs) {
     }
     df = df.withColumns(renameExpressions...)
 
+    // Synthesize VDJ region columns if not provided but all fragments exist
+    needVdjNt := columnsInfo.columnMapping["vdj-nt"] == undefined
+    haveFragmentsNt := columnsInfo.columnMapping["fr1-nt"] != undefined && columnsInfo.columnMapping["cdr1-nt"] != undefined && columnsInfo.columnMapping["fr2-nt"] != undefined && columnsInfo.columnMapping["cdr2-nt"] != undefined && columnsInfo.columnMapping["fr3-nt"] != undefined && columnsInfo.columnMapping["cdr3-nt"] != undefined && columnsInfo.columnMapping["fr4-nt"] != undefined
+    if needVdjNt && haveFragmentsNt {
+        df = df.withColumns(pt.concatStr([pt.col("fr1-nt"), pt.col("cdr1-nt"), pt.col("fr2-nt"), pt.col("cdr2-nt"), pt.col("fr3-nt"), pt.col("cdr3-nt"), pt.col("fr4-nt")], { delimiter: "" }).alias("vdj-nt"))
+    }
+
+    needVdjAa := columnsInfo.columnMapping["vdj-aa"] == undefined
+    haveFragmentsAa := columnsInfo.columnMapping["fr1-aa"] != undefined && columnsInfo.columnMapping["cdr1-aa"] != undefined && columnsInfo.columnMapping["fr2-aa"] != undefined && columnsInfo.columnMapping["cdr2-aa"] != undefined && columnsInfo.columnMapping["fr3-aa"] != undefined && columnsInfo.columnMapping["cdr3-aa"] != undefined && columnsInfo.columnMapping["fr4-aa"] != undefined
+    if needVdjAa && haveFragmentsAa {
+        df = df.withColumns(pt.concatStr([pt.col("fr1-aa"), pt.col("cdr1-aa"), pt.col("fr2-aa"), pt.col("cdr2-aa"), pt.col("fr3-aa"), pt.col("cdr3-aa"), pt.col("fr4-aa")], { delimiter: "" }).alias("vdj-aa"))
+    }
+
+    // Remove rows where any sequence column contains "region_not_covered"
+    seqCols := [
+        "cdr3-nt", "cdr3-aa",
+        "fr1-nt", "cdr1-nt", "cdr2-nt", "fr2-nt", "fr3-nt", "fr4-nt",
+        "fr1-aa", "cdr1-aa", "cdr2-aa", "fr2-aa", "fr3-aa", "fr4-aa",
+        "vdj-nt", "vdj-aa"
+    ]
+    invalidExpr := undefined
+    for col in seqCols {
+        if columnsInfo.columnMapping[col] != undefined {
+            cond := pt.col(col).strContains("region_not_covered", { literal: true })
+            if invalidExpr == undefined { invalidExpr = cond } else { invalidExpr = invalidExpr.or(cond) }
+        }
+    }
+    if invalidExpr != undefined {
+        df = df.filter(invalidExpr.not())
+    }
+
     // Ensure allele columns presence according to rules:
     // If any of bestXHit/allXHits/allXHitsWithScore exist in input, create x-allele.
     // Value equals bestXHit when available; otherwise set to empty string.
