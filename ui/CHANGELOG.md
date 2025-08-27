@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.3.0
+
+### Minor Changes
+
+- 71059a8: MiXCR format support
+
 ## 1.2.1
 
 ### Patch Changes

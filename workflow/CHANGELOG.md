@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.5.0
+
+### Minor Changes
+
+- 71059a8: MiXCR format support
+
 ## 1.4.0
 
 ### Minor Changes
