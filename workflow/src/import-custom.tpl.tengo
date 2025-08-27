@@ -17,7 +17,9 @@ self.body(func(inputs) {
     for key, file in inputFiles.inputs() {
         dataFrames = append(dataFrames, wf.frame(file, {
             xsvType: "tsv",
-            id: "table_" + key
+            id: "table_" + key,
+            // MiXCR files can have mixed types (strings in columns with floats)
+			inferSchema: false
         }))
     }
 
@@ -33,6 +35,15 @@ self.body(func(inputs) {
         renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
     }
     df = df.withColumns(renameExpressions...)
+
+    // For MiXCR/similar formats we might need to remove extra content from gene columns
+    geneColumns := ["v-gene", "j-gene", "d-gene", "c-gene"]
+    stripAllele := func(expr) { return expr.strReplace("\\*.*$", "", { replaceAll: true }) }
+    for col in geneColumns {
+        if columnsInfo.columnMapping[col] != undefined {
+            df = df.withColumns(stripAllele(pt.col(col)).alias(col))
+        }
+    }
 
     // Basic row filters: require V and J genes to be present
     for col in ["j-gene", "v-gene"] {
@@ -51,6 +62,20 @@ self.body(func(inputs) {
     hasAA := columnsInfo.columnMapping["cdr3-aa"] != undefined
     hasNT := columnsInfo.columnMapping["cdr3-nt"] != undefined
     hasTopChains := columnsInfo.columnMapping["top-chains"] != undefined
+
+    // Convert numeric columns to a numeric type (We also remove floating points if present)
+    if hasReads {
+        castExpressions := [
+            pt.col("read-count").strReplace("\\..*", "").cast("Int64").alias("read-count")
+        ]
+        df = df.withColumns(castExpressions...)
+    }
+    if hasUMIs {
+        castExpressions := [
+            pt.col("umi-count").strReplace("\\..*", "").cast("Int64").alias("umi-count")
+        ]
+        df = df.withColumns(castExpressions...)
+    }
 
     // Determine primary abundance
     primaryAbundance := hasUMIs ? "umi-count" : "read-count"

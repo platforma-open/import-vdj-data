@@ -28,7 +28,7 @@ const countTypeOptions = [
 ];
 
 const secondaryTypeOptions = computed(() => {
-  const p = (app.model.args as any).primaryCountType as 'read' | 'umi' | undefined;
+  const p = app.model.args.primaryCountType;
   if (p === 'read') return [{ label: 'UMIs', value: 'umi' }];
   if (p === 'umi') return [{ label: 'Reads', value: 'read' }];
   return countTypeOptions;
@@ -55,18 +55,19 @@ const requiredCanonicalBase = [
 ] as const;
 
 const optionalCanonical = [
+  { key: 'top-chains', label: 'Top chains' },
   { key: 'v-allele', label: 'V allele' },
+  { key: 'j-allele', label: 'J allele' },
   { key: 'd-gene', label: 'D gene' },
   { key: 'd-allele', label: 'D allele' },
-  { key: 'j-allele', label: 'J allele' },
-  { key: 'is-productive', label: 'Productive' },
-  { key: 'cdr3-aa-length', label: 'CDR3 length (aa)' },
-  { key: 'cdr3-nt-length', label: 'CDR3 length (nt)' },
-  // Newly added optional fields
   { key: 'c-gene', label: 'C gene' },
   { key: 'c-allele', label: 'C allele' },
+  { key: 'is-productive', label: 'Productive' },
+  // This is calculated by the workflow
+  // { key: 'cdr3-aa-length', label: 'CDR3 length (aa)' },
+  // { key: 'cdr3-nt-length', label: 'CDR3 length (nt)' },
+  // Newly added optional fields
   { key: 'isotype', label: 'Isotype' },
-  { key: 'top-chains', label: 'Top chains' },
   { key: 'n-length-vj-junction', label: 'VJ junction length (nt)' },
   { key: 'n-length-vd-junction', label: 'VD junction length (nt)' },
   { key: 'n-length-dj-junction', label: 'DJ junction length (nt)' },
@@ -80,17 +81,6 @@ const optionalCanonical = [
   { key: 'nt-mutations-count-j', label: 'NT mutations count (J)' },
   { key: 'nt-mutations-rate-j', label: 'NT mutations rate (J)' },
 ] as const;
-
-watch(
-  () => app.model.args,
-  (args) => {
-    const a = args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
-    if (!a.customMapping) a.customMapping = {};
-    if (!a.primaryCountType) a.primaryCountType = 'read';
-    if (a.secondaryCountType && a.secondaryCountType === a.primaryCountType) a.secondaryCountType = undefined;
-  },
-  { immediate: true, deep: false },
-);
 
 const headerOptions = computed(() => (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })));
 
@@ -190,17 +180,33 @@ function onModalUpdate(val: boolean) {
 }
 
 watch(
-  () => app.model.args.format,
-  (fmt) => {
-    if (fmt === 'custom') {
+  () => app.model.args,
+  (args) => {
+    if (args.format === 'custom') {
       app.model.ui.settingsOpen = true;
       const a = app.model.args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
       if (!a.customMapping) a.customMapping = {};
       if (!a.primaryCountType) a.primaryCountType = 'read';
       if (a.secondaryCountType && a.secondaryCountType === a.primaryCountType) a.secondaryCountType = undefined;
+      // don't allow same column for read-count and umi
+      if (a.customMapping['read-count'] !== undefined
+        && (a.customMapping['read-count'] === a.customMapping?.['umi-count'])) {
+        if (a.primaryCountType === 'read') {
+          delete a.customMapping['umi-count'];
+        } else {
+          delete a.customMapping['read-count'];
+        }
+      }
+      // clear not used count type from customMapping
+      if (a.primaryCountType === 'read' && !a.secondaryCountType) {
+        delete a.customMapping['umi-count'];
+      }
+      if (a.primaryCountType === 'umi' && !a.secondaryCountType) {
+        delete a.customMapping['read-count'];
+      }
     }
     // Reset qiagenColumnsPresent when format changes away from qiagen
-    if (fmt !== 'qiagen') {
+    if (args.format !== 'qiagen') {
       app.model.args.qiagenColumnsPresent = undefined;
     }
   },
@@ -287,22 +293,11 @@ watch(
           <PlAccordionSection label="Optional columns">
             <div class="field-col">
               <PlDropdown
-                v-for="f in optionalCanonical"
-                :key="f.key"
-                :model-value="getMapping(f.key)"
-                :options="headerOptions"
-                :label="f.label"
-                clearable
-                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
-              />
-
-              <PlDropdown
                 v-model="(app.model.args as any).secondaryCountType"
                 :options="secondaryTypeOptions"
                 label="Secondary count type"
                 clearable
               />
-
               <PlDropdown
                 v-if="(app.model.args as any).secondaryCountType === 'umi'"
                 :model-value="getMapping('umi-count')"
@@ -318,6 +313,15 @@ watch(
                 label="Read count column (secondary, optional)"
                 clearable
                 @update:model-value="(v) => setMapping('read-count', v as string | undefined)"
+              />
+              <PlDropdown
+                v-for="f in optionalCanonical"
+                :key="f.key"
+                :model-value="getMapping(f.key)"
+                :options="headerOptions"
+                :label="f.label"
+                clearable
+                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
               />
             </div>
           </PlAccordionSection>
