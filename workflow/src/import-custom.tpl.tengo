@@ -63,6 +63,27 @@ self.body(func(inputs) {
     hasNT := columnsInfo.columnMapping["cdr3-nt"] != undefined
     hasTopChains := columnsInfo.columnMapping["top-chains"] != undefined
 
+    // Add vdj aa and nt columns if present in columnsInfo.propertyColumns
+    for prop in columnsInfo.propertyColumns {
+        isVdjNt := false
+        isVdjAa := false
+        if prop.spec != undefined && prop.spec.domain != undefined {
+            isVdjNt = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegion"
+            isVdjAa = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegionInFrame"
+        }
+
+        if isVdjNt && columnsInfo.columnMapping["vdj-nt"] == undefined {
+            nt_cols := ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "cdr3-nt"]
+            nt_exprs := slices.map(nt_cols, func(c) { return pt.col(c) })
+            df = df.withColumns(pt.concatStr(nt_exprs, { delimiter: "" }).alias(prop.column))
+        }
+        if isVdjAa && columnsInfo.columnMapping["vdj-aa"] == undefined {
+            aa_cols := ["fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "cdr3-aa"]
+            aa_exprs := slices.map(aa_cols, func(c) { return pt.col(c) })
+            df = df.withColumns(pt.concatStr(aa_exprs, { delimiter: "" }).alias(prop.column))
+        }
+    }
+
     // Convert numeric columns to a numeric type (We also remove floating points if present)
     if hasReads {
         castExpressions := [

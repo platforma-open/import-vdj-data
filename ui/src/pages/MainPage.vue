@@ -52,7 +52,24 @@ const requiredCanonicalBase = [
   { key: 'cdr3-nt', label: 'CDR3 nt' },
   { key: 'v-gene', label: 'V gene' },
   { key: 'j-gene', label: 'J gene' },
-] as const;
+];
+
+const optionalSequence = [
+  { key: 'fr1-aa', label: 'FR1 aa' },
+  { key: 'fr2-aa', label: 'FR2 aa' },
+  { key: 'fr3-aa', label: 'FR3 aa' },
+  { key: 'fr4-aa', label: 'FR4 aa' },
+  { key: 'cdr1-aa', label: 'CDR1 aa' },
+  { key: 'cdr2-aa', label: 'CDR2 aa' },
+  { key: 'vdj-aa', label: 'Full VDJ region aa' },
+  { key: 'fr1-nt', label: 'FR1 nt' },
+  { key: 'fr2-nt', label: 'FR2 nt' },
+  { key: 'fr3-nt', label: 'FR3 nt' },
+  { key: 'fr4-nt', label: 'FR4 nt' },
+  { key: 'cdr1-nt', label: 'CDR1 nt' },
+  { key: 'cdr2-nt', label: 'CDR2 nt' },
+  { key: 'vdj-nt', label: 'Full VDJ region nt' },
+];
 
 const optionalCanonical = [
   { key: 'top-chains', label: 'Top chains' },
@@ -71,7 +88,9 @@ const optionalCanonical = [
   { key: 'n-length-vj-junction', label: 'VJ junction length (nt)' },
   { key: 'n-length-vd-junction', label: 'VD junction length (nt)' },
   { key: 'n-length-dj-junction', label: 'DJ junction length (nt)' },
-  { key: 'n-length-total-added', label: 'Total added nt' },
+  { key: 'n-length-total-added', label: 'Total added nt' }];
+
+const optionalMutations = [
   { key: 'aa-mutations-count-v', label: 'AA mutations count (V)' },
   { key: 'aa-mutations-rate-v', label: 'AA mutations rate (V)' },
   { key: 'nt-mutations-count-v', label: 'NT mutations count (V)' },
@@ -80,7 +99,7 @@ const optionalCanonical = [
   { key: 'aa-mutations-rate-j', label: 'AA mutations rate (J)' },
   { key: 'nt-mutations-count-j', label: 'NT mutations count (J)' },
   { key: 'nt-mutations-rate-j', label: 'NT mutations rate (J)' },
-] as const;
+];
 
 const headerOptions = computed(() => (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })));
 
@@ -183,7 +202,6 @@ watch(
   () => app.model.args,
   (args) => {
     if (args.format === 'custom') {
-      app.model.ui.settingsOpen = true;
       const a = app.model.args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
       if (!a.customMapping) a.customMapping = {};
       if (!a.primaryCountType) a.primaryCountType = 'read';
@@ -289,8 +307,9 @@ watch(
           />
         </div>
 
+        <PlSectionSeparator>Optional columns</PlSectionSeparator>
         <PlAccordion>
-          <PlAccordionSection label="Optional columns">
+          <PlAccordionSection label="Canonical">
             <div class="field-col">
               <PlDropdown
                 v-model="(app.model.args as any).secondaryCountType"
@@ -316,6 +335,32 @@ watch(
               />
               <PlDropdown
                 v-for="f in optionalCanonical"
+                :key="f.key"
+                :model-value="getMapping(f.key)"
+                :options="headerOptions"
+                :label="f.label"
+                clearable
+                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+              />
+            </div>
+          </PlAccordionSection>
+          <PlAccordionSection label="Sequence">
+            <div class="field-col">
+              <PlDropdown
+                v-for="f in optionalSequence"
+                :key="f.key"
+                :model-value="getMapping(f.key)"
+                :options="headerOptions"
+                :label="f.label"
+                clearable
+                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+              />
+            </div>
+          </PlAccordionSection>
+          <PlAccordionSection label="Mutations">
+            <div class="field-col">
+              <PlDropdown
+                v-for="f in optionalMutations"
                 :key="f.key"
                 :model-value="getMapping(f.key)"
                 :options="headerOptions"
