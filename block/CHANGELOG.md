@@ -1,5 +1,18 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.2.0
+
+### Minor Changes
+
+- 6c87a4d: Improve custom format
+
+### Patch Changes
+
+- Updated dependencies [6c87a4d]
+  - @platforma-open/milaboratories.import-vdj.workflow@1.6.0
+  - @platforma-open/milaboratories.import-vdj.model@1.3.0
+  - @platforma-open/milaboratories.import-vdj.ui@1.4.0
+
 ## 1.1.2
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.model
 
+## 1.3.0
+
+### Minor Changes
+
+- 6c87a4d: Improve custom format
+
 ## 1.2.1
 
 ### Patch Changes

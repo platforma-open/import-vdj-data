@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.6.0
+
+### Minor Changes
+
+- 6c87a4d: Improve custom format
+
 ## 1.5.0
 
 ### Minor Changes
