@@ -537,7 +537,6 @@ getColumns := func(header) {
 	optKeys := [
 		"fr1-nt", "cdr1-nt", "fr2-nt", "fr3-nt", "fr4-nt",
 		"fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "fr4-aa",
-		"vdj-nt", "vdj-aa",
 		"isotype"
 	]
 	for k in optKeys {
