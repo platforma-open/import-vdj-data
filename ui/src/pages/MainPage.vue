@@ -23,6 +23,18 @@ const chainsOptions = [
   { label: 'TRG', value: 'TRG' },
 ];
 
+const countTypeOptions = [
+  { label: 'Reads', value: 'read' },
+  { label: 'UMIs', value: 'umi' },
+];
+
+const secondaryTypeOptions = computed(() => {
+  const p = app.model.args.primaryCountType;
+  if (p === 'read') return [{ label: 'UMIs', value: 'umi' }];
+  if (p === 'umi') return [{ label: 'Reads', value: 'read' }];
+  return countTypeOptions;
+});
+
 const isSingleCell = computed(() => false);
 
 const tableSettings = usePlDataTableSettingsV2({
@@ -36,32 +48,50 @@ const setDataset = (datasetRef: PlRef | undefined) => {
     app.model.ui.title = 'Import V(D)J Data - ' + app.model.outputs.datasetOptions?.find((o) => plRefsEqual(o.ref, datasetRef))?.label;
 };
 
-const requiredCanonical = [
+const requiredCanonicalBase = [
   { key: 'cdr3-aa', label: 'CDR3 aa' },
   { key: 'cdr3-nt', label: 'CDR3 nt' },
   { key: 'v-gene', label: 'V gene' },
   { key: 'j-gene', label: 'J gene' },
-  { key: 'read-count', label: 'Read count' },
-] as const;
+];
+
+const optionalSequence = [
+  { key: 'fr1-aa', label: 'FR1 aa' },
+  { key: 'fr2-aa', label: 'FR2 aa' },
+  { key: 'fr3-aa', label: 'FR3 aa' },
+  { key: 'fr4-aa', label: 'FR4 aa' },
+  { key: 'cdr1-aa', label: 'CDR1 aa' },
+  { key: 'cdr2-aa', label: 'CDR2 aa' },
+  { key: 'vdj-aa', label: 'Full VDJ region aa' },
+  { key: 'fr1-nt', label: 'FR1 nt' },
+  { key: 'fr2-nt', label: 'FR2 nt' },
+  { key: 'fr3-nt', label: 'FR3 nt' },
+  { key: 'fr4-nt', label: 'FR4 nt' },
+  { key: 'cdr1-nt', label: 'CDR1 nt' },
+  { key: 'cdr2-nt', label: 'CDR2 nt' },
+  { key: 'vdj-nt', label: 'Full VDJ region nt' },
+];
 
 const optionalCanonical = [
-  { key: 'umi-count', label: 'UMI count' },
+  { key: 'top-chains', label: 'Top chains' },
   { key: 'v-allele', label: 'V allele' },
+  { key: 'j-allele', label: 'J allele' },
   { key: 'd-gene', label: 'D gene' },
   { key: 'd-allele', label: 'D allele' },
-  { key: 'j-allele', label: 'J allele' },
-  { key: 'is-productive', label: 'Productive' },
-  { key: 'cdr3-aa-length', label: 'CDR3 length (aa)' },
-  { key: 'cdr3-nt-length', label: 'CDR3 length (nt)' },
-  // Newly added optional fields
   { key: 'c-gene', label: 'C gene' },
   { key: 'c-allele', label: 'C allele' },
+  { key: 'is-productive', label: 'Productive' },
+  // This is calculated by the workflow
+  // { key: 'cdr3-aa-length', label: 'CDR3 length (aa)' },
+  // { key: 'cdr3-nt-length', label: 'CDR3 length (nt)' },
+  // Newly added optional fields
   { key: 'isotype', label: 'Isotype' },
-  { key: 'top-chains', label: 'Top chains' },
   { key: 'n-length-vj-junction', label: 'VJ junction length (nt)' },
   { key: 'n-length-vd-junction', label: 'VD junction length (nt)' },
   { key: 'n-length-dj-junction', label: 'DJ junction length (nt)' },
-  { key: 'n-length-total-added', label: 'Total added nt' },
+  { key: 'n-length-total-added', label: 'Total added nt' }];
+
+const optionalMutations = [
   { key: 'aa-mutations-count-v', label: 'AA mutations count (V)' },
   { key: 'aa-mutations-rate-v', label: 'AA mutations rate (V)' },
   { key: 'nt-mutations-count-v', label: 'NT mutations count (V)' },
@@ -70,16 +100,7 @@ const optionalCanonical = [
   { key: 'aa-mutations-rate-j', label: 'AA mutations rate (J)' },
   { key: 'nt-mutations-count-j', label: 'NT mutations count (J)' },
   { key: 'nt-mutations-rate-j', label: 'NT mutations rate (J)' },
-] as const;
-
-watch(
-  () => app.model.args,
-  (args) => {
-    const a = args as unknown as { customMapping?: Record<string, string> };
-    if (!a.customMapping) a.customMapping = {};
-  },
-  { immediate: true, deep: false },
-);
+];
 
 const headerOptions = computed(() => (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })));
 
@@ -95,17 +116,16 @@ function setMapping(key: string, value: string | undefined) {
 }
 
 const mappingComplete = computed(() => {
-  const a = app.model.args as { customMapping?: Record<string, string | undefined> };
+  const a = app.model.args as { customMapping?: Record<string, string | undefined>; primaryCountType?: 'read' | 'umi' };
   const m = a.customMapping ?? {};
   const hasAA = !!m['cdr3-aa'];
   const hasNT = !!m['cdr3-nt'];
   const hasV = !!m['v-gene'];
   const hasJ = !!m['j-gene'];
-  const hasReads = !!m['read-count'];
-  const hasUmi = !!m['umi-count'];
-  const hasAbundance = hasReads || hasUmi;
+  const pct = a.primaryCountType ?? 'read';
+  const hasPrimary = pct === 'umi' ? !!m['umi-count'] : !!m['read-count'];
   const hasOneSeq = hasAA || hasNT;
-  return hasOneSeq && hasV && hasJ && hasAbundance;
+  return hasOneSeq && hasV && hasJ && hasPrimary;
 });
 
 const validationResult = computed(() => {
@@ -141,20 +161,33 @@ function onModalUpdate(val: boolean) {
 }
 
 watch(
-  () => app.model.args.format,
-  (fmt) => {
-    if (fmt === 'custom') {
-      app.model.ui.settingsOpen = true;
-      const a = app.model.args as unknown as { customMapping?: Record<string, string> };
+  () => app.model.args,
+  (args) => {
+    if (args.format === 'custom') {
+      const a = app.model.args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
       if (!a.customMapping) a.customMapping = {};
+      if (!a.primaryCountType) a.primaryCountType = 'read';
+      if (a.secondaryCountType && a.secondaryCountType === a.primaryCountType) a.secondaryCountType = undefined;
+      // don't allow same column for read-count and umi
+      if (a.customMapping['read-count'] !== undefined
+        && (a.customMapping['read-count'] === a.customMapping?.['umi-count'])) {
+        if (a.primaryCountType === 'read') {
+          delete a.customMapping['umi-count'];
+        } else {
+          delete a.customMapping['read-count'];
+        }
+      }
+      // clear not used count type from customMapping
+      if (a.primaryCountType === 'read' && !a.secondaryCountType) {
+        delete a.customMapping['umi-count'];
+      }
+      if (a.primaryCountType === 'umi' && !a.secondaryCountType) {
+        delete a.customMapping['read-count'];
+      }
     }
     // Reset qiagenColumnsPresent when format changes away from qiagen
-    if (fmt !== 'qiagen') {
-      app.model.ui.qiagenColumnsPresent = false;
-    }
-    // Reset mixcrColumnsPresent when format changes away from mixcr
-    if (fmt !== 'mixcr') {
-      app.model.ui.mixcrColumnsPresent = false;
+    if (args.format !== 'qiagen') {
+      app.model.args.qiagenColumnsPresent = undefined;
     }
   },
   { immediate: true },
@@ -213,20 +246,69 @@ watch(
         <PlSectionSeparator>Required columns</PlSectionSeparator>
         <div class="field-col">
           <PlDropdown
-            v-for="f in requiredCanonical"
+            v-for="f in requiredCanonicalBase"
             :key="f.key"
             :model-value="getMapping(f.key)"
             :options="headerOptions"
             :label="f.label"
             clearable
             required
-            @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
+            @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+          />
+
+          <PlDropdown
+            v-model="(app.model.args as any).primaryCountType"
+            :options="countTypeOptions"
+            label="Primary count type"
+            required
+          />
+
+          <PlDropdown
+            v-if="(app.model.args as any).primaryCountType === 'read'"
+            :model-value="getMapping('read-count')"
+            :options="headerOptions"
+            label="Read count column (primary)"
+            clearable
+            required
+            @update:model-value="(v) => setMapping('read-count', v as string | undefined)"
+          />
+          <PlDropdown
+            v-if="(app.model.args as any).primaryCountType === 'umi'"
+            :model-value="getMapping('umi-count')"
+            :options="headerOptions"
+            label="UMI count column (primary)"
+            clearable
+            required
+            @update:model-value="(v) => setMapping('umi-count', v as string | undefined)"
           />
         </div>
 
+        <PlSectionSeparator>Optional columns</PlSectionSeparator>
         <PlAccordion>
-          <PlAccordionSection label="Optional columns">
+          <PlAccordionSection label="Canonical">
             <div class="field-col">
+              <PlDropdown
+                v-model="(app.model.args as any).secondaryCountType"
+                :options="secondaryTypeOptions"
+                label="Secondary count type"
+                clearable
+              />
+              <PlDropdown
+                v-if="(app.model.args as any).secondaryCountType === 'umi'"
+                :model-value="getMapping('umi-count')"
+                :options="headerOptions"
+                label="UMI count column (secondary, optional)"
+                clearable
+                @update:model-value="(v) => setMapping('umi-count', v as string | undefined)"
+              />
+              <PlDropdown
+                v-if="(app.model.args as any).secondaryCountType === 'read'"
+                :model-value="getMapping('read-count')"
+                :options="headerOptions"
+                label="Read count column (secondary, optional)"
+                clearable
+                @update:model-value="(v) => setMapping('read-count', v as string | undefined)"
+              />
               <PlDropdown
                 v-for="f in optionalCanonical"
                 :key="f.key"
@@ -235,6 +317,32 @@ watch(
                 :label="f.label"
                 clearable
                 @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
+              />
+            </div>
+          </PlAccordionSection>
+          <PlAccordionSection label="Sequence">
+            <div class="field-col">
+              <PlDropdown
+                v-for="f in optionalSequence"
+                :key="f.key"
+                :model-value="getMapping(f.key)"
+                :options="headerOptions"
+                :label="f.label"
+                clearable
+                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+              />
+            </div>
+          </PlAccordionSection>
+          <PlAccordionSection label="Mutations">
+            <div class="field-col">
+              <PlDropdown
+                v-for="f in optionalMutations"
+                :key="f.key"
+                :model-value="getMapping(f.key)"
+                :options="headerOptions"
+                :label="f.label"
+                clearable
+                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
               />
             </div>
           </PlAccordionSection>

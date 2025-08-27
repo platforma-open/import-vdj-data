@@ -131,10 +131,17 @@ self.body(func(inputs) {
 		}
 		chainDf = chainDf.groupBy("clonotypeKey").agg(aggregations...)
 
+		// Fractions
 		chainDf = chainDf.withColumns(pt.col("read-count").truediv(pt.col("read-count").sum()).fillNaN(0).alias("read-fraction"))
 		if columnsInfo.hasUMIs {
 			chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
 		}
+
+		// Re-assert integer type for counts after aggregation just in case
+		if columnsInfo.hasUMIs {
+			chainDf = chainDf.withColumns(pt.col("umi-count").cast("Int64").alias("umi-count"))
+		}
+		chainDf = chainDf.withColumns(pt.col("read-count").cast("Int64").alias("read-count"))
 
 		// Keep only property and abundance columns
 		keepColumns := ["clonotypeKey"]

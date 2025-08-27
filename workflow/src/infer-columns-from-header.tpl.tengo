@@ -5,12 +5,16 @@ json := import("json")
 immunoSeqImport := import(":infer-columns-immunoSeq")
 qiagenImport := import(":infer-columns-qiagen")
 mixcrImport := import(":infer-columns-mixcr")
+customImport := import(":infer-columns-custom")
 
 self.defineOutputs("columnsInfo")
 
 self.body(func(inputs) {
     format := inputs.format
     header := inputs.header
+    customMapping := inputs.customMapping
+    primaryCountType := inputs.primaryCountType
+
     if format == "immunoSeq" {
         return {
             columnsInfo: immunoSeqImport.getColumns(header)
@@ -26,7 +30,7 @@ self.body(func(inputs) {
     } else if format == "custom" {
         // For custom format, downstream step will build columnsInfo from user mapping
         return {
-            columnsInfo: header
+            columnsInfo: customImport.getColumns(header, customMapping, primaryCountType)
         }
     } else {
         ll.panic("Unsupported format: " + format)

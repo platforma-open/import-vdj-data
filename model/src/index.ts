@@ -6,6 +6,9 @@ export type BlockArgs = {
   format?: 'immunoSeq' | 'qiagen' | 'mixcr' | 'airr' | 'custom';
   chains: string[];
   customMapping?: Record<string, string | undefined>;
+  qiagenColumnsPresent?: boolean;
+  primaryCountType?: 'read' | 'umi';
+  secondaryCountType?: 'read' | 'umi';
 };
 
 export type UiState = {
@@ -36,7 +39,7 @@ export const model = BlockModel.create()
   })
 
   .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping } = ctx.args;
+    const { datasetRef, format, chains, customMapping, qiagenColumnsPresent, primaryCountType } = ctx.args;
     if (datasetRef === undefined) return false;
     if (format === undefined) return false;
     if (!Array.isArray(chains) || chains.length === 0) return false;
@@ -46,8 +49,9 @@ export const model = BlockModel.create()
       const hasSeq = !!m['cdr3-nt'] || !!m['cdr3-aa'];
       const hasV = !!m['v-gene'];
       const hasJ = !!m['j-gene'];
-      const hasAbundance = !!m['read-count'];
-      return hasSeq && hasV && hasJ && hasAbundance;
+      const pct = primaryCountType ?? 'read';
+      const hasPrimaryAbundance = pct === 'umi' ? !!m['umi-count'] : !!m['read-count'];
+      return hasSeq && hasV && hasJ && hasPrimaryAbundance;
     }
 
     if (format === 'qiagen') {

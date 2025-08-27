@@ -17,7 +17,9 @@ self.body(func(inputs) {
     for key, file in inputFiles.inputs() {
         dataFrames = append(dataFrames, wf.frame(file, {
             xsvType: "tsv",
-            id: "table_" + key
+            id: "table_" + key,
+            // MiXCR files can have mixed types (strings in columns with floats)
+			inferSchema: false
         }))
     }
 
@@ -34,18 +36,18 @@ self.body(func(inputs) {
     }
     df = df.withColumns(renameExpressions...)
 
+    // For MiXCR/similar formats we might need to remove extra content from gene columns
+    geneColumns := ["v-gene", "j-gene", "d-gene", "c-gene"]
+    stripAllele := func(expr) { return expr.strReplace("\\*.*$", "", { replaceAll: true }) }
+    for col in geneColumns {
+        if columnsInfo.columnMapping[col] != undefined {
+            df = df.withColumns(stripAllele(pt.col(col)).alias(col))
+        }
+    }
+
     // Basic row filters: require V and J genes to be present
     for col in ["j-gene", "v-gene"] {
         df = df.filter(pt.col(col).isNotNull().and(pt.col(col).neq("")))
-    }
-
-    chainToLocusMap := {
-        "IGHeavy": "IGH",
-        "IGLight": "IGL", // IGK handled below
-        "TRA": "TCRA",
-        "TRB": "TCRB",
-        "TRG": "TCRG",
-        "TRD": "TCRD"
     }
 
     keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
@@ -59,18 +61,79 @@ self.body(func(inputs) {
     hasReads := columnsInfo.columnMapping["read-count"] != undefined
     hasAA := columnsInfo.columnMapping["cdr3-aa"] != undefined
     hasNT := columnsInfo.columnMapping["cdr3-nt"] != undefined
-    primaryAbundance := hasUMIs ? "umi-count" : "read-count"
+    hasTopChains := columnsInfo.columnMapping["top-chains"] != undefined
 
+    // Add vdj aa and nt columns if present in columnsInfo.propertyColumns
+    for prop in columnsInfo.propertyColumns {
+        isVdjNt := false
+        isVdjAa := false
+        if prop.spec != undefined && prop.spec.domain != undefined {
+            isVdjNt = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegion"
+            isVdjAa = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegionInFrame"
+        }
+
+        if isVdjNt && columnsInfo.columnMapping["vdj-nt"] == undefined {
+            nt_cols := ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "cdr3-nt"]
+            nt_exprs := slices.map(nt_cols, func(c) { return pt.col(c) })
+            df = df.withColumns(pt.concatStr(nt_exprs, { delimiter: "" }).alias(prop.column))
+        }
+        if isVdjAa && columnsInfo.columnMapping["vdj-aa"] == undefined {
+            aa_cols := ["fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "cdr3-aa"]
+            aa_exprs := slices.map(aa_cols, func(c) { return pt.col(c) })
+            df = df.withColumns(pt.concatStr(aa_exprs, { delimiter: "" }).alias(prop.column))
+        }
+    }
+
+    // Convert numeric columns to a numeric type (We also remove floating points if present)
+    if hasReads {
+        castExpressions := [
+            pt.col("read-count").strReplace("\\..*", "").cast("Int64").alias("read-count")
+        ]
+        df = df.withColumns(castExpressions...)
+    }
+    if hasUMIs {
+        castExpressions := [
+            pt.col("umi-count").cast("Float64").alias("umi-count")
+        ]
+        df = df.withColumns(castExpressions...)
+    }
+
+    // Determine primary abundance
+    primaryAbundance := hasUMIs ? "umi-count" : "read-count"
+    if inputs.primaryCountType != undefined {
+        primaryAbundance = inputs.primaryCountType == "umi" ? "umi-count" : "read-count"
+    }
+
+    chainToLocusMap := {
+        "IGHeavy":["IGH"],
+        "IGLight": "IGL", // Default to IGL, IGK is handled below
+        "TRA": ["TCRA", "TRAC"],
+        "TRB": ["TCRB", "TRBC"],
+        "TRG": ["TCRG", "TRGC"],
+        "TRD": ["TCRD", "TRDC"]
+    }
+
+    chainColumn := hasTopChains ? "top-chains" : "v-gene"
     for chain in chains {
-        prefix := chainToLocusMap[chain]
+        prefixes := chainToLocusMap[chain]
 
         chainDf := undefined
         if chain == "IGLight" {
             chainDf = df.filter(
-                pt.col("v-gene").strSlice(0, 3).eq("IGK").or(pt.col("v-gene").strSlice(0, 3).eq("IGL"))
+                pt.col(chainColumn).strSlice(0, 3).eq("IGK").or(pt.col(chainColumn).strSlice(0, 3).eq("IGL"))
             )
         } else {
-            chainDf = df.filter(pt.col("v-gene").strSlice(0, len(prefix)).eq(prefix))
+            filterExpr := undefined
+            for i := 0; i < len(prefixes); i++ {
+                prefix := prefixes[i]
+                expr := pt.col(chainColumn).strSlice(0, len(prefix)).eq(prefix)
+                if i == 0 {
+                    filterExpr = expr
+                } else {
+                    filterExpr = filterExpr.or(expr)
+                }
+            }
+            chainDf = df.filter(filterExpr)
         }
 
         // If cdr3-aa provided, compute productivity and filter to productive
@@ -95,7 +158,7 @@ self.body(func(inputs) {
 
         chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
-        // Cast abundance columns
+        // Cast abundance columns present
         // Read counts are always integers, but UMI counts can be fractional (e.g., ImmunoSeq estimated genome counts)
         if hasUMIs {
             chainDf = chainDf.withColumns(pt.col("umi-count").cast("Float64").alias("umi-count"))
@@ -127,15 +190,23 @@ self.body(func(inputs) {
 
         // Keep property and abundance columns
         keepColumns := ["clonotypeKey"]
-        for col in columnsInfo.propertyColumns { keepColumns = append(keepColumns, col.column) }
-        for col in columnsInfo.abundanceColumns { keepColumns = append(keepColumns, col.column) }
+        for col in columnsInfo.propertyColumns {
+            keepColumns = append(keepColumns, col.column) 
+        }
+        for col in columnsInfo.abundanceColumns {
+            keepColumns = append(keepColumns, col.column)
+        }
         chainDf = chainDf.select(keepColumns...)
 
         chainDf.save(chain + ".tsv")
 
         statsExprs := [ pt.col("clonotypeKey").count().alias("clonotype-count") ]
-        if hasReads { statsExprs = append(statsExprs, pt.col("read-count").sum().alias("read-count")) }
-        if hasUMIs { statsExprs = append(statsExprs, pt.col("umi-count").sum().alias("umi-count")) }
+        if hasReads {
+            statsExprs = append(statsExprs, pt.col("read-count").sum().alias("read-count"))
+        }
+        if hasUMIs {
+            statsExprs = append(statsExprs, pt.col("umi-count").sum().alias("umi-count"))
+        }
         stats := chainDf.select(statsExprs...)
         stats.saveContent("stats-" + chain + ".tsv")
     }

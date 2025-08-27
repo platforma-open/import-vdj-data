@@ -411,7 +411,7 @@ getColumns := func(header) {
 		abundanceColumns: maps.getValues(abundanceColumns),
 		propertyColumns: maps.getValues(propertyColumns),
 		columnMapping: columnMapping,
-		clonotypeKeyStructure: "CDR3-nt-VGene-JGene-CGene",
+		clonotypeKeyStructure: "CDR3-nt-VGene-JGene",
 		clonotypeKeyColumns: ["cdr3-nt", "v-gene", "j-gene"]
 	}
 }

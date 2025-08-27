@@ -23,7 +23,8 @@ wf.body(func(args) {
 	columnsInfo := render.create(inferColumnsTpl, {
 		format: format,
 		dataset: dataset,
-		customMapping: args.customMapping
+		customMapping: args.customMapping,
+		primaryCountType: args.primaryCountType
 	}).output("columnsInfo")
 
 	result := render.createEphemeral(processBulkTpl, {
@@ -31,7 +32,8 @@ wf.body(func(args) {
 		format: format,
 		dataset: dataset,
 		columnsInfo: columnsInfo,
-		chains: chains
+		chains: chains,
+		primaryCountType: args.primaryCountType
 	})
 
 	return {
