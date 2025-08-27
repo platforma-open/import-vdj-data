@@ -39,7 +39,7 @@ readColumnSpecs := {
         spec: {
             name: "pl7.app/vdj/readFraction",
             valueType: "Double",
-            annotations: a(88999, false, {
+            annotations: a(88999, true, {
                 "pl7.app/isAbundance": "true",
                 "pl7.app/min": "0",
                 "pl7.app/max": "1",
@@ -62,7 +62,7 @@ umiColumnSpecs := {
         spec: {
             name: "pl7.app/vdj/uniqueMoleculeCount",
             valueType: "Long",
-            annotations: a(90000, false, {
+            annotations: a(90000, true, {
                 "pl7.app/isAbundance": "true",
                 "pl7.app/min": "0",
                 "pl7.app/abundance/unit": "molecules",
@@ -80,7 +80,7 @@ umiColumnSpecs := {
         spec: {
             name: "pl7.app/vdj/uniqueMoleculeFraction",
             valueType: "Double",
-            annotations: a(89999, false, {
+            annotations: a(89999, true, {
                 "pl7.app/isAbundance": "true",
                 "pl7.app/min": "0",
                 "pl7.app/max": "1",
