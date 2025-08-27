@@ -13,6 +13,7 @@ export type UiState = {
   title: string;
   settingsOpen: boolean;
   qiagenColumnsPresent: boolean;
+  mixcrColumnsPresent: boolean;
 };
 
 export type ColumnDescription = {
@@ -31,6 +32,7 @@ export const model = BlockModel.create()
     title: 'Import V(D)J Data',
     settingsOpen: true,
     qiagenColumnsPresent: false,
+    mixcrColumnsPresent: false,
   })
 
   .argsValid((ctx) => {
@@ -50,6 +52,10 @@ export const model = BlockModel.create()
 
     if (format === 'qiagen') {
       return ctx.uiState.qiagenColumnsPresent === true;
+    }
+
+    if (format === 'mixcr') {
+      return ctx.uiState.mixcrColumnsPresent === true;
     }
 
     // For other formats, basic args are sufficient
@@ -118,6 +124,24 @@ export const model = BlockModel.create()
         isValid: missingColumns.length === 0,
         missingColumns,
         format: 'qiagen',
+      };
+    }
+
+    if (format === 'mixcr') {
+      // MiXCR minimal requirements aligned with infer-columns-mixcr.lib.tengo
+      // We validate presence of native MiXCR headers which map to canonical keys
+      const mixcrRequiredHeaders = [
+        'readCount',
+        'nSeqCDR3',
+        'aaSeqCDR3',
+      ];
+
+      const missingColumns = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
+
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'mixcr',
       };
     }
 
