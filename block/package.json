@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj",
-  "version": "1.0.5",
+  "version": "1.1.2",
   "scripts": {
     "pretty": "prettier --write \"./**/*.{js,jsx,mjs,cjs,ts,tsx,json,vue}\"",
     "build": "rm -rf ./block-pack && block-tools pack",
@@ -27,7 +27,7 @@
     "meta": {
       "title": "Import V(D)J Data",
       "logo": "file:../logos/block-logo.png",
-      "url": "https://github.com/platforma-open/milaboratories.import-vdj",
+      "url": "https://github.com/platforma-open/import-vdj-data",
       "support": "mailto:support@milaboratories.com",
       "description": "Import V(D)J data from various formats, including MiXCR, immunoSeq, AiRR and more.",
       "longDescription": "file:../docs/description.md",

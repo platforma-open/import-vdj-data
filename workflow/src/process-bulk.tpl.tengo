@@ -16,6 +16,7 @@ text := import("text")
 immunoSeqTpl := assets.importTemplate(":import-immunoSeq")
 qiagenTpl := assets.importTemplate(":import-qiagen")
 customTpl := assets.importTemplate(":import-custom")
+mixcrTpl := assets.importTemplate(":import-mixcr")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
 
 // Helper to add common annotations for table view properties
@@ -47,7 +48,7 @@ abundanceAggColumns := func(columnsInfo) {
                 spec: {
                     name: column.spec.name + "Total",
                     valueType: "Long",
-                    annotations: a(87120, true, {
+                    annotations: a(87120, false, {
                         "pl7.app/min": "1",
                         "pl7.app/isAbundance": "true",
                         "pl7.app/abundance/unit": unit,
@@ -65,7 +66,7 @@ abundanceAggColumns := func(columnsInfo) {
                 spec: {
                     name: column.spec.name + "Mean",
                     valueType: "Double",
-                    annotations: a(87130, true, {
+                    annotations: a(87130, false, {
                         "pl7.app/min": "0",
                         "pl7.app/max": "1",
                         "pl7.app/isAbundance": "true",
@@ -97,7 +98,7 @@ self.awaitState("dataset", "ResourceReady")
 // self.defineOutputs("result", "stats")
 
 self.body(func(inputs) {
- 
+
     // chains to import
 	chains := inputs.chains
     columnsInfo := inputs.columnsInfo
@@ -106,7 +107,6 @@ self.body(func(inputs) {
 	format := inputs.format
     blockId := inputs.blockId
 
-	
     importTpl := undefined
     if format == "immunoSeq" {
         importTpl = immunoSeqTpl
@@ -114,8 +114,10 @@ self.body(func(inputs) {
         importTpl = qiagenTpl
     } else if format == "custom" {
         importTpl = customTpl
+    } else if format == "mixcr" {
+        importTpl = mixcrTpl
     }
-    
+
     if importTpl == undefined {
         ll.panic("Import template is undefined, format: " + format)
     }
@@ -161,7 +163,8 @@ self.body(func(inputs) {
                 },
                 annotations: {
                     "pl7.app/label": "Number of Clonotypes",
-                    "pl7.app/description": "The number of clonotypes in the dataset."
+                    "pl7.app/description": "The number of clonotypes in the dataset.",
+                    "pl7.app/table/visibility": "default"
                 }
             }
         }]
@@ -179,7 +182,8 @@ self.body(func(inputs) {
                     },
                     annotations: {
                         "pl7.app/label": "Number of Reads",
-                        "pl7.app/description": "The number of reads in the dataset."
+                        "pl7.app/description": "The number of reads in the dataset.",
+                        "pl7.app/table/visibility": "default"
                     }
                 }
             }]
@@ -191,14 +195,15 @@ self.body(func(inputs) {
                 column: "umi-count",
                 spec: {
                     name: "pl7.app/vdj/stat/umiCount",
-                    valueType: "Int",   
+                    valueType: "Float",
                     domain: {
                         "pl7.app/vdj/chain": chain,
                         "pl7.app/vdj/vdjImport": blockId
                     },
                     annotations: {
-                        "pl7.app/label": "Number of UMIs",  
-                        "pl7.app/description": "The number of UMIs in the dataset."
+                        "pl7.app/label": "Number of UMIs",
+                        "pl7.app/description": "The number of UMIs in the dataset.",
+                        "pl7.app/table/visibility": "default"
                     }
                 }
             }]
@@ -249,9 +254,9 @@ self.body(func(inputs) {
                 path: ["tsv", chain]
         }]
     }
-    
+
 	importResults := pframes.processColumn(
-		{ 
+		{
             spec: datasetSpec,
             data: dataset
         },
@@ -261,6 +266,9 @@ self.body(func(inputs) {
             // @todo all tags
             aggregate: [{
 				name: "pl7.app/sequencing/lane",
+				optional: true
+			}, {
+				name: "pl7.app/sequencing/tag",
 				optional: true
 			}],
 
@@ -317,7 +325,7 @@ self.body(func(inputs) {
                         "pl7.app/isAbundance": "true",
                         "pl7.app/min": "1",
                         "pl7.app/table/orderPriority": "87110",
-                        "pl7.app/table/visibility": "default"
+                        "pl7.app/table/visibility": "optional"
                     }
                 }
             }, {
@@ -334,7 +342,7 @@ self.body(func(inputs) {
         }]
 
         aggAbundanceColumns := abundanceAggColumns(columnsInfo)
-        
+
         aggOutputs := [{
             type: "Xsv",
             xsvType: "tsv",
@@ -368,7 +376,7 @@ self.body(func(inputs) {
             aggOutputs,
             {
                 aggregate: ["pl7.app/sampleId"],
-                
+
                 traceSteps: [{type: "milaboratories.importVDJ",  id: blockId + "." + chain, importance: 81, label: chain}],
 
                 extra: {

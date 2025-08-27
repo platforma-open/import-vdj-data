@@ -6,11 +6,11 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
 maps := import("@platforma-sdk/workflow-tengo:maps")
-
-parseHeaderSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.software:parse-header")
+txt := import("@platforma-sdk/workflow-tengo:txt")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns-from-header")
 columnInfoToLabelsTpl := assets.importTemplate(":column-info-to-labels")
+splitHeaderTpl := assets.importTemplate(":split-header")
 
 self.defineOutputs("columnsInfo", "columnDescriptions", "headerColumns")
 
@@ -21,26 +21,30 @@ self.body(func(inputs) {
     fileExtension := dataset.spec.domain["pl7.app/fileExtension"]
 
     inputFile := undefined
-    
-    // get first file from the dataset //@TODO take first non-empty file
+
+    // get first file from the dataset // @TODO take first non-empty file
     for _, v in dataset.data.inputs() {
         inputFile = v
         break
     }
+
     if inputFile == undefined {
         ll.panic("No inputs found in the dataset")
     }
 
-    inputFileName := "input." + fileExtension
-
-    header := exec.builder().
-                software(parseHeaderSw).
-                inUiQueue().
-                arg(inputFileName).
-                addFile(inputFileName, inputFile).
-                saveStdoutContent().
-                run().
-                getStdoutFileContent()
+    headerContent := txt.head(inputFile, {lines: 1})
+    separator := "\t"
+    if fileExtension == "tsv" {
+        separator = "\t"
+    } else if fileExtension == "csv" {
+        separator = ","
+    } else {
+        ll.panic("Unsupported file extension: " + fileExtension)
+    }
+    header := render.create(splitHeaderTpl, {
+        header: headerContent,
+        separator: separator
+    }).output("result")
 
     // If format not chosen yet, do not infer columns; let the UI show headers and wait
     if format == undefined {

@@ -15,6 +15,8 @@ export type UiState = {
   tableState: PlDataTableStateV2;
   title: string;
   settingsOpen: boolean;
+  qiagenColumnsPresent: boolean;
+  mixcrColumnsPresent: boolean;
 };
 
 export type ColumnDescription = {
@@ -32,6 +34,8 @@ export const model = BlockModel.create()
     tableState: createPlDataTableStateV2(),
     title: 'Import V(D)J Data',
     settingsOpen: true,
+    qiagenColumnsPresent: false,
+    mixcrColumnsPresent: false,
   })
 
   .argsValid((ctx) => {
@@ -51,10 +55,14 @@ export const model = BlockModel.create()
     }
 
     if (format === 'qiagen') {
-      return qiagenColumnsPresent === true;
+      return ctx.uiState.qiagenColumnsPresent === true;
     }
 
-    // Other non-custom formats: dataset + format + chains are sufficient
+    if (format === 'mixcr') {
+      return ctx.uiState.mixcrColumnsPresent === true;
+    }
+
+    // For other formats, basic args are sufficient
     return true;
   })
 
@@ -84,6 +92,69 @@ export const model = BlockModel.create()
       field: 'headerColumns',
       allowPermanentAbsence: true,
     })?.getDataAsJson<string[]>();
+  })
+
+  .retentiveOutput('validationResult', (ctx) => {
+    const headerColumns = ctx.prerun?.resolve({
+      field: 'headerColumns',
+      allowPermanentAbsence: true,
+    })?.getDataAsJson<string[]>();
+
+    if (!headerColumns || !ctx.args.format) {
+      return undefined;
+    }
+
+    const format = ctx.args.format;
+    const headers = headerColumns;
+
+    if (format === 'qiagen') {
+      const qiagenColumns = [
+        'read set',
+        'chain',
+        'V-region',
+        'J-region',
+        'CDR3 nucleotide seq',
+        'CDR3 amino acid seq',
+        'frequency',
+        'rank',
+        'UMIs with analytical threshold',
+        'nucleotide length',
+        'amino acid length',
+      ];
+
+      const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
+
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'qiagen',
+      };
+    }
+
+    if (format === 'mixcr') {
+      // MiXCR minimal requirements aligned with infer-columns-mixcr.lib.tengo
+      // We validate presence of native MiXCR headers which map to canonical keys
+      const mixcrRequiredHeaders = [
+        'readCount',
+        'nSeqCDR3',
+        'aaSeqCDR3',
+      ];
+
+      const missingColumns = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
+
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'mixcr',
+      };
+    }
+
+    // For other formats, validation is handled elsewhere or not needed
+    return {
+      isValid: true,
+      missingColumns: [],
+      format: format,
+    };
   })
 
   .output('stats', (ctx) => {

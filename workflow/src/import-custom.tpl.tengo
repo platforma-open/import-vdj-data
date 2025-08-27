@@ -93,7 +93,7 @@ self.body(func(inputs) {
     }
     if hasUMIs {
         castExpressions := [
-            pt.col("umi-count").strReplace("\\..*", "").cast("Int64").alias("umi-count")
+            pt.col("umi-count").cast("Float64").alias("umi-count")
         ]
         df = df.withColumns(castExpressions...)
     }
@@ -159,8 +159,9 @@ self.body(func(inputs) {
         chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
         // Cast abundance columns present
+        // Read counts are always integers, but UMI counts can be fractional (e.g., ImmunoSeq estimated genome counts)
         if hasUMIs {
-            chainDf = chainDf.withColumns(pt.col("umi-count").cast("Int64").alias("umi-count"))
+            chainDf = chainDf.withColumns(pt.col("umi-count").cast("Float64").alias("umi-count"))
         }
         if hasReads {
             chainDf = chainDf.withColumns(pt.col("read-count").cast("Int64").alias("read-count"))

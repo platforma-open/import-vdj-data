@@ -1,0 +1,263 @@
+ll := import("@platforma-sdk/workflow-tengo:ll")
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+smart := import("@platforma-sdk/workflow-tengo:smart")
+slices := import("@platforma-sdk/workflow-tengo:slices")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+sets := import("@platforma-sdk/workflow-tengo:sets")
+json := import("json")
+
+self.defineOutputs("tsv", "stats")
+
+self.body(func(inputs) {
+    inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
+    columnsInfo := inputs.columnsInfo
+    chains := inputs.chains
+
+    wf := pt.workflow().mem("8GiB").cpu(4)
+
+    dataFrames := []
+    for key, file in inputFiles.inputs() {
+        dataFrames = append(dataFrames, wf.frame(file, {
+            xsvType: "tsv",
+            id: "table_" + key,
+            inferSchema: false
+        }))
+    }
+
+    if len(dataFrames) == 0 {
+        ll.panic("no input files found")
+    }
+
+    df := undefined
+    if len(dataFrames) > 1 { df = pt.concat(dataFrames) } else { df = dataFrames[0] }
+
+    // Rename original columns to canonical IDs used downstream
+    renameExpressions := []
+    for canonical, original in columnsInfo.columnMapping {
+        if original != undefined {
+            renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+        }
+    }
+    df = df.withColumns(renameExpressions...)
+
+    // Ensure allele columns presence according to rules:
+    // If any of bestXHit/allXHits/allXHitsWithScore exist in input, create x-allele.
+    // Value equals bestXHit when available; otherwise set to empty string.
+    alleleExpressions := []
+    ensureAlleleCol := func(prefix) {
+        keyBest := prefix + "-allele"
+        keyAllWS := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "HitsWithScore"
+        keyAll := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Hits"
+        hasAny := columnsInfo.columnMapping[keyBest] != undefined || columnsInfo.columnMapping[keyAllWS] != undefined || columnsInfo.columnMapping[keyAll] != undefined
+        if hasAny {
+            if columnsInfo.columnMapping[keyBest] != undefined {
+                // Already renamed above; nothing to add
+                return
+            }
+            // Fallback: derive allele value from available lists or best gene
+            // Order: allXHitsWithScore (first, strip parens) > allXHits (first) > bestXGene > ""
+            firstItem := func(col) { return pt.col(col).strReplace(",.*$", "", { replaceAll: true }) }
+            stripParens := func(expr) { return expr.strReplace("\\(.*$", "", { replaceAll: true }) }
+            bestGene := prefix + "-gene"
+            if columnsInfo.columnMapping[keyAllWS] != undefined {
+                alleleExpressions = append(alleleExpressions, stripParens(firstItem(keyAllWS)).alias(keyBest))
+            } else if columnsInfo.columnMapping[keyAll] != undefined {
+                alleleExpressions = append(alleleExpressions, firstItem(keyAll).alias(keyBest))
+            } else if columnsInfo.columnMapping[bestGene] != undefined {
+                alleleExpressions = append(alleleExpressions, pt.col(bestGene).alias(keyBest))
+            } else {
+                alleleExpressions = append(alleleExpressions, pt.lit("").alias(keyBest))
+            }
+        }
+    }
+    ensureAlleleCol("v")
+    ensureAlleleCol("d")
+    ensureAlleleCol("j")
+    ensureAlleleCol("c")
+    if len(alleleExpressions) > 0 {
+        df = df.withColumns(alleleExpressions...)
+    }
+
+    // bestXGene derivation: only reference columns that exist in header
+    // Order: bestXGene (if present) > bestXHit (strip allele) > allXHitsWithScore (first, strip) > allXGenes (first) > allXHits (first, strip) > ""
+    deriveBestGene := func(prefix) {
+        bestGene := prefix + "-gene"
+        bestHit := prefix + "-allele"
+        allWithScore := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "HitsWithScore"
+        allHits := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Hits"
+        allGenes := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Genes"
+
+        firstItem := func(col) { return pt.col(col).strReplace(",.*$", "", { replaceAll: true }) }
+        stripParens := func(expr) { return expr.strReplace("\\(.*$", "", { replaceAll: true }) }
+        stripAllele := func(expr) { return expr.strReplace("\\*.*$", "", { replaceAll: true }) }
+
+        hasBestGene := columnsInfo.columnMapping[bestGene] != undefined
+        hasBestHit := columnsInfo.columnMapping[bestHit] != undefined
+        hasAllWithScore := columnsInfo.columnMapping[allWithScore] != undefined
+        hasAllGenes := columnsInfo.columnMapping[allGenes] != undefined
+        hasAllHits := columnsInfo.columnMapping[allHits] != undefined
+
+        if hasBestGene {
+            return pt.col(bestGene).alias(bestGene)
+        }
+        if hasBestHit {
+            return stripAllele(pt.col(bestHit)).alias(bestGene)
+        }
+        if hasAllWithScore {
+            return stripAllele(stripParens(firstItem(allWithScore))).alias(bestGene)
+        }
+        if hasAllGenes {
+            return firstItem(allGenes).alias(bestGene)
+        }
+        if hasAllHits {
+            return stripAllele(firstItem(allHits)).alias(bestGene)
+        }
+        return pt.lit("").alias(bestGene)
+    }
+
+    // Note: We now synthesize allele columns when bestXHit is missing using lists or best gene
+
+    // Ensure best gene columns exist
+    df = df.withColumns(
+        deriveBestGene("v"),
+        deriveBestGene("d"),
+        deriveBestGene("j"),
+        deriveBestGene("c")
+    )
+
+    // Allele columns: we only keep/use them if bestXHit was present in the header (renamed to x-allele above).
+    // If bestXHit is absent, do not synthesize allele columns from other lists.
+
+    // Drop rows with empty v/j genes
+    for col in ["j-gene", "v-gene"] {
+        df = df.filter(pt.col(col).isNotNull().and(pt.col(col).neq("")))
+    }
+
+    // Compute productivity from AA CDR3
+    df = df.withColumns(
+        pt.col("cdr3-aa").isNotNull().
+            and(pt.col("cdr3-aa").neq("")).
+            and(pt.col("cdr3-aa").strContains("*", {literal: true}).not()).
+            and(pt.col("cdr3-aa").strContains("_", {literal: true}).not()).
+            alias("is-productive")
+    )
+
+    // Build clonotypeKey
+    keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
+    clonotypeKeyExpr := pt.concatStr(keyComponents, {delimiter: "|"}).hash("sha256", "base64_alphanumeric", 120).alias("clonotypeKey")
+
+    // Filter by chains using V gene prefix
+    chainToLocusMap := {
+        "IGHeavy": "IGH",
+        "IGLight": "IGL", // IGK handled below as well
+        "TRA": "TRA",
+        "TRB": "TRB",
+        "TRG": "TRG",
+        "TRD": "TRD"
+    }
+
+    for chain in chains {
+        prefix := chainToLocusMap[chain]
+
+        chainDf := undefined
+        if chain == "IGLight" {
+            chainDf = df.filter(pt.col("v-gene").strSlice(0, 3).eq("IGK").or(pt.col("v-gene").strSlice(0, 3).eq("IGL")))
+        } else {
+            chainDf = df.filter(pt.col("v-gene").strSlice(0, len(prefix)).eq(prefix))
+        }
+
+        // Filter productive
+        chainDf = chainDf.filter(pt.col("is-productive"))
+
+        // Length cols
+        chainDf = chainDf.withColumns(pt.col("cdr3-aa").strLenChars().alias("cdr3-aa-length"))
+        chainDf = chainDf.withColumns(pt.col("cdr3-nt").strLenChars().alias("cdr3-nt-length"))
+
+        chainDf = chainDf.withColumns(clonotypeKeyExpr)
+
+        // Check what abundance data is actually available
+        hasUmiCount := columnsInfo.hasUMIs && !is_undefined(columnsInfo.columnMapping["umi-count"])
+        hasReadCount := !is_undefined(columnsInfo.columnMapping["read-count"])
+        
+        // Cast abundance columns - only cast what exists
+        // Be robust to potential formatting (e.g., thousand separators) and ensure correct numeric types
+        if hasReadCount {
+            chainDf = chainDf.withColumns(
+                pt.col("read-count").
+                    strReplace(",", "", { replaceAll: true }).
+                    cast("Float64").
+                    fillNull(0).
+                    cast("Int64").
+                    alias("read-count")
+            )
+        }
+        if hasUmiCount {
+            chainDf = chainDf.withColumns(
+                pt.col("umi-count").strReplace("[^0-9]", "", { replaceAll: true }).cast("Int64").fillNull(0).alias("umi-count")
+            )
+        }
+
+        // Aggregate by clonotype key
+        aggregations := []
+        
+        // Aggregate only the abundance types that actually exist
+        if hasReadCount {
+            aggregations = append(aggregations, pt.col("read-count").sum().alias("read-count"))
+        }
+        if hasUmiCount {
+            aggregations = append(aggregations, pt.col("umi-count").sum().alias("umi-count"))
+        }
+        // Use primary abundance column for maxBy (prefer UMI if available)
+        primaryAbundanceCol := hasUmiCount ? "umi-count" : "read-count"
+        for col in columnsInfo.propertyColumns {
+            aggregations = append(aggregations, pt.col(col.column).maxBy(primaryAbundanceCol).alias(col.column))
+        }
+        chainDf = chainDf.groupBy("clonotypeKey").agg(aggregations...)
+
+        // Generate stats (include only abundance types that exist)
+        statsExprs := [
+            pt.col("clonotypeKey").count().alias("clonotype-count")
+        ]
+        if hasReadCount {
+            statsExprs = append(statsExprs, pt.col("read-count").sum().alias("read-count"))
+        }
+        if hasUmiCount {
+            statsExprs = append(statsExprs, pt.col("umi-count").sum().alias("umi-count"))
+        }
+        stats := chainDf.select(statsExprs...)
+        stats.saveContent("stats-" + chain + ".tsv")
+
+        // Calculate fractions only for abundance types that exist
+        if hasReadCount {
+            chainDf = chainDf.withColumns(pt.col("read-count").truediv(pt.col("read-count").sum()).fillNaN(0).alias("read-fraction"))
+        }
+        if hasUmiCount {
+            chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
+        }
+
+        // Keep columns (using canonical names) - include all abundance columns
+        keepColumns := ["clonotypeKey"]
+        for col in columnsInfo.propertyColumns { keepColumns = append(keepColumns, col.column) }
+        for col in columnsInfo.abundanceColumns { keepColumns = append(keepColumns, col.column) }
+        chainDf = chainDf.select(keepColumns...)
+
+        chainDf.save(chain + ".tsv")
+    }
+
+    wf = wf.run()
+
+    tsv := {}
+    stats := {}
+    for chain in chains {
+        tsv[chain] = wf.getFile(chain + ".tsv")
+        stats[chain] = wf.getFileContent("stats-" + chain + ".tsv")
+    }
+
+    return { tsv: tsv, stats: stats }
+})
+
+

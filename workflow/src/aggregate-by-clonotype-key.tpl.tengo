@@ -34,8 +34,9 @@ self.body(func(inputs) {
 
 	dataFrames := []
 
-	// Ensure the read schema includes keys, primary abundance and its fraction
-	baseSchemaForRead := schema + [ { column: "clonotypeKey", type: "String" }, { column: primaryAbundance, type: "Float64" }, { column: primaryFraction, type: "Double" } ]
+	// Determine the correct type for primary abundance
+	// UMI counts can be fractional in ImmunoSeq (estimated genome counts), while read counts are always integers
+	primaryAbundanceType := primaryAbundance == "umi-count" ? "Float64" : "Int64"
 
 	for sKey in maps.getKeys(inputMap) {
 		inputFile := inputMap[sKey]
@@ -50,7 +51,8 @@ self.body(func(inputs) {
 			file: inputFile,
 			xsvType: "tsv"
 		}, {
-			id: dfId
+			id: dfId,
+			inferSchema: false // Reading all as strings, casting to numeric types below
 		})
 		dataFrames = append(dataFrames, df)
 	}
@@ -64,10 +66,11 @@ self.body(func(inputs) {
 		currentDf = pt.concat(dataFrames)
 	}
 
-	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast("Int64").alias(primaryAbundance))
-	
+	currentDf = currentDf.withColumns(pt.col(primaryAbundance).cast(primaryAbundanceType, {strict: true}).alias(primaryAbundance))
+	currentDf = currentDf.withColumns(pt.col(primaryFraction).cast("Double", {strict: true}).alias(primaryFraction))
+
 	aggExpressions := []
-	
+
 	for colDef in schema {
 		if colDef.column == "clonotypeLabel" || colDef.column == "sampleCount" {
 			continue
@@ -79,8 +82,8 @@ self.body(func(inputs) {
 
 	aggExpressions = append(aggExpressions,
 		pt.col(primaryAbundance).count().alias("sampleCount"),
-		pt.col(primaryAbundance).sum().alias(primaryAbundance + "-total"),
-		pt.col(primaryFraction).mean().alias(primaryFraction + "-mean")
+		pt.col(primaryFraction).mean().alias(primaryFraction + "-mean"),
+		pt.col(primaryAbundance).sum().alias(primaryAbundance + "-total")
 	)
 
 	aggregatedDf := currentDf.groupBy("clonotypeKey").agg(aggExpressions...)

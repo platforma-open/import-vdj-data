@@ -1,0 +1,564 @@
+maps := import("@platforma-sdk/workflow-tengo:maps")
+slices := import("@platforma-sdk/workflow-tengo:slices")
+json := import("json")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+
+// Helper to add common annotations for table view properties
+a := func(order, defaultVisibility, spec) {
+    return maps.merge(spec, {
+        "pl7.app/table/orderPriority": string(order),
+        "pl7.app/table/visibility": is_undefined(defaultVisibility) ? "hidden" : defaultVisibility ? "default" : "optional"
+    })
+}
+
+// Abundance columns
+readColumnSpecs := {
+    "read-count": {
+        id: "read-count",
+        column: "read-count",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/readCount",
+            valueType: "Long",
+            annotations: a(89000, true, {
+                "pl7.app/isAbundance": "true",
+                "pl7.app/min": "0",
+                "pl7.app/abundance/unit": "reads",
+                "pl7.app/abundance/normalized": "false",
+                "pl7.app/label": "Number Of Reads",
+                "pl7.app/description": "The raw number of sequencing reads in the sample assigned to the clonotype."
+            })
+        }
+    },
+    "read-fraction": {
+        id: "read-fraction",
+        column: "read-fraction",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/readFraction",
+            valueType: "Double",
+            annotations: a(88999, true, {
+                "pl7.app/isAbundance": "true",
+                "pl7.app/min": "0",
+                "pl7.app/max": "1",
+                "pl7.app/abundance/unit": "reads",
+                "pl7.app/abundance/normalized": "true",
+                "pl7.app/label": "Read Fraction",
+                "pl7.app/description": "The fraction of total reads in the sample assigned to the clonotype.",
+                "pl7.app/format": ".2p"
+            })
+        }
+    }
+}
+
+umiColumnSpecs := {
+    "umi-count": {
+        id: "umi-count",
+        column: "umi-count",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/uniqueMoleculeCount",
+            valueType: "Long",
+            annotations: a(90000, true, {
+                "pl7.app/isAbundance": "true",
+                "pl7.app/min": "0",
+                "pl7.app/abundance/unit": "molecules",
+                "pl7.app/abundance/normalized": "false",
+                "pl7.app/label": "Number Of UMIs",
+                "pl7.app/description": "The number of unique molecules (UMIs) in the sample assigned to the clonotype."
+            })
+        }
+    },
+    "umi-fraction": {
+        id: "umi-fraction",
+        column: "umi-fraction",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/uniqueMoleculeFraction",
+            valueType: "Double",
+            annotations: a(89999, true, {
+                "pl7.app/isAbundance": "true",
+                "pl7.app/min": "0",
+                "pl7.app/max": "1",
+                "pl7.app/abundance/unit": "molecules",
+                "pl7.app/abundance/normalized": "true",
+                "pl7.app/label": "UMI Fraction",
+                "pl7.app/description": "The fraction of total UMIs in the sample assigned to the clonotype.",
+                "pl7.app/format": ".2p"
+            })
+        }
+    }
+}
+
+// Property columns
+propertyColumnSpecs := {
+    "cdr3-nt": {
+        id: "cdr3-nt",
+        column: "cdr3-nt",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/sequence",
+            valueType: "String",
+            domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "CDR3" },
+            annotations: a(100000, true, { "pl7.app/label": "CDR3 nt", "pl7.app/description": "The nucleotide sequence of the CDR3 region.", "pl7.app/table/visibility": "optional" })
+        }
+    },
+    "cdr3-aa": {
+        id: "cdr3-aa",
+        column: "cdr3-aa",
+        allowNA: true,
+        spec: {
+            name: "pl7.app/vdj/sequence",
+            valueType: "String",
+            domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "CDR3" },
+            annotations: a(99000, true, { "pl7.app/label": "CDR3 aa", "pl7.app/description": "The amino acid sequence of the CDR3 region.", "pl7.app/table/visibility": "default" })
+        }
+    },
+    "cdr3-aa-length": {
+        id: "cdr3-aa-length",
+        column: "cdr3-aa-length",
+        allowNA: true,
+        spec: {
+            name: "pl7.app/vdj/sequenceLength",
+            valueType: "Int",
+            domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "CDR3" },
+            annotations: a(80000, true, { "pl7.app/label": "CDR3 Length, aa", "pl7.app/description": "The length of the CDR3 amino acid sequence.", "pl7.app/table/visibility": "optional" })
+        }
+    },
+    "cdr3-nt-length": {
+        id: "cdr3-nt-length",
+        column: "cdr3-nt-length",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/sequenceLength",
+            valueType: "Int",
+            domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "CDR3" },
+            annotations: a(79999, false, { "pl7.app/label": "CDR3 Length, nt", "pl7.app/description": "The length of the CDR3 nucleotide sequence.", "pl7.app/table/visibility": "optional" })
+        }
+    },
+    "is-productive": {
+        id: "is-productive",
+        column: "is-productive",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/sequence/productive",
+            valueType: "String",
+            annotations: a(79000, true, { "pl7.app/label": "Productive", "pl7.app/description": "A flag indicating whether the main sequence is productive (in-frame and without stop codons).", "pl7.app/table/visibility": "optional", "pl7.app/isDiscreteFilter": "true", "pl7.app/discreteValues": string(json.encode(["True", "False"])) })
+        }
+    },
+    "v-gene": {
+        id: "v-gene",
+        column: "v-gene",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/geneHit",
+            valueType: "String",
+            domain: { "pl7.app/vdj/reference": "VGene" },
+            annotations: a(69000, true, { "pl7.app/label": "V Gene", "pl7.app/description": "The name of the best-matching V gene.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+        }
+    },
+    "v-allele": {
+        id: "v-allele",
+        column: "v-allele",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/geneHitWithAllele",
+            valueType: "String",
+            domain: { "pl7.app/vdj/reference": "VGene" },
+            annotations: a(69000, true, { "pl7.app/label": "V Allele", "pl7.app/description": "The name of the best-matching V gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+        }
+    },
+    "d-gene": {
+        id: "d-gene",
+        column: "d-gene",
+        allowNA: true,
+        spec: {
+            name: "pl7.app/vdj/geneHit",
+            valueType: "String",
+            domain: { "pl7.app/vdj/reference": "DGene" },
+            annotations: a(59000, true, { "pl7.app/label": "D Gene", "pl7.app/description": "The name of the best-matching D gene.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+        }
+    },
+    "d-allele": {
+        id: "d-allele",
+        column: "d-allele",
+        allowNA: true,
+        spec: {
+            name: "pl7.app/vdj/geneHitWithAllele",
+            valueType: "String",
+            domain: { "pl7.app/vdj/reference": "DGene" },
+            annotations: a(59000, true, { "pl7.app/label": "D Allele", "pl7.app/description": "The name of the best-matching D gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+        }
+    },
+    "j-gene": {
+        id: "j-gene",
+        column: "j-gene",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/geneHit",
+            valueType: "String",
+            domain: { "pl7.app/vdj/reference": "JGene" },
+            annotations: a(49000, true, { "pl7.app/label": "J Gene", "pl7.app/description": "The name of the best-matching J gene.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+        }
+    },
+    "j-allele": {
+        id: "j-allele",
+        column: "j-allele",
+        allowNA: false,
+        spec: {
+            name: "pl7.app/vdj/geneHitWithAllele",
+            valueType: "String",
+            domain: { "pl7.app/vdj/reference": "JGene" },
+            annotations: a(49000, true, { "pl7.app/label": "J Allele", "pl7.app/description": "The name of the best-matching J gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+        }
+    },
+    "c-gene": {
+        id: "c-gene",
+        column: "c-gene",
+        allowNA: true,
+        spec: {
+            name: "pl7.app/vdj/geneHit",
+            valueType: "String",
+            domain: { "pl7.app/vdj/reference": "CGene" },
+            annotations: a(48000, false, { "pl7.app/label": "C Gene", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+        }
+    },
+    "c-allele": {
+        id: "c-allele",
+        column: "c-allele",
+        allowNA: true,
+        spec: {
+            name: "pl7.app/vdj/geneHitWithAllele",
+            valueType: "String",
+            domain: { "pl7.app/vdj/reference": "CGene" },
+            annotations: a(47900, false, { "pl7.app/label": "C Allele", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+        }
+    },
+
+	// Optional framework (FR) and CDR segments (nucleotide)
+	"fr1-nt": {
+		id: "fr1-nt",
+		column: "fr1-nt",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "FR1" },
+			annotations: a(47000, false, { "pl7.app/label": "FR1 nt", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"cdr1-nt": {
+		id: "cdr1-nt",
+		column: "cdr1-nt",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "CDR1" },
+			annotations: a(46990, false, { "pl7.app/label": "CDR1 nt", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"cdr2-nt": {
+		id: "cdr2-nt",
+		column: "cdr2-nt",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "CDR2" },
+			annotations: a(46985, false, { "pl7.app/label": "CDR2 nt", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"fr2-nt": {
+		id: "fr2-nt",
+		column: "fr2-nt",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "FR2" },
+			annotations: a(46980, false, { "pl7.app/label": "FR2 nt", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"fr3-nt": {
+		id: "fr3-nt",
+		column: "fr3-nt",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "FR3" },
+			annotations: a(46970, false, { "pl7.app/label": "FR3 nt", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"fr4-nt": {
+		id: "fr4-nt",
+		column: "fr4-nt",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "FR4" },
+			annotations: a(46960, false, { "pl7.app/label": "FR4 nt", "pl7.app/table/visibility": "optional" })
+		}
+	},
+
+	// Optional framework (FR) and CDR segments (amino acid)
+	"fr1-aa": {
+		id: "fr1-aa",
+		column: "fr1-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "FR1" },
+			annotations: a(46950, false, { "pl7.app/label": "FR1 aa", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"cdr1-aa": {
+		id: "cdr1-aa",
+		column: "cdr1-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "CDR1" },
+			annotations: a(46940, false, { "pl7.app/label": "CDR1 aa", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"cdr2-aa": {
+		id: "cdr2-aa",
+		column: "cdr2-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "CDR2" },
+			annotations: a(46935, false, { "pl7.app/label": "CDR2 aa", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"fr2-aa": {
+		id: "fr2-aa",
+		column: "fr2-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "FR2" },
+			annotations: a(46930, false, { "pl7.app/label": "FR2 aa", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"fr3-aa": {
+		id: "fr3-aa",
+		column: "fr3-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "FR3" },
+			annotations: a(46910, false, { "pl7.app/label": "FR3 aa", "pl7.app/table/visibility": "optional" })
+		}
+	},
+	"fr4-aa": {
+		id: "fr4-aa",
+		column: "fr4-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "FR4" },
+			annotations: a(46900, false, { "pl7.app/label": "FR4 aa", "pl7.app/table/visibility": "optional" })
+		}
+	},
+
+	// Optional isotype
+	"isotype": {
+		id: "isotype",
+		column: "isotype",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/isotype",
+			valueType: "String",
+			annotations: a(46890, true, { "pl7.app/label": "IG isotype", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+		}
+	}
+}
+
+// MiXCR header aliases (common column names)
+sourceAliases := {
+    // Abundance
+    "readCount": "read-count",   
+    "readFraction": "read-fraction",
+    "uniqueMoleculeCount": "umi-count",
+    "umiCount": "umi-count",
+
+    // Sequences
+    "nSeqCDR3": "cdr3-nt",
+    "aaSeqCDR3": "cdr3-aa",
+    "nSeqFR1": "fr1-nt",
+    "nSeqCDR1": "cdr1-nt",
+    "nSeqCDR2": "cdr2-nt",
+    "nSeqFR2": "fr2-nt",
+    "nSeqFR3": "fr3-nt",
+    "nSeqFR4": "fr4-nt",
+    "aaSeqFR1": "fr1-aa",
+    "aaSeqCDR1": "cdr1-aa",
+    "aaSeqFR2": "fr2-aa",
+    "aaSeqCDR2": "cdr2-aa",
+    "aaSeqFR3": "fr3-aa",
+    "aaSeqFR4": "fr4-aa",
+    "isotype": "isotype",
+
+    // Best genes (desired outputs)
+    "bestVGene": "v-gene",
+    "bestDGene": "d-gene",
+    "bestJGene": "j-gene",
+    "bestCGene": "c-gene",
+
+    // Best alleles
+    "bestVHit": "v-allele",
+    "bestDHit": "d-allele",
+    "bestJHit": "j-allele",
+    "bestCHit": "c-allele",
+
+    // Alternate inputs that may require conversion to bestXGene
+    "allVHitsWithScore": "allVHitsWithScore",
+    "allDHitsWithScore": "allDHitsWithScore",
+    "allJHitsWithScore": "allJHitsWithScore",
+    "allCHitsWithScore": "allCHitsWithScore",
+
+    "allVHits": "allVHits",
+    "allDHits": "allDHits",
+    "allJHits": "allJHits",
+    "allCHits": "allCHits",
+
+    "allVGenes": "allVGenes",
+    "allDGenes": "allDGenes",
+    "allJGenes": "allJGenes",
+    "allCGenes": "allCGenes"
+}
+
+requiredColumns := ["read-count", "cdr3-nt", "cdr3-aa"]
+
+getColumns := func(header) {
+    columnMapping := {}
+    for h in header {
+        s := sourceAliases[h]
+        if s != undefined && columnMapping[s] == undefined {
+            columnMapping[s] = h
+        }
+    }
+
+    // Validate minimal requirements (do not panic; UI will show alert)
+    missingRequired := []
+    for col in requiredColumns {
+        if is_undefined(columnMapping[col]) {
+            missingRequired = append(missingRequired, col)
+        }
+    }
+
+    // No allele fallbacks: only use allele columns if the source bestXHit is present
+
+    hasUMIs := !is_undefined(columnMapping["umi-count"]) || !is_undefined(columnMapping["umi-fraction"])
+
+    // Include available abundance types only; avoid referencing missing specs
+    abundanceColumns := {}
+    hasReads := !is_undefined(columnMapping["read-count"]) || !is_undefined(columnMapping["read-fraction"])
+    if hasReads {
+        abundanceColumns = maps.merge(abundanceColumns, readColumnSpecs)
+    }
+    if hasUMIs {
+        abundanceColumns = maps.merge(abundanceColumns, umiColumnSpecs)
+    }
+    mainAbundance := hasUMIs ? "umi-count" : (hasReads ? "read-count" : "")
+    mainFractionAbundance := hasUMIs ? "umi-fraction" : (hasReads ? "read-fraction" : "")
+
+    if mainAbundance != "" && abundanceColumns[mainAbundance] != undefined {
+        abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+        abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
+    }
+    if mainFractionAbundance != "" && abundanceColumns[mainFractionAbundance] != undefined {
+        abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+    }
+
+    // Property columns we will show
+    // Always include main sequences and gene hits (v/d/j/c)
+    propertyColumns := [
+        propertyColumnSpecs["cdr3-nt"],
+        propertyColumnSpecs["cdr3-aa"],
+        propertyColumnSpecs["cdr3-aa-length"],
+        propertyColumnSpecs["cdr3-nt-length"],
+        propertyColumnSpecs["is-productive"],
+        propertyColumnSpecs["v-gene"],
+        propertyColumnSpecs["d-gene"],
+        propertyColumnSpecs["j-gene"],
+        propertyColumnSpecs["c-gene"]
+    ]
+    // Include allele columns if any of bestXHit/allXHits/allXHitsWithScore present in header
+    if columnMapping["v-allele"] != undefined || columnMapping["allVHits"] != undefined || columnMapping["allVHitsWithScore"] != undefined {
+        propertyColumns = append(propertyColumns, propertyColumnSpecs["v-allele"]) 
+    }
+    if columnMapping["d-allele"] != undefined || columnMapping["allDHits"] != undefined || columnMapping["allDHitsWithScore"] != undefined {
+        propertyColumns = append(propertyColumns, propertyColumnSpecs["d-allele"]) 
+    }
+    if columnMapping["j-allele"] != undefined || columnMapping["allJHits"] != undefined || columnMapping["allJHitsWithScore"] != undefined {
+        propertyColumns = append(propertyColumns, propertyColumnSpecs["j-allele"]) 
+    }
+    if columnMapping["c-allele"] != undefined || columnMapping["allCHits"] != undefined || columnMapping["allCHitsWithScore"] != undefined {
+        propertyColumns = append(propertyColumns, propertyColumnSpecs["c-allele"]) 
+    }
+	// Optional FR/CDR/isotype feature columns
+	optKeys := [
+		"fr1-nt", "cdr1-nt", "fr2-nt", "fr3-nt", "fr4-nt",
+		"fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "fr4-aa",
+		"isotype"
+	]
+	for k in optKeys {
+		if columnMapping[k] != undefined {
+			propertyColumns = append(propertyColumns, propertyColumnSpecs[k])
+		}
+	}
+
+    // Mark main sequences
+    propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+    propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+    propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+    propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+
+    // Build clonotype key based on AA or NT (prefer NT if present), plus V/J and optional C gene
+    keyColumns := []
+	presentFrCdrNt := columnMapping["fr1-nt"] != undefined && columnMapping["cdr1-nt"] != undefined && columnMapping["fr2-nt"] != undefined && columnMapping["cdr2-nt"] != undefined && columnMapping["fr3-nt"] != undefined
+	hasCdr3Nt := columnMapping["cdr3-nt"] != undefined
+	hasCdr3Aa := columnMapping["cdr3-aa"] != undefined
+	useFrCdr := presentFrCdrNt && (hasCdr3Nt || hasCdr3Aa)
+	if useFrCdr {
+		keyColumns = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", (hasCdr3Nt ? "cdr3-nt" : "cdr3-aa")]
+	} else if columnMapping["cdr3-nt"] != undefined {
+		keyColumns = append(keyColumns, "cdr3-nt")
+	} else if columnMapping["cdr3-aa"] != undefined {
+		keyColumns = append(keyColumns, "cdr3-aa")
+	}
+	if columnMapping["v-gene"] != undefined { keyColumns = append(keyColumns, "v-gene") }
+	if columnMapping["j-gene"] != undefined { keyColumns = append(keyColumns, "j-gene") }
+	includeCGene := columnMapping["c-gene"] != undefined || columnMapping["allCHitsWithScore"] != undefined || columnMapping["allCHits"] != undefined || columnMapping["allCGenes"] != undefined
+	if includeCGene { keyColumns = append(keyColumns, "c-gene") }
+
+	keyStructure := "CDR3-VGene-JGene"
+	if useFrCdr { keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-" + (hasCdr3Nt ? "CDR3nt" : "CDR3aa") + "-VGene-JGene" }
+	if includeCGene { keyStructure = keyStructure + "-CGene" }
+
+    return {
+        hasUMIs: hasUMIs,
+        abundanceColumns: maps.getValues(abundanceColumns),
+        propertyColumns: propertyColumns,
+        columnMapping: columnMapping,
+        clonotypeKeyStructure: keyStructure,
+        clonotypeKeyColumns: keyColumns
+    }
+}
+
+export {
+    getColumns: getColumns
+}
+
+
