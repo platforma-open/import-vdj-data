@@ -461,7 +461,15 @@ getColumns := func(header, customMapping, primaryCountType) {
         if !is_undefined(spec) {
             propertyColumns = append(propertyColumns, spec)
         }
-    }    
+    } 
+
+    // Add specs for columns that will be computed from existing ones
+    if !is_undefined(customMapping["cdr3-nt"]) {
+        propertyColumns = append(propertyColumns, propertyColumnSpecs["cdr3-nt-length"])
+    }
+    if !is_undefined(customMapping["cdr3-aa"]) {
+        propertyColumns = append(propertyColumns, propertyColumnSpecs["cdr3-aa-length"])
+    }
 
     // Key structure
     keyColumns := []
