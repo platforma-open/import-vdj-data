@@ -1,0 +1,139 @@
+ll := import("@platforma-sdk/workflow-tengo:ll")
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+json := import("json")
+math := import("math")
+units := import("@platforma-sdk/workflow-tengo:units")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+
+// Normalize single-cell per-chain input tables to canonical schema
+// Inputs (value): Map[[sampleId]] -> TSV with arbitrary column names
+// Params:
+//   - mapping: {
+//       // Provide either cellKey or cellTagColumns
+//       cellKey?: string,
+//       cellTagColumns?: string[],
+//       // By default, when multiple tags provided, derived cellKey is hashed
+//       hashCellKey?: bool, // default: true; if false and a single tag is provided, use it directly
+//       clonotypeKey: string (required),
+//       abundanceColumn: string (required),
+//       abundanceType: "umi-count" | "read-count" (required),
+//       isProductiveColumn?: string (optional)
+//     }
+// Behavior:
+//   - Renames columns to canonical: cellKey, clonotypeKey, <abundanceType>, is-productive
+//   - If isProductiveColumn missing, fills is-productive with "True"
+//   - Casts abundance to Int64 (for read-count) or Int64/Float64 safe-cast (for umi-count input may contain non-digits)
+// Output:
+//   - normalized: Map[[sampleId]] -> TSV with the four canonical columns
+self.defineOutputs("normalized")
+
+self.body(func(inputs) {
+    inputMapRes := inputs[pConstants.VALUE_FIELD_NAME]
+    ll.assert(!is_undefined(inputMapRes), "value input (map of sampleId->file) is required")
+
+    params := inputs.params
+    mapping := params.mapping
+    ll.assert(!is_undefined(mapping), "params.mapping is required")
+
+    cellKeyCol := mapping.cellKey
+    cellTagColumns := mapping.cellTagColumns
+    hashCellKey := is_undefined(mapping.hashCellKey) ? true : mapping.hashCellKey
+    cloneKeyCol := mapping.clonotypeKey
+    abundCol := mapping.abundanceColumn
+    abundType := mapping.abundanceType
+    prodCol := mapping.isProductiveColumn
+
+    // Either explicit cellKey or list of cell tag columns must be provided
+    ll.assert((!is_undefined(cellKeyCol) && cellKeyCol != "") || (!is_undefined(cellTagColumns) && len(cellTagColumns) > 0), "Provide mapping.cellKey or mapping.cellTagColumns")
+    ll.assert(!is_undefined(cloneKeyCol) && cloneKeyCol != "", "mapping.clonotypeKey is required")
+    ll.assert(!is_undefined(abundCol) && abundCol != "", "mapping.abundanceColumn is required")
+    ll.assert(abundType == "umi-count" || abundType == "read-count", "mapping.abundanceType must be 'umi-count' or 'read-count'")
+
+    inputMap := inputMapRes.inputs()
+    numberOfSamples := len(inputMap)
+
+    wf := pt.workflow().
+        inMediumQueue().
+        mem(int(math.max(numberOfSamples, 16)) * units.GiB).
+        cpu(int(math.max(numberOfSamples, 8)))
+
+    // Build normalized outputs per sample
+    maps.forEach(inputMap, func(sKey, file) {
+        key := json.decode(sKey)
+        ll.assert(len(key) == 1, "normalize: key should have one element, got %v", key)
+        sampleId := key[0]
+
+        df := wf.frame(file, { xsvType: "tsv", inferSchema: false })
+
+        // Bring required columns, rename to canonical
+        // Create is-productive column if missing
+        colExprs := []
+
+        // Derive cellKey from cellTagColumns or use provided cellKey column
+        if !is_undefined(cellTagColumns) && len(cellTagColumns) > 0 {
+            // Build concatenation of all tag columns (fill nulls with empty strings), hash by default
+            tagsExpr := pt.concatStr(
+                slices.map(cellTagColumns, func(tag) { return pt.col(tag).fillNull("") }),
+                { delimiter: "#" }
+            )
+            if hashCellKey || len(cellTagColumns) > 1 {
+                colExprs = append(colExprs, tagsExpr.hash("sha256", "base64_alphanumeric", 120).alias("cellKey"))
+            } else {
+                // Single tag and hashing disabled
+                colExprs = append(colExprs, pt.col(cellTagColumns[0]).alias("cellKey"))
+            }
+        } else {
+            colExprs = append(colExprs, pt.col(cellKeyCol).alias("cellKey"))
+        }
+
+        colExprs = append(colExprs, pt.col(cloneKeyCol).alias("clonotypeKey"))
+
+        if abundType == "read-count" {
+            colExprs = append(colExprs,
+                pt.col(abundCol).
+                    strReplace(",", "", { replaceAll: true }).
+                    cast("Float64").
+                    fillNull(0).
+                    cast("Int64").
+                    alias("read-count")
+            )
+        } else {
+            // umi-count: may be integer-like, normalize to Int64
+            colExprs = append(colExprs,
+                pt.col(abundCol).
+                    strReplace("[^0-9]", "", { replaceAll: true }).
+                    cast("Int64").
+                    fillNull(0).
+                    alias("umi-count")
+            )
+        }
+
+        if is_undefined(prodCol) || prodCol == "" {
+            colExprs = append(colExprs, pt.lit("True").alias("is-productive"))
+        } else {
+            colExprs = append(colExprs, pt.col(prodCol).alias("is-productive"))
+        }
+
+        df = df.withColumns(colExprs...)
+
+        // Save normalized file per sample
+        df.save("normalized-" + sampleId + ".tsv", { columns: ["cellKey", "clonotypeKey", abundType, "is-productive"], xsvType: "tsv" })
+    })
+
+    runRes := wf.run()
+
+    // Rebuild a map resource of normalized files keyed by sampleId
+    // Note: we return the same key structure as input
+    outputs := {}
+    maps.forEach(inputMap, func(sKey, _) {
+        key := json.decode(sKey)
+        sampleId := key[0]
+        outputs[sKey] = runRes.getFile("normalized-" + sampleId + ".tsv")
+    })
+
+    return { normalized: outputs }
+})
+
+

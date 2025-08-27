@@ -1,0 +1,205 @@
+ll := import("@platforma-sdk/workflow-tengo:ll")
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+json := import("json")
+math := import("math")
+units := import("@platforma-sdk/workflow-tengo:units")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+
+clonotypeLabel := import(":clonotype-label")
+
+// Universal single-cell clonotype key builder
+// Inputs:
+//   value (byCellTagA): Map[[sampleId]] -> TSV with columns at least: cellKey, clonotypeKey, <abundance>, <isProductive?>
+//   byCellTagB: Map[[sampleId]] -> TSV with same schema as above
+//   propertiesA: TSV with columns starting from clonotypeKey + per-clonotype properties for chain A
+//   propertiesB: TSV with columns starting from clonotypeKey + per-clonotype properties for chain B
+//   params:
+//     - mainAbundanceColumn: String (required, e.g. "umi-count" or "read-count")
+//     - mainIsProductiveColumn: String (optional, default "is-productive"). If column is missing or null, defaults to True
+// Outputs (mirroring @mixcr-clonotyping/process-single-cell):
+//   - abundanceTsv: [sampleId, scClonotypeKey, uniqueCellCount, uniqueCellFraction]
+//   - clonotypeTsv: [scClonotypeKey, clonotypeKeyA1, clonotypeKeyA2, clonotypeKeyB1, clonotypeKeyB2, sampleCount, clonotypeLabel]
+//   - propertiesAPrimaryTsv, propertiesASecondaryTsv, propertiesBPrimaryTsv, propertiesBSecondaryTsv
+//   - cellsTsv: [sampleId, cellKey, scClonotypeKey, 1]
+self.defineOutputs(
+    "abundanceTsv", "clonotypeTsv",
+    "propertiesAPrimaryTsv", "propertiesASecondaryTsv",
+    "propertiesBPrimaryTsv", "propertiesBSecondaryTsv",
+    "cellsTsv"
+)
+
+self.body(func(inputs) {
+    byCellTagA := inputs[pConstants.VALUE_FIELD_NAME]
+    byCellTagB := inputs.byCellTagB
+    propertiesA := inputs.propertiesA
+    propertiesB := inputs.propertiesB
+
+    ll.assert(!is_undefined(byCellTagA), "byCellTagA is required")
+    ll.assert(!is_undefined(byCellTagB), "byCellTagB is required")
+
+    params := inputs.params
+    mainAbundanceColumn := params.mainAbundanceColumn
+    ll.assert(!is_undefined(mainAbundanceColumn) && mainAbundanceColumn != "", "params.mainAbundanceColumn is required")
+    mainIsProductiveColumn := is_undefined(params.mainIsProductiveColumn) || params.mainIsProductiveColumn == "" ? "is-productive" : params.mainIsProductiveColumn
+
+    // Preprocess maps of sampleId->[per-cell rows]
+    preprocessByCell := func(byCellTag) {
+        inputMap := byCellTag.inputs()
+        numberOfSamples := len(inputMap)
+
+        wf := pt.workflow().
+            inMediumQueue().
+            mem(int(math.max(numberOfSamples, 32)) * units.GiB).
+            cpu(int(math.max(numberOfSamples, 16)))
+
+        sampleDataFrames := []
+
+        maps.forEach(inputMap, func(sKey, inputFile) {
+            key := json.decode(sKey)
+            ll.assert(len(key) == 1, "preprocessByCell: byCellTag key should have one element, got %v", key)
+            sampleId := key[0]
+
+            df := wf.frame(inputFile, {
+                xsvType: "tsv",
+                inferSchema: false
+            })
+
+            // Ensure presence/types of required columns; missing values become nulls and are handled below
+            df = df.withColumns(
+                pt.col("cellKey"),
+                pt.col("clonotypeKey"),
+                pt.col(mainAbundanceColumn),
+                pt.col(mainIsProductiveColumn)
+            )
+
+            // Add sampleId column
+            df = df.addColumns(pt.lit(sampleId).alias("sampleId"))
+            sampleDataFrames = append(sampleDataFrames, df)
+        })
+
+        ll.assert(len(sampleDataFrames) > 0, "No input files to process in preprocessByCell")
+
+        concatenatedDf := pt.concat(sampleDataFrames)
+
+        // Rank chains within each (sampleId, cellKey): productive first, then by abundance desc
+        isProductiveAsBool := pt.col(mainIsProductiveColumn).fillNull("True").eq("True")
+        chainRank := pt.rank([
+            // First sort key: productive (True before False) -> use negation of boolean as numeric (True->0, False->1) by when/then
+            pt.when(isProductiveAsBool).then(pt.lit(0)).otherwise(pt.lit(1)),
+            // Second: abundance descending -> use negative value for ascending rank
+            pt.col(mainAbundanceColumn).multiply(-1)
+        ], { descending: false }).over([pt.col("sampleId"), pt.col("cellKey")]).alias("chainRank")
+
+        dfWithRank := concatenatedDf.withColumns(chainRank)
+        dfTop2 := dfWithRank.filter(pt.col("chainRank").le(2))
+
+        dfTop2.save("output.tsv")
+        runResult := wf.run()
+        return runResult.getFile("output.tsv")
+    }
+
+    chainAFile := preprocessByCell(byCellTagA)
+    chainBFile := preprocessByCell(byCellTagB)
+
+    // Build single-cell clonotype key by pairing ranks (1,2) across two chains per cell
+    groupingWf := pt.workflow()
+    aDf := groupingWf.frame(chainAFile, { xsvType: "tsv" })
+    bDf := groupingWf.frame(chainBFile, { xsvType: "tsv" })
+
+    a1 := aDf.filter(pt.col("chainRank").eq(1)).select("sampleId", "cellKey", { column: "clonotypeKey", rename: "clonotypeKeyA1" })
+    a2 := aDf.filter(pt.col("chainRank").eq(2)).select("sampleId", "cellKey", { column: "clonotypeKey", rename: "clonotypeKeyA2" })
+    b1 := bDf.filter(pt.col("chainRank").eq(1)).select("sampleId", "cellKey", { column: "clonotypeKey", rename: "clonotypeKeyB1" })
+    b2 := bDf.filter(pt.col("chainRank").eq(2)).select("sampleId", "cellKey", { column: "clonotypeKey", rename: "clonotypeKeyB2" })
+
+    aMerged := a1.join(a2, { how: "full", on: ["sampleId", "cellKey"], coalesce: true })
+    bMerged := b1.join(b2, { how: "full", on: ["sampleId", "cellKey"], coalesce: true })
+    merged := aMerged.join(bMerged, { how: "full", on: ["sampleId", "cellKey"], coalesce: true })
+
+    scKeyExpr := pt.concatStr([
+        pt.col("clonotypeKeyA1").fillNull("NA"),
+        pt.col("clonotypeKeyA2").fillNull("NA"),
+        pt.col("clonotypeKeyB1").fillNull("NA"),
+        pt.col("clonotypeKeyB2").fillNull("NA")
+    ], { delimiter: "#" }).hash("sha256", "base64_alphanumeric", 120).alias("scClonotypeKey")
+
+    withKey := merged.withColumns(scKeyExpr)
+
+    // Keep only cells with at least one chain in A and B
+    filtered := withKey.filter(pt.col("clonotypeKeyA1").isNotNull().and(pt.col("clonotypeKeyB1").isNotNull()))
+
+    // cells.tsv: used to link cells to scClonotypeKey and for abundance by counting cells per sample
+    filtered.withColumns(pt.lit(1).alias("1")).save("cells.tsv", { columns: ["sampleId", "cellKey", "scClonotypeKey", "1"] })
+
+    // clonotype.tsv: unique scClonotypeKey with paired chain keys and sampleCount
+    clonotypeDf := filtered.groupBy("scClonotypeKey", "clonotypeKeyA1", "clonotypeKeyA2", "clonotypeKeyB1", "clonotypeKeyB2").agg(
+        pt.col("sampleId").nUnique().alias("sampleCount")
+    )
+    clonotypeDf = clonotypeLabel.addClonotypeLabelColumnsPt(clonotypeDf, "scClonotypeKey", "clonotypeLabel", pt)
+    clonotypeDf.save("clonotype.tsv")
+
+    resGrouping := groupingWf.run()
+
+    // Properties join step, mirroring mixcr implementation
+    propsAFile := is_undefined(propertiesA) ? undefined : propertiesA.inputs()["[]"]
+    propsBFile := is_undefined(propertiesB) ? undefined : propertiesB.inputs()["[]"]
+
+    outputWf := pt.workflow()
+
+    // Load main clonotype table with explicit schema for consistency
+    clonotypeTableSchema := [
+        { column: "scClonotypeKey", type: "String" },
+        { column: "clonotypeKeyA1", type: "String" },
+        { column: "clonotypeKeyA2", type: "String" },
+        { column: "clonotypeKeyB1", type: "String" },
+        { column: "clonotypeKeyB2", type: "String" },
+        { column: "sampleCount", type: "Int" },
+        { column: "clonotypeLabel", type: "String" }
+    ]
+    mainClonotypesDf := outputWf.frame(resGrouping.getFile("clonotype.tsv"), {
+        xsvType: "tsv",
+        schema: clonotypeTableSchema,
+        inferSchema: false
+    })
+
+    makePropsDf := func(file) {
+        if is_undefined(file) { return undefined }
+        return outputWf.frame(file, { xsvType: "tsv", inferSchema: true })
+    }
+
+    propsADf := makePropsDf(propsAFile)
+    propsBDf := makePropsDf(propsBFile)
+
+    // Helper to join scClonotypeKey with per-chain properties by specific chainKey column
+    joinProps := func(cloneKeyColName, srcDf) {
+        if is_undefined(srcDf) { return undefined }
+        filtered := mainClonotypesDf.filter(pt.col(cloneKeyColName).isNotNull())
+        withKey := filtered.withColumns(pt.col(cloneKeyColName).alias("clonotypeKey"))
+        return srcDf.join(withKey, { how: "inner", on: ["clonotypeKey"] })
+    }
+
+    propsAPrimary := joinProps("clonotypeKeyA1", propsADf)
+    propsASecondary := joinProps("clonotypeKeyA2", propsADf)
+    propsBPrimary := joinProps("clonotypeKeyB1", propsBDf)
+    propsBSecondary := joinProps("clonotypeKeyB2", propsBDf)
+
+    if !is_undefined(propsAPrimary) { propsAPrimary.save("properties_a_primary.tsv") }
+    if !is_undefined(propsASecondary) { propsASecondary.save("properties_a_secondary.tsv") }
+    if !is_undefined(propsBPrimary) { propsBPrimary.save("properties_b_primary.tsv") }
+    if !is_undefined(propsBSecondary) { propsBSecondary.save("properties_b_secondary.tsv") }
+
+    resProps := outputWf.run()
+
+    return {
+        abundanceTsv: resGrouping.getFile("abundance.tsv"),
+        clonotypeTsv: resGrouping.getFile("clonotype.tsv"),
+        cellsTsv: resGrouping.getFile("cells.tsv"),
+        propertiesAPrimaryTsv: is_undefined(propsAPrimary) ? undefined : resProps.getFile("properties_a_primary.tsv"),
+        propertiesASecondaryTsv: is_undefined(propsASecondary) ? undefined : resProps.getFile("properties_a_secondary.tsv"),
+        propertiesBPrimaryTsv: is_undefined(propsBPrimary) ? undefined : resProps.getFile("properties_b_primary.tsv"),
+        propertiesBSecondaryTsv: is_undefined(propsBSecondary) ? undefined : resProps.getFile("properties_b_secondary.tsv")
+    }
+})
+
+
