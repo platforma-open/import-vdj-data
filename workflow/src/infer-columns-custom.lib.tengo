@@ -462,8 +462,8 @@ propertyColumnSpecs := {
 		}
 	},
     "vdj-nt": {
-        id: "n-seq-vdjregion",
-        column: "n-seq-vdjregion",
+        id: "vdj-nt",
+        column: "vdj-nt",
         allowNA: true,
         spec: {
             name: "pl7.app/vdj/sequence",
@@ -541,8 +541,8 @@ propertyColumnSpecs := {
 		}
 	},
     "vdj-aa": {
-        id: "aa-seq-vdjregioninframe",
-        column: "aa-seq-vdjregioninframe",
+        id: "vdj-aa",
+        column: "vdj-aa",
         allowNA: true,
         spec: {
             name: "pl7.app/vdj/sequence",
@@ -577,12 +577,24 @@ getColumns := func(header, customMapping, primaryCountType) {
 	// }
 
     // Build arrays based on provided mapping
-    hasUMIs := !is_undefined(customMapping["umi-count"]) && customMapping["umi-count"] != ""
-    hasReads := !is_undefined(customMapping["read-count"]) && customMapping["read-count"] != ""
+    hasUMIs := !is_undefined(columnMapping["umi-count"])
+    hasReads := !is_undefined(columnMapping["read-count"])
+    presentFrCdrNt := columnMapping["fr1-nt"] != undefined && 
+                        columnMapping["cdr1-nt"] != undefined && 
+                        columnMapping["fr2-nt"] != undefined && 
+                        columnMapping["cdr2-nt"] != undefined && 
+                        columnMapping["fr3-nt"] != undefined
+    presentFrCdrAa := columnMapping["fr1-aa"] != undefined && 
+                        columnMapping["cdr1-aa"] != undefined && 
+                        columnMapping["fr2-aa"] != undefined && 
+                        columnMapping["cdr2-aa"] != undefined && 
+                        columnMapping["fr3-aa"] != undefined
     hasCdr3Nt := columnMapping["cdr3-nt"] != undefined
 	hasCdr3Aa := columnMapping["cdr3-aa"] != undefined
+    useFrCdr := presentFrCdrNt && (hasCdr3Nt || hasCdr3Aa)
     hasVdjNt := columnMapping["vdj-nt"] != undefined
     hasVdjAa := columnMapping["vdj-aa"] != undefined
+    hasFr4Nt := columnMapping["fr4-nt"] != undefined
 
     if hasUMIs {
 		for _, col in readColumnSpecs {
@@ -614,27 +626,16 @@ getColumns := func(header, customMapping, primaryCountType) {
     // Build clonotype key based on AA or NT (prefer NT if present), plus V/J and optional C gene
     keyColumns := []
     keyStructure := ""
-	presentFrCdrNt := columnMapping["fr1-nt"] != undefined && 
-                        columnMapping["cdr1-nt"] != undefined && 
-                        columnMapping["fr2-nt"] != undefined && 
-                        columnMapping["cdr2-nt"] != undefined && 
-                        columnMapping["fr3-nt"] != undefined
-    presentFrCdrAa := columnMapping["fr1-aa"] != undefined && 
-                        columnMapping["cdr1-aa"] != undefined && 
-                        columnMapping["fr2-aa"] != undefined && 
-                        columnMapping["cdr2-aa"] != undefined && 
-                        columnMapping["fr3-aa"] != undefined
-	useFrCdr := presentFrCdrNt && (hasCdr3Nt || hasCdr3Aa)
-    if hasVdjNt {
+    if hasVdjNt || (presentFrCdrNt && hasCdr3Nt) {
         keyColumns = append(keyColumns, "vdj-nt")
-        keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-CDR3nt"
+        keyStructure = "VDJRegion"
     } else if useFrCdr {
-		keyColumns = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", (hasCdr3Nt ? "cdr3-nt" : "cdr3-aa")]
-        keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-" + (hasCdr3Nt ? "CDR3nt" : "CDR3aa")
-	} else if hasCdr3Nt && customMapping["cdr3-nt"] != "" {
+		keyColumns = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", (hasCdr3Nt ? "cdr3-nt" : "cdr3-aa"), (hasFr4Nt ? "fr4-nt" : "")]
+        keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-" + (hasCdr3Nt ? "CDR3nt" : "CDR3aa") + (hasFr4Nt ? "-FR4nt" : "")
+	} else if hasCdr3Nt {
 		keyColumns = append(keyColumns, "cdr3-nt")
         keyStructure = keyStructure + "CDR3-nt"
-	} else if hasCdr3Aa && customMapping["cdr3-aa"] != "" {
+	} else if hasCdr3Aa {
 		keyColumns = append(keyColumns, "cdr3-aa")
         keyStructure = keyStructure + "CDR3-aa"
 	}
