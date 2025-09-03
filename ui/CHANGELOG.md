@@ -1,5 +1,12 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.4.1
+
+### Patch Changes
+
+- Updated dependencies [d7c054e]
+  - @platforma-open/milaboratories.import-vdj.model@1.3.1
+
 ## 1.4.0
 
 ### Minor Changes

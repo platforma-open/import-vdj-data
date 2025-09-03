@@ -1,5 +1,12 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.6.1
+
+### Patch Changes
+
+- d7c054e: New MIXCR column handling options
+- 0eb610f: Update nt and aa VDJ column handling in custom and mixcr formats
+
 ## 1.6.0
 
 ### Minor Changes

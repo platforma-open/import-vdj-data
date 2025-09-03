@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.model
 
+## 1.3.1
+
+### Patch Changes
+
+- d7c054e: New MIXCR column handling options
+
 ## 1.3.0
 
 ### Minor Changes
