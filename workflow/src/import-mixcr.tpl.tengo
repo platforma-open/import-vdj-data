@@ -44,6 +44,47 @@ self.body(func(inputs) {
     }
     df = df.withColumns(renameExpressions...)
 
+    // Add vdj aa and nt columns if present in columnsInfo.propertyColumns
+    hasFr4Nt := columnsInfo.columnMapping["fr4-nt"] != undefined
+    hasFr4Aa := columnsInfo.columnMapping["fr4-aa"] != undefined
+    hasVdjNt := columnsInfo.columnMapping["vdj-nt"] != undefined
+    hasVdjAa := columnsInfo.columnMapping["vdj-aa"] != undefined
+    nt_cols := ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "cdr3-nt"]
+    if hasFr4Nt { nt_cols = append(nt_cols, "fr4-nt") }
+    aa_cols := ["fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "cdr3-aa"]
+    if hasFr4Aa { aa_cols = append(aa_cols, "fr4-aa") }
+
+    for prop in columnsInfo.propertyColumns {
+        isVdjNt := false
+        isVdjAa := false
+        if prop.spec != undefined && prop.spec.domain != undefined {
+            isVdjNt = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegion"
+            isVdjAa = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegionInFrame"
+        }
+
+        if isVdjNt && !hasVdjNt {
+            nt_exprs := slices.map(nt_cols, func(c) { return pt.col(c) })
+            df = df.withColumns(pt.concatStr(nt_exprs, { delimiter: "" }).alias(prop.column))
+        }
+        if isVdjAa && !hasVdjAa {
+            aa_exprs := slices.map(aa_cols, func(c) { return pt.col(c) })
+            df = df.withColumns(pt.concatStr(aa_exprs, { delimiter: "" }).alias(prop.column))
+        }
+    }
+
+    // Remove rows where any sequence column contains "region_not_covered"
+    seqCols := nt_cols + aa_cols + ["vdj-nt", "vdj-aa"]
+    invalidExpr := undefined
+    for col in seqCols {
+        if columnsInfo.columnMapping[col] != undefined {
+            cond := pt.col(col).strContains("region_not_covered", { literal: true })
+            if invalidExpr == undefined { invalidExpr = cond } else { invalidExpr = invalidExpr.or(cond) }
+        }
+    }
+    if invalidExpr != undefined {
+        df = df.filter(invalidExpr.not())
+    }
+
     // Ensure allele columns presence according to rules:
     // If any of bestXHit/allXHits/allXHitsWithScore exist in input, create x-allele.
     // Value equals bestXHit when available; otherwise set to empty string.
