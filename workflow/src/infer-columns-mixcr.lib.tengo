@@ -2,6 +2,7 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
+text := import("text")
 
 // Helper to add common annotations for table view properties
 a := func(order, defaultVisibility, spec) {
@@ -475,6 +476,23 @@ getColumns := func(header) {
         }
     }
 
+    // Detect single-cell tag columns: accept MiXCR variants 'tagValueCELL' and case-insensitive 'tagValueCell*'
+    cellTagColumns := []
+    for h in header {
+        if text.re_match("^(?i)tagValueCell", h) {
+            // Preserve original header name; also expose canonical mapping to itself
+            // Ensure we don't add duplicates if the header appears multiple times
+            alreadyAdded := false
+            for ex in cellTagColumns { if ex == h { alreadyAdded = true } }
+            if !alreadyAdded {
+                cellTagColumns = append(cellTagColumns, h)
+            }
+            if columnMapping[h] == undefined { columnMapping[h] = h }
+        }
+    }
+
+    // ll.print("sc tags:", cellTagColumns)
+   
     // Validate minimal requirements (do not panic; UI will show alert)
     missingRequired := []
     for col in requiredColumns {
@@ -545,6 +563,8 @@ getColumns := func(header) {
 		}
 	}
 
+	// Do not add these to propertyColumns; tag values are internal and used only to derive cellKey
+
     // Check for present sequences
     presentFrCdrNt := columnMapping["fr1-nt"] != undefined && 
                         columnMapping["cdr1-nt"] != undefined && 
@@ -578,7 +598,8 @@ getColumns := func(header) {
         keyColumns = append(keyColumns, "vdj-nt")
         keyStructure = "VDJRegion"
     } else if useFrCdr {
-		keyColumns = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", (hasCdr3Nt ? "cdr3-nt" : "cdr3-aa"), (hasFr4Nt ? "fr4-nt" : "")]
+		keyColumns = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", (hasCdr3Nt ? "cdr3-nt" : "cdr3-aa")]
+        if hasFr4Nt { keyColumns = append(keyColumns, "fr4-nt") }
         keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-" + (hasCdr3Nt ? "CDR3nt" : "CDR3aa") + (hasFr4Nt ? "-FR4nt" : "")
 	} else if hasCdr3Nt {
 		keyColumns = append(keyColumns, "cdr3-nt")
@@ -622,7 +643,8 @@ getColumns := func(header) {
         propertyColumns: propertyColumns,
         columnMapping: columnMapping,
         clonotypeKeyStructure: keyStructure,
-        clonotypeKeyColumns: keyColumns
+        clonotypeKeyColumns: keyColumns,
+        cellTagColumns: cellTagColumns
     }
 }
 

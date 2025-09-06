@@ -5,7 +5,7 @@ assets:= import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
-processBulkTpl := assets.importTemplate(":process-bulk")
+processBulkTpl := assets.importTemplate(":process")
 
 wf.setPreRun(assets.importTemplate(":prerun"))
 

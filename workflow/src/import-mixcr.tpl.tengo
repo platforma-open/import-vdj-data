@@ -10,7 +10,7 @@ pt := import("@platforma-sdk/workflow-tengo:pt")
 sets := import("@platforma-sdk/workflow-tengo:sets")
 json := import("json")
 
-self.defineOutputs("tsv", "stats")
+self.defineOutputs("tsv", "stats", "tsvForSingleCell")
 
 self.body(func(inputs) {
     inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
@@ -39,7 +39,10 @@ self.body(func(inputs) {
     renameExpressions := []
     for canonical, original in columnsInfo.columnMapping {
         if original != undefined {
-            renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+            // Avoid self-alias which can create duplicate column names
+            if canonical != original {
+                renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+            }
         }
     }
     df = df.withColumns(renameExpressions...)
@@ -178,7 +181,7 @@ self.body(func(inputs) {
         df = df.filter(pt.col(col).isNotNull().and(pt.col(col).neq("")))
     }
 
-    // Compute productivity from AA CDR3
+    // Determine productivity from AA CDR3 (MiXCR behavior)
     df = df.withColumns(
         pt.col("cdr3-aa").isNotNull().
             and(pt.col("cdr3-aa").neq("")).
@@ -187,8 +190,21 @@ self.body(func(inputs) {
             alias("is-productive")
     )
 
-    // Build clonotypeKey
-    keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
+    // Build clonotypeKey with robust fallback if infer failed to populate key columns
+    // Preferred order: vdj-nt; else cdr3-nt; else cdr3-aa; always add v-gene/j-gene if present; c-gene optional
+    inferKeyColumns := func() {
+        cols := []
+        if columnsInfo.columnMapping["vdj-nt"] != undefined { cols = append(cols, "vdj-nt") }
+        if len(cols) == 0 && columnsInfo.columnMapping["cdr3-nt"] != undefined { cols = append(cols, "cdr3-nt") }
+        if len(cols) == 0 && columnsInfo.columnMapping["cdr3-aa"] != undefined { cols = append(cols, "cdr3-aa") }
+        if columnsInfo.columnMapping["v-gene"] != undefined { cols = append(cols, "v-gene") }
+        if columnsInfo.columnMapping["j-gene"] != undefined { cols = append(cols, "j-gene") }
+        if columnsInfo.columnMapping["c-gene"] != undefined { cols = append(cols, "c-gene") }
+        return cols
+    }
+    keyCols := columnsInfo.clonotypeKeyColumns
+    if len(keyCols) == 0 { keyCols = inferKeyColumns() }
+    keyComponents := slices.map(keyCols, func(id) { return pt.col(id).fillNull("NA") })
     clonotypeKeyExpr := pt.concatStr(keyComponents, {delimiter: "|"}).hash("sha256", "base64_alphanumeric", 120).alias("clonotypeKey")
 
     // Filter by chains using V gene prefix
@@ -200,6 +216,8 @@ self.body(func(inputs) {
         "TRG": "TRG",
         "TRD": "TRD"
     }
+
+    hasCellTags := columnsInfo.cellTagColumns != undefined && len(columnsInfo.cellTagColumns) > 0
 
     for chain in chains {
         prefix := chainToLocusMap[chain]
@@ -242,6 +260,27 @@ self.body(func(inputs) {
             )
         }
 
+        // Export by-cell AFTER filtering by productivity (original MiXCR behavior)
+        if hasCellTags {
+            // Determine cellKey from tag columns
+            cellKeyExpr := undefined
+            if len(columnsInfo.cellTagColumns) > 1 {
+                cols := slices.map(columnsInfo.cellTagColumns, func(c) { return pt.col(c) })
+                cellKeyExpr = pt.concatStr(cols, { delimiter: "#" }).hash("sha256", "base64_alphanumeric", 120)
+            } else {
+                cellKeyExpr = pt.col(columnsInfo.cellTagColumns[0])
+            }
+            // Use primary abundance column (prefer UMI if available)
+            primaryAbundanceCol := hasUmiCount ? "umi-count" : "read-count"
+            byCellDf := chainDf.select(
+                cellKeyExpr.alias("cellKey"),
+                pt.col("clonotypeKey"),
+                pt.col(primaryAbundanceCol).alias(primaryAbundanceCol),
+                pt.col("is-productive").alias("is-productive")
+            )
+            byCellDf.save("byCell-" + chain + ".tsv")
+        }
+
         // Aggregate by clonotype key
         aggregations := []
         
@@ -280,10 +319,21 @@ self.body(func(inputs) {
             chainDf = chainDf.withColumns(pt.col("umi-count").truediv(pt.col("umi-count").sum()).fillNaN(0).alias("umi-fraction"))
         }
 
-        // Keep columns (using canonical names) - include all abundance columns
+        // Keep columns (using canonical names) - include all abundance columns, deduping names
         keepColumns := ["clonotypeKey"]
-        for col in columnsInfo.propertyColumns { keepColumns = append(keepColumns, col.column) }
-        for col in columnsInfo.abundanceColumns { keepColumns = append(keepColumns, col.column) }
+        seenKeep := { "clonotypeKey": true }
+        for col in columnsInfo.propertyColumns {
+            if !seenKeep[col.column] {
+                keepColumns = append(keepColumns, col.column)
+                seenKeep[col.column] = true
+            }
+        }
+        for col in columnsInfo.abundanceColumns {
+            if !seenKeep[col.column] {
+                keepColumns = append(keepColumns, col.column)
+                seenKeep[col.column] = true
+            }
+        }
         chainDf = chainDf.select(keepColumns...)
 
         chainDf.save(chain + ".tsv")
@@ -293,12 +343,16 @@ self.body(func(inputs) {
 
     tsv := {}
     stats := {}
+    tsvForSingleCell := {}
     for chain in chains {
         tsv[chain] = wf.getFile(chain + ".tsv")
         stats[chain] = wf.getFileContent("stats-" + chain + ".tsv")
+        if hasCellTags {
+            tsvForSingleCell[chain] = wf.getFile("byCell-" + chain + ".tsv")
+        }
     }
 
-    return { tsv: tsv, stats: stats }
+    return { tsv: tsv, stats: stats, tsvForSingleCell: tsvForSingleCell }
 })
 
 

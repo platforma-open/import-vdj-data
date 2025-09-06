@@ -10,7 +10,8 @@ const app = useApp();
 const formatOptions = [
   { label: 'ImmunoSeq', value: 'immunoSeq' },
   { label: 'QIAseq Immune Repertoire Analysis', value: 'qiagen' },
-  { label: 'MiXCR bulk immune repertoire format', value: 'mixcr' },
+  { label: 'MiXCR immune repertoire format (bulk and single cell)', value: 'mixcr' },
+  { label: 'Cell Ranger VDJ (single cell)', value: 'cellranger' },
   { label: 'Custom', value: 'custom' },
 ];
 
@@ -141,7 +142,9 @@ const validationMessage = computed(() => {
     ? 'QIAseq Immune Repertoire Analysis'
     : result.format === 'mixcr'
       ? 'MiXCR bulk immune repertoire format'
-      : result.format;
+      : result.format === 'cellranger'
+        ? 'Cell Ranger VDJ'
+        : result.format;
 
   return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
 });
@@ -163,6 +166,7 @@ function onModalUpdate(val: boolean) {
 watch(
   () => app.model.args,
   (args) => {
+    const fmt = (app.model.args as unknown as { format?: string }).format;
     if (args.format === 'custom') {
       const a = app.model.args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
       if (!a.customMapping) a.customMapping = {};
@@ -185,23 +189,29 @@ watch(
         delete a.customMapping['read-count'];
       }
     }
-    // Reset qiagenColumnsPresent when format changes away from qiagen
-    if (args.format !== 'qiagen') {
-      app.model.args.qiagenColumnsPresent = undefined;
-    }
+    // Reset format validation flags when switching formats
+    if (fmt !== 'qiagen') app.model.ui.qiagenColumnsPresent = false;
+    if (fmt !== 'mixcr') app.model.ui.mixcrColumnsPresent = false;
+    if (fmt !== 'cellranger') app.model.ui.crColumnsPresent = false;
   },
   { immediate: true },
 );
 
-// Watch validation result and update the UI state
+// Watch validation result and update the UI state (only for the currently selected format)
 watch(
   validationResult,
   (result) => {
-    if (result && result.format === 'qiagen') {
+    if (!result) return;
+    const currentFormat = app.model.args.format;
+    if (result.format !== currentFormat) return;
+    if (result.format === 'qiagen') {
       app.model.ui.qiagenColumnsPresent = result.isValid;
     }
-    if (result && result.format === 'mixcr') {
+    if (result.format === 'mixcr') {
       app.model.ui.mixcrColumnsPresent = result.isValid;
+    }
+    if (result.format === 'cellranger') {
+      app.model.ui.crColumnsPresent = result.isValid;
     }
   },
   { immediate: true },
@@ -236,7 +246,16 @@ watch(
       <PlDropdown v-model="app.model.args.format" :options="formatOptions" label="Data format" required />
 
       <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
-        <template #title>Invalid {{ validationResult?.format === 'qiagen' ? 'QIAseq Immune Repertoire Analysis' : (validationResult?.format === 'mixcr' ? 'MiXCR bulk immune repertoire format' : validationResult?.format) }} dataset</template>
+        <template #title>
+          Invalid {{ validationResult?.format === 'qiagen'
+            ? 'QIAseq Immune Repertoire Analysis'
+            : (validationResult?.format === 'mixcr'
+              ? 'MiXCR bulk immune repertoire format'
+              : (validationResult?.format === 'cellranger'
+                ? 'Cell Ranger VDJ'
+                : validationResult?.format))
+          }} dataset
+        </template>
         {{ validationMessage }}
       </PlAlert>
 
