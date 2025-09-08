@@ -174,9 +174,9 @@ const validationMessage = computed(() => {
   const formatName = result.format === 'qiagen'
     ? 'QIAseq Immune Repertoire Analysis'
     : result.format === 'mixcr'
-      ? 'MiXCR bulk immune repertoire format'
+      ? 'MiXCR bulk'
       : result.format === 'mixcr-sc'
-        ? 'MiXCR single cell immune repertoire format'
+        ? 'MiXCR single cell'
         : result.format === 'cellranger'
           ? 'Cell Ranger VDJ'
           : result.format;
