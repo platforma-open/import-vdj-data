@@ -477,9 +477,11 @@ getColumns := func(header) {
     }
 
     // Detect single-cell tag columns: accept MiXCR variants 'tagValueCELL' and case-insensitive 'tagValueCell*'
+    isSingleCell := false
     cellTagColumns := []
     for h in header {
         if text.re_match("^(?i)tagValueCell", h) {
+            isSingleCell = true
             // Preserve original header name; also expose canonical mapping to itself
             // Ensure we don't add duplicates if the header appears multiple times
             alreadyAdded := false
@@ -644,7 +646,8 @@ getColumns := func(header) {
         columnMapping: columnMapping,
         clonotypeKeyStructure: keyStructure,
         clonotypeKeyColumns: keyColumns,
-        cellTagColumns: cellTagColumns
+        cellTagColumns: cellTagColumns,
+        isSingleCell: isSingleCell
     }
 }
 

@@ -24,7 +24,7 @@ self.body(func(inputs) {
         return {
             columnsInfo: qiagenImport.getColumns(header)
         }
-    } else if format == "mixcr" {
+    } else if format == "mixcr" || format == "mixcr-sc" {
         return {
             columnsInfo: mixcrImport.getColumns(header)
         }

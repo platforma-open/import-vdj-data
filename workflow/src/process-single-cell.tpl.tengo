@@ -1,231 +1,461 @@
-ll := import("@platforma-sdk/workflow-tengo:ll")
-self := import("@platforma-sdk/workflow-tengo:tpl.light")
-pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
-assets := import("@platforma-sdk/workflow-tengo:assets")
-maps := import("@platforma-sdk/workflow-tengo:maps")
-slices := import("@platforma-sdk/workflow-tengo:slices")
-units := import("@platforma-sdk/workflow-tengo:units")
-pt := import("@platforma-sdk/workflow-tengo:pt")
+// process-single-cell orchestrator
 
-clonotypeLabel := import(":clonotype-label")
+self := import("@platforma-sdk/workflow-tengo:tpl")
+
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+text := import("text")
+assets := import("@platforma-sdk/workflow-tengo:assets")
 
 json := import("json")
-math := import("math")
 
-// Outputs mirror @mixcr-clonotyping single-cell stage so that upstream UI can reuse surfaces
-// For SC, this template returns files that upstream step will convert to Xsv with proper axes.
-self.defineOutputs("abundanceTsv", "clonotypeTsv",
-	"propertiesAPrimaryTsv", "propertiesASecondaryTsv", "propertiesBPrimaryTsv", "propertiesBSecondaryTsv",
-	"cellsTsv")
+mixcrTpl := assets.importTemplate(":import-mixcr")
+cellrangerTpl := assets.importTemplate(":import-cellranger")
+aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
+processSingleCellKeysTpl := assets.importTemplate(":process-single-cell-keys")
+
+annot := func(order, defaultVisibility, spec) {
+	return maps.merge(spec, {
+		"pl7.app/table/orderPriority": string(order),
+		"pl7.app/table/visibility": is_undefined(defaultVisibility) ? "hidden" : defaultVisibility ? "default" : "optional"
+	})
+}
+
+columnsToSchema := func(columns) {
+	schema := []
+	for col in columns {
+		schema += [ { column: col.column, type: col.spec.valueType } ]
+	}
+	return schema
+}
+
+self.awaitState("InputsLocked")
+self.awaitState("columnsInfo", "ResourceReady")
+self.awaitState("dataset", "ResourceReady")
 
 self.body(func(inputs) {
-	// Inputs:
-	//  - value: byCellTagA (Map<[sampleId], File>) with columns: cellKey, clonotypeKey, mainAbundanceColumn, mainIsProductiveColumn
-	//  - byCellTagB: same for the paired chain
-	//  - propertiesA / propertiesB: aggregated per-chain properties (Map<[], File>) with clonotypeKey and schemaPerClonotypeNoAggregates
-	//  - params: { mainAbundanceColumn, mainIsProductiveColumn, schemaPerClonotypeNoAggregates }
+	chains := inputs.chains
+	columnsInfo := inputs.columnsInfo
+	datasetSpec := inputs.dataset.spec
+	dataset := inputs.dataset.data
+	blockId := inputs.blockId
+	format := inputs.format
 
-	byCellTagA := inputs[pConstants.VALUE_FIELD_NAME]
-	inputDataMeta := byCellTagA.getDataAsJson()
-	ll.assert(inputDataMeta.keyLength == 1, "unexpected number of aggregation axes")
+	result := pframes.pFrameBuilder()
+	stats := pframes.pFrameBuilder()
 
-	byCellTagB := inputs.byCellTagB
-	propertiesA := inputs.propertiesA
-	propertiesB := inputs.propertiesB
+	importTpl := undefined
+	if format == "mixcr-sc" {
+		importTpl = mixcrTpl
+	} else if format == "cellranger" {
+		importTpl = cellrangerTpl
+	}
+	if importTpl == undefined { ll.panic("Import template is undefined, format: " + format) }
 
-	mainAbundanceColumn := inputs.params.mainAbundanceColumn
-	mainIsProductiveColumn := inputs.params.mainIsProductiveColumn
-	schemaPerClonotypeNoAggregates := inputs.params.schemaPerClonotypeNoAggregates
-
-	preprocessByCell := func(byCellTag) {
-		inputMap := byCellTag.inputs()
-		numberOfSamples := len(inputMap)
-
-		wf := pt.workflow().
-			inMediumQueue().
-			mem(int(math.max(numberOfSamples, 32)) * units.GiB).
-			cpu(int(math.max(numberOfSamples, 16)))
-
-		sampleDataFrames := []
-		maps.forEach(inputMap, func(sKey, inputFile) {
-			key := json.decode(sKey)
-			ll.assert(len(key) == 1, "preprocessByCell: byCellTag key should have one element, got %v", key)
-			sampleId := key[0]
-
-			sampleDf := wf.frame(inputFile, {
-				xsvType: "tsv",
-				schema: [
-					{ column: "cellKey", type: "String" },
-					{ column: "clonotypeKey", type: "String" },
-					{ column: mainAbundanceColumn, type: "Long" },
-					{ column: mainIsProductiveColumn, type: "String" }
-				],
-				inferSchema: false
-			}).withColumns(
-				pt.col("cellKey"), pt.col("clonotypeKey"), pt.col(mainAbundanceColumn), pt.col(mainIsProductiveColumn)
-			)
-
-			sampleDfWithId := sampleDf.addColumns(pt.lit(sampleId).alias("sampleId"))
-			sampleDataFrames = append(sampleDataFrames, sampleDfWithId)
-		})
-
-		ll.assert(len(sampleDataFrames) > 0, "No input files to process in preprocessByCell")
-
-		concatenatedDf := pt.concat(sampleDataFrames)
-
-		dfWithRawRank := concatenatedDf.withColumns(
-			pt.rank(pt.col(mainAbundanceColumn), {descending: true}).
-				over([pt.col("sampleId"), pt.col("cellKey")]).
-				alias("rawChainRank")
-		)
-
-		dfFilteredByRawRank := dfWithRawRank.filter(pt.col("rawChainRank").le(2))
-
-		isProductiveNumericExpr := pt.when(pt.col(mainIsProductiveColumn).eq("True")).
-			then(pt.lit(0)).
-			otherwise(pt.lit(1))
-		negativeAbundanceExpr := pt.col(mainAbundanceColumn).multiply(-1)
-
-		dfWithChainRank := dfFilteredByRawRank.withColumns(
-			pt.rank([
-					isProductiveNumericExpr,
-					negativeAbundanceExpr
-				], {descending: false}).
-				over([pt.col("sampleId"), pt.col("cellKey")]).
-				alias("chainRank")
-		).withoutColumns("rawChainRank")
-
-		dfWithChainRank.save("output.tsv")
-		runResult := wf.run()
-		return runResult.getFile("output.tsv")
+	// Import per-chain, producing clonotype and per-cell-tag TSVs
+	importOutputs := []
+	for chain in chains {
+		axes := [
+			{
+				column: "clonotypeKey",
+				naRegex: "",
+				spec: {
+					type: "String",
+					name: "pl7.app/vdj/clonotypeKey",
+					domain: {
+						"pl7.app/vdj/chain": chain,
+						"pl7.app/vdj/vdjImport": blockId,
+						"pl7.app/vdj/clonotypeKey/structure": columnsInfo.clonotypeKeyStructure
+					},
+					annotations: {
+						"pl7.app/label": "Clonotype ID",
+						"pl7.app/description": "A composite key that uniquely identifies a clonotype."
+					}
+				}
+			}
+		]
+		hasReads := columnsInfo.columnMapping["read-count"] != undefined
+		statsColumns := [
+			{
+				id: "clonotype-count",
+				column: "clonotype-count",
+				spec: {
+					name: "pl7.app/vdj/stat/clonotypeCount",
+					valueType: "Int",
+					domain: {
+						"pl7.app/vdj/chain": chain,
+						"pl7.app/vdj/vdjImport": blockId
+					},
+					annotations: {
+						"pl7.app/label": "Number of Clonotypes",
+						"pl7.app/description": "The number of clonotypes in the dataset.",
+						"pl7.app/table/visibility": "default"
+					}
+				}
+			}
+		]
+		if hasReads {
+			statsColumns += [
+				{
+					id: "read-count",
+					column: "read-count",
+					spec: {
+						name: "pl7.app/vdj/stat/readCount",
+						valueType: "Int",
+						domain: {
+							"pl7.app/vdj/chain": chain,
+							"pl7.app/vdj/vdjImport": blockId
+						},
+						annotations: {
+							"pl7.app/label": "Number of Reads",
+							"pl7.app/description": "The number of reads in the dataset.",
+							"pl7.app/table/visibility": "default"
+						}
+					}
+				}
+			]
+		}
+		traceSteps := [{ type: "milaboratories.importVDJ", id: blockId + ".chain", importance: 81, label: chain }]
+		importOutputs += [
+			{
+				type: "Resource",
+				spec: { kind: "PColumn", name: "mixcr.com/clonotypeTable", valueType: "File" },
+				name: "clonotypesTsv-" + chain,
+				path: ["tsv", chain]
+			},
+			{
+				type: "Resource",
+				spec: { kind: "PColumn", name: "mixcr.com/clonotypeTableForSingleCell", valueType: "File" },
+				name: "clonotypesTsvForSingleCell-" + chain,
+				path: ["tsvForSingleCell", chain]
+			},
+			{
+				type: "TsvContent",
+				settings: { axes: [], columns: statsColumns },
+				traceSteps: traceSteps,
+				name: "stats-" + chain,
+				path: ["stats", chain]
+			}
+		]
 	}
 
-	chainAOutput := preprocessByCell(byCellTagA)
-	chainBOutput := preprocessByCell(byCellTagB)
+	importResults := pframes.processColumn(
+		{ spec: datasetSpec, data: dataset },
+		importTpl,
+		importOutputs,
+		{
+			aggregate: [
+				{ name: "pl7.app/sequencing/lane", optional: true },
+				{ name: "pl7.app/sequencing/tag", optional: true }
+			],
+			passAggregationAxesNames: true,
+			extra: {
+				columnsInfo: columnsInfo,
+				chains: chains
+			}
+		}
+	)
 
-	cellGroupingWf := pt.workflow()
-	chainATableDf := cellGroupingWf.frame(chainAOutput, {xsvType: "tsv"})
-	chainBTableDf := cellGroupingWf.frame(chainBOutput, {xsvType: "tsv"})
+	for chain in chains { importResults.addXsvOutputToBuilder(stats, "stats-" + chain, "stats-" + chain) }
 
-	rankedDfs := {}
-	for chainData in [{prefix: "a", df: chainATableDf}, {prefix: "b", df: chainBTableDf}] {
-		for rankVal in [1, 2] {
-			dfKey := "chain_" + chainData.prefix + "_rank" + string(rankVal) + "_df"
-			rankedDfs[dfKey] = chainData.df.filter(pt.col("chainRank").eq(rankVal))
+	// SC branch per receptor
+	chainToReceptor := { "IGHeavy": "IG", "IGLight": "IG", "TRA": "TCRAB", "TRB": "TCRAB", "TRD": "TCRGD", "TRG": "TCRGD" }
+
+	mainAbundanceCount := "read-count"; mainAbundanceFraction := "read-fraction"
+	for col in columnsInfo.abundanceColumns {
+		if col.spec.annotations["pl7.app/abundance/isPrimary"] == "true" && col.spec.annotations["pl7.app/abundance/normalized"] == "false" { mainAbundanceCount = col.column }
+		if col.spec.annotations["pl7.app/abundance/isPrimary"] == "true" && col.spec.annotations["pl7.app/abundance/normalized"] == "true" { mainAbundanceFraction = col.column }
+	}
+	columnsSchema := columnsToSchema(columnsInfo.propertyColumns)
+	sampleIdAxisSpec := inputs.dataset.spec.axesSpec[0]
+	axisByScClonotypeKey := func(receptor) {
+		return {
+			column: "scClonotypeKey",
+			naRegex: "",
+			spec: {
+				name: "pl7.app/vdj/scClonotypeKey",
+				type: "String",
+				domain: {
+					"pl7.app/vdj/receptor": receptor,
+					"pl7.app/vdj/scClonotypeKey/structure": columnsInfo.clonotypeKeyStructure,
+					"pl7.app/vdj/vdjImport": blockId
+				},
+				annotations: {
+					"pl7.app/label": "Clonotype ID",
+					"pl7.app/table/fontFamily": "monospace",
+					"pl7.app/table/visibility": "default",
+					"pl7.app/table/orderPriority": "110000",
+					"pl7.app/segmentedBy": string(json.encode(["pl7.app/vdj/vdjImport"]))
+				}
+			}
 		}
 	}
 
-	chainAMergedDf := rankedDfs["chain_a_rank1_df"].join(rankedDfs["chain_a_rank2_df"], {
-		how: "full",
-		on: ["sampleId", "cellKey"],
-		coalesce: true,
-		leftColumns: [{ column: "clonotypeKey", rename: "clonotypeKeyA1" }],
-		rightColumns: [{ column: "clonotypeKey", rename: "clonotypeKeyA2" }]
-	})
+	receptorsHandled := {}
+	for chain in chains {
+		receptor := chainToReceptor[chain]
+		if is_undefined(receptor) { continue }
+		if receptorsHandled[receptor] { continue }
+		receptorsHandled[receptor] = true
 
-	chainBMergedDf := rankedDfs["chain_b_rank1_df"].join(rankedDfs["chain_b_rank2_df"], {
-		how: "full",
-		on: ["sampleId", "cellKey"],
-		coalesce: true,
-		leftColumns: [{ column: "clonotypeKey", rename: "clonotypeKeyB1" }],
-		rightColumns: [{ column: "clonotypeKey", rename: "clonotypeKeyB2" }]
-	})
+		chainA := receptor == "IG" ? "IGHeavy" : (receptor == "TCRAB" ? "TRB" : "TRD")
+		chainB := receptor == "IG" ? "IGLight" : (receptor == "TCRAB" ? "TRA" : "TRG")
 
-	allChainsMergedDf := chainAMergedDf.join(chainBMergedDf, {
-		how: "full",
-		on: ["sampleId", "cellKey"],
-		coalesce: true
-	})
+		hasA := false; hasB := false
+		for ch in chains { if ch == chainA { hasA = true }; if ch == chainB { hasB = true } }
+		if !(hasA && hasB) { continue }
 
-	scClonotypeKeyExpr := pt.concatStr([
-		pt.col("clonotypeKeyA1").fillNull("NA"),
-		pt.col("clonotypeKeyA2").fillNull("NA"),
-		pt.col("clonotypeKeyB1").fillNull("NA"),
-		pt.col("clonotypeKeyB2").fillNull("NA")
-	], {delimiter: "#"}).hash("sha256", "base64_alphanumeric", 120).alias("scClonotypeKey")
+		scTraceSteps := [{ type: "milaboratories.importVDJ", id: blockId + ".sc." + receptor, importance: 82, label: receptor }]
+		scOutputs := [
+			{
+				type: "Xsv",
+				xsvType: "tsv",
+				settings: {
+					axes: [
+						{ column: "sampleId", spec: sampleIdAxisSpec },
+						axisByScClonotypeKey(receptor)
+					],
+					columns: [
+						{
+							column: "uniqueCellCount",
+							spec: {
+								name: "pl7.app/vdj/uniqueCellCount",
+								valueType: "Long",
+								annotations: annot(20100, true, {
+									"pl7.app/min": "1",
+									"pl7.app/isAbundance": "true",
+									"pl7.app/abundance/unit": "cells",
+									"pl7.app/abundance/normalized": "false",
+									"pl7.app/abundance/isPrimary": "true",
+									"pl7.app/isAnchor": "true",
+									"pl7.app/label": "Number of Cells"
+								})
+							}
+						},
+						{
+							column: "uniqueCellFraction",
+							spec: {
+								name: "pl7.app/vdj/uniqueCellFraction",
+								valueType: "Double",
+								annotations: annot(20000, false, {
+									"pl7.app/min": "0",
+									"pl7.app/max": "1",
+									"pl7.app/isAbundance": "true",
+									"pl7.app/abundance/unit": "cells",
+									"pl7.app/abundance/normalized": "true",
+									"pl7.app/abundance/isPrimary": "true",
+									"pl7.app/label": "Fraction of Cells",
+									"pl7.app/format": ".2p"
+								})
+							}
+						}
+					],
+					storageFormat: "Binary",
+					partitionKeyLength: 1
+				},
+				mem: "12GiB",
+				cpu: 2,
+				name: "abundanceTable",
+				path: ["abundanceTsv"],
+				traceSteps: scTraceSteps
+			},
+			{
+				type: "Xsv",
+				xsvType: "tsv",
+				settings: {
+					axes: [ axisByScClonotypeKey(receptor) ],
+					columns: [
+						{
+							column: "sampleCount",
+							spec: {
+								name: "pl7.app/vdj/sampleCount",
+								valueType: "Int",
+								annotations: annot(87110, true, {
+									"pl7.app/min": "1",
+									"pl7.app/isAbundance": "true",
+									"pl7.app/abundance/normalized": "false",
+									"pl7.app/abundance/unit": "samples",
+									"pl7.app/label": "Number of Samples"
+								})
+							}
+						},
+						{
+							column: "clonotypeLabel",
+							spec: {
+								name: "pl7.app/label",
+								valueType: "String",
+								annotations: annot(100000, false, {
+									"pl7.app/label": "Clone label"
+								})
+							}
+						}
+					],
+					storageFormat: "Binary",
+					partitionKeyLength: 0
+				},
+				mem: "12GiB",
+				cpu: 2,
+				name: "aggregates",
+				path: ["clonotypeTsv"],
+				traceSteps: scTraceSteps
+			}
+		]
 
-	allChainsMergedWithScKeyDf := allChainsMergedDf.withColumns(scClonotypeKeyExpr)
+		for chainLetter in ["a", "b"] {
+			for pIndex in ["Primary", "Secondary"] {
+				tableName := "properties_" + chainLetter + "_" + text.to_lower(pIndex)
+				chainNameU := (receptor == "IG" ? (chainLetter == "a" ? "Heavy" : "Light") : (receptor == "TCRAB" ? (chainLetter == "a" ? "Beta" : "Alpha") : (chainLetter == "a" ? "Delta" : "Gamma")))
+				pPrefixU := pIndex
+				pPrefixL := text.to_lower(pIndex)
+				isPrimary := pIndex == "Primary"
+				selectedProps := columnsInfo.propertyColumns
+				if !isPrimary {
+					selectedProps = []
+					for col in columnsInfo.propertyColumns { if col.column == "cdr3-aa" || col.column == "cdr3-nt" { selectedProps += [col] } }
+				}
+				scOutputs += [ {
+					type: "Xsv",
+					xsvType: "tsv",
+					settings: {
+						axes: [ axisByScClonotypeKey(receptor) ],
+						columns: (func(cols, chainNameU, chainLetterU, pPrefixU, pPrefixL, isPrimary) {
+							out := []
+							for col in cols {
+								originalLabel := ""
+								if !is_undefined(col.spec) && !is_undefined(col.spec.annotations) && !is_undefined(col.spec.annotations["pl7.app/label"]) {
+									originalLabel = col.spec.annotations["pl7.app/label"]
+								}
+								isTargetPrimary := (col.column == "cdr3-aa") || (col.column == "v-gene") || (col.column == "j-gene") || (col.column == "d-gene") || (col.column == "c-gene")
+								desiredVisibility := (isPrimary && isTargetPrimary) ? "default" : "optional"
+								out = append(out, maps.deepMerge(col, {
+									spec: {
+										domain: {
+											"pl7.app/vdj/scClonotypeChain": text.to_upper(chainLetter),
+											"pl7.app/vdj/scClonotypeChain/index": pPrefixL
+										},
+										annotations: {
+											"pl7.app/label": chainNameU + " " + originalLabel + " " + pPrefixU,
+											"pl7.app/table/visibility": desiredVisibility,
+											"pl7.app/parents": undefined
+										}
+									}
+								}))
+							}
+							return out
+						})(selectedProps, chainNameU, text.to_upper(chainLetter), pPrefixU, pPrefixL, isPrimary),
+						storageFormat: "Binary",
+						partitionKeyLength: 0
+					},
+					mem: "12GiB",
+					cpu: 2,
+					name: tableName,
+					path: ["properties" + text.to_upper(chainLetter) + pIndex + "Tsv"],
+					traceSteps: scTraceSteps
+				} ]
+			}
+		}
 
-	filterCondition := pt.and(
-		pt.col("clonotypeKeyA1").isNotNull(),
-		pt.col("clonotypeKeyB1").isNotNull()
-	)
-	allChainsFilteredDf := allChainsMergedWithScKeyDf.filter(filterCondition)
+		// cells linker table
+		scOutputs += [
+			{
+				type: "Xsv",
+				xsvType: "tsv",
+				settings: {
+					axes: [
+						{ column: "sampleId", spec: sampleIdAxisSpec },
+						{ column: "cellKey", spec: { name: "pl7.app/sc/cellId", type: "String" } },
+						axisByScClonotypeKey(receptor)
+					],
+					columns: [
+						{
+							column: "1",
+							spec: {
+								name: "pl7.app/sc/cellLinker",
+								valueType: "Int",
+								annotations: { "pl7.app/isLinkerColumn": "true" }
+							}
+						}
+					],
+					storageFormat: "Binary",
+					partitionKeyLength: 1
+				},
+				mem: "12GiB",
+				cpu: 2,
+				name: "cellsLinkerTable",
+				path: ["cellsTsv"],
+				traceSteps: scTraceSteps
+			}
+		]
+		
+		scResult := pframes.processColumn(
+			importResults.output("clonotypesTsvForSingleCell-" + chainA),
+			processSingleCellKeysTpl,
+			scOutputs,
+			{
+				aggregate: ["pl7.app/sampleId"],
+				traceSteps: [{ type: "milaboratories.import-vdj-data.processSingleCell", id: blockId + "." + receptor, importance: 80, label: receptor }],
+				extra: {
+					byCellTagB: importResults.output("clonotypesTsvForSingleCell-" + chainB).data,
+					propertiesA: pframes.processColumn(
+						importResults.output("clonotypesTsv-" + chainA),
+						aggregateByClonotypeKeyTpl,
+						[
+							{
+								type: "Resource",
+								spec: { kind: "PColumn", name: "mixcr.com/clonotypeProperties", valueType: "File" },
+								name: "clonotypeProperties",
+								path: ["tsv"]
+							}
+						],
+						{
+							aggregate: ["pl7.app/sampleId"],
+							extra: {
+								primaryAbundance: mainAbundanceCount,
+								primaryFraction: mainAbundanceFraction,
+								schema: columnsSchema
+							}
+						}
+					).outputData("clonotypeProperties"),
+					propertiesB: pframes.processColumn(
+						importResults.output("clonotypesTsv-" + chainB),
+						aggregateByClonotypeKeyTpl,
+						[
+							{
+								type: "Resource",
+								spec: { kind: "PColumn", name: "mixcr.com/clonotypeProperties", valueType: "File" },
+								name: "clonotypeProperties",
+								path: ["tsv"]
+							}
+						],
+						{
+							aggregate: ["pl7.app/sampleId"],
+							extra: {
+								primaryAbundance: mainAbundanceCount,
+								primaryFraction: mainAbundanceFraction,
+								schema: columnsSchema
+							}
+						}
+					).outputData("clonotypeProperties"),
+					params: {
+						mainAbundanceColumn: mainAbundanceCount,
+						mainIsProductiveColumn: "is-productive",
+						schemaPerClonotypeNoAggregates: columnsSchema
+					}
+				}
+			}
+		)
 
-	allChainsFilteredDf.
-		withColumns(pt.lit(1).alias("1")).
-		save("cells.tsv", {columns: ["sampleId", "cellKey", "scClonotypeKey", "1"]})
-
-	clonotypeTableDf := allChainsFilteredDf.groupBy(
-		"scClonotypeKey", "clonotypeKeyA1", "clonotypeKeyA2", "clonotypeKeyB1", "clonotypeKeyB2"
-	).agg(
-		pt.col("sampleId").nUnique().alias("sampleCount")
-	)
-	clonotypeTableDf = clonotypeLabel.addClonotypeLabelColumnsPt(clonotypeTableDf, "scClonotypeKey", "clonotypeLabel", pt)
-	clonotypeTableDf.save("clonotype.tsv")
-
-	cellCountsDf := allChainsFilteredDf.groupBy("sampleId", "scClonotypeKey").agg(
-		pt.col("cellKey").count().alias("uniqueCellCount")
-	)
-	cellCountsWithFractionDf := cellCountsDf.withColumns(
-		pt.col("uniqueCellCount").truediv(pt.col("uniqueCellCount").sum().over("sampleId")).alias("uniqueCellFraction")
-	)
-	cellCountsWithFractionDf.save("abundance.tsv")
-
-	cellGroupingRunResult := cellGroupingWf.run()
-
-	clonotypeTsv := cellGroupingRunResult.getFile("clonotype.tsv")
-	abundanceTsv := cellGroupingRunResult.getFile("abundance.tsv")
-	cellsTsv := cellGroupingRunResult.getFile("cells.tsv")
-
-	// Join properties for four positions A1/A2/B1/B2
-	propertiesAFile := propertiesA.inputs()["[]"]
-	propertiesBFile := propertiesB.inputs()["[]"]
-
-	outputProcessingWf := pt.workflow()
-
-	mainClonotypesDf := outputProcessingWf.frame(clonotypeTsv, {xsvType: "tsv", schema: [
-		{ column: "scClonotypeKey", type: "String" },
-		{ column: "clonotypeKeyA1", type: "String" },
-		{ column: "clonotypeKeyA2", type: "String" },
-		{ column: "clonotypeKeyB1", type: "String" },
-		{ column: "clonotypeKeyB2", type: "String" },
-		{ column: "sampleCount", type: "Int" }
-	], inferSchema: false })
-
-	propsADf := outputProcessingWf.frame(propertiesAFile, {xsvType: "tsv", schema: [{ column: "clonotypeKey", type: "String" }], inferSchema: false })
-	propsBDf := outputProcessingWf.frame(propertiesBFile, {xsvType: "tsv", schema: [{ column: "clonotypeKey", type: "String" }], inferSchema: false })
-
-	clonotypeColumnNames := []
-	for cc in schemaPerClonotypeNoAggregates { clonotypeColumnNames = append(clonotypeColumnNames, cc.column) }
-	finalOutputColumns := ["scClonotypeKey", "clonotypeKey"] + clonotypeColumnNames
-
-	chainMappings := [
-		{ chainKeyCol: "clonotypeKeyA1", propsTable: "props_a", finalOutFile: "properties_a_primary.tsv" },
-		{ chainKeyCol: "clonotypeKeyA2", propsTable: "props_a", finalOutFile: "properties_a_secondary.tsv" },
-		{ chainKeyCol: "clonotypeKeyB1", propsTable: "props_b", finalOutFile: "properties_b_primary.tsv" },
-		{ chainKeyCol: "clonotypeKeyB2", propsTable: "props_b", finalOutFile: "properties_b_secondary.tsv" }
-	]
-
-	propsMapDfs := { "props_a": propsADf, "props_b": propsBDf }
-	for mapping in chainMappings {
-		filteredClonotypesDf := mainClonotypesDf.filter(pt.col(mapping.chainKeyCol).isNotNull())
-		filteredClonotypesWithKeyDf := filteredClonotypesDf.withColumns(pt.col(mapping.chainKeyCol).alias("clonotypeKey"))
-		joinedDf := propsMapDfs[mapping.propsTable].join(filteredClonotypesWithKeyDf, { how: "inner", on: ["clonotypeKey"] })
-		joinedDf.save(mapping.finalOutFile, { columns: finalOutputColumns, xsvType: "tsv" })
+		for columnName in scResult.listXsvColumns("abundanceTable") { result.add("clonotypeProperties/abundance/" + receptor + "/" + columnName, scResult.outputSpec("abundanceTable", columnName), scResult.outputData("abundanceTable", columnName)) }
+		scResult.addXsvOutputToBuilder(result, "aggregates", "clonotypeProperties/aggregates/" + receptor + "/")
+		scResult.addXsvOutputToBuilder(result, "properties_a_primary", "clonotypeProperties/" + receptor + "/aPrimary/")
+		scResult.addXsvOutputToBuilder(result, "properties_a_secondary", "clonotypeProperties/" + receptor + "/aSecondary/")
+		scResult.addXsvOutputToBuilder(result, "properties_b_primary", "clonotypeProperties/" + receptor + "/bPrimary/")
+		scResult.addXsvOutputToBuilder(result, "properties_b_secondary", "clonotypeProperties/" + receptor + "/bSecondary/")
+		for columnName in scResult.listXsvColumns("cellsLinkerTable") {
+			result.add("clonotypeProperties/" + receptor + "/cellsLinkerTable/" + columnName, scResult.outputSpec("cellsLinkerTable", columnName), scResult.outputData("cellsLinkerTable", columnName))
+		}
 	}
 
-	outputProcessingRunResult := outputProcessingWf.run()
-
-	return {
-		abundanceTsv: abundanceTsv,
-		clonotypeTsv: clonotypeTsv,
-		cellsTsv: cellsTsv,
-		propertiesAPrimaryTsv: outputProcessingRunResult.getFile("properties_a_primary.tsv"),
-		propertiesASecondaryTsv: outputProcessingRunResult.getFile("properties_a_secondary.tsv"),
-		propertiesBPrimaryTsv: outputProcessingRunResult.getFile("properties_b_primary.tsv"),
-		propertiesBSecondaryTsv: outputProcessingRunResult.getFile("properties_b_secondary.tsv")
-	}
+	return { result: result.build(), stats: stats.build() }
 })
-
-
