@@ -3,9 +3,11 @@ wf := import("@platforma-sdk/workflow-tengo:workflow")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets:= import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
+maps := import("@platforma-sdk/workflow-tengo:maps")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
 processBulkTpl := assets.importTemplate(":process-bulk")
+processSingleCellTpl := assets.importTemplate(":process-single-cell")
 
 wf.setPreRun(assets.importTemplate(":prerun"))
 
@@ -27,7 +29,11 @@ wf.body(func(args) {
 		primaryCountType: args.primaryCountType
 	}).output("columnsInfo")
 
-	result := render.createEphemeral(processBulkTpl, {
+	isSingleCell := (format == "cellranger") || (format == "mixcr-sc")
+	
+	tpl := isSingleCell ? processSingleCellTpl : processBulkTpl
+
+	result := render.createEphemeral(tpl, {
 		blockId: blockId,
 		format: format,
 		dataset: dataset,

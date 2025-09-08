@@ -17,6 +17,7 @@ immunoSeqTpl := assets.importTemplate(":import-immunoSeq")
 qiagenTpl := assets.importTemplate(":import-qiagen")
 customTpl := assets.importTemplate(":import-custom")
 mixcrTpl := assets.importTemplate(":import-mixcr")
+cellrangerTpl := assets.importTemplate(":import-cellranger")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
 
 // Helper to add common annotations for table view properties
@@ -116,8 +117,9 @@ self.body(func(inputs) {
         importTpl = customTpl
     } else if format == "mixcr" {
         importTpl = mixcrTpl
-    }
-
+    } else if format == "cellranger" {
+		importTpl = cellrangerTpl
+	}
     if importTpl == undefined {
         ll.panic("Import template is undefined, format: " + format)
     }

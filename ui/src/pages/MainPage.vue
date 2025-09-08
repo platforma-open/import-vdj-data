@@ -10,7 +10,9 @@ const app = useApp();
 const formatOptions = [
   { label: 'ImmunoSeq', value: 'immunoSeq' },
   { label: 'QIAseq Immune Repertoire Analysis', value: 'qiagen' },
-  { label: 'MiXCR bulk immune repertoire format', value: 'mixcr' },
+  { label: 'MiXCR bulk', value: 'mixcr' },
+  { label: 'MiXCR single cell', value: 'mixcr-sc' },
+  { label: 'Cell Ranger VDJ', value: 'cellranger' },
   { label: 'Custom', value: 'custom' },
 ];
 
@@ -21,6 +23,12 @@ const chainsOptions = [
   { label: 'TRB', value: 'TRB' },
   { label: 'TRD', value: 'TRD' },
   { label: 'TRG', value: 'TRG' },
+];
+
+const receptorOptions = [
+  { value: 'IG', label: 'IG' },
+  { value: 'TCRAB', label: 'TCR-αβ' },
+  { value: 'TCRGD', label: 'TCR-ɣδ' },
 ];
 
 const countTypeOptions = [
@@ -35,7 +43,7 @@ const secondaryTypeOptions = computed(() => {
   return countTypeOptions;
 });
 
-const isSingleCell = computed(() => false);
+const isSingleCell = computed(() => app.model.args.format === 'mixcr-sc' || app.model.args.format === 'cellranger');
 
 const tableSettings = usePlDataTableSettingsV2({
   sourceId: () => app.model.args.datasetRef,
@@ -47,6 +55,32 @@ const setDataset = (datasetRef: PlRef | undefined) => {
   if (datasetRef)
     app.model.ui.title = 'Import V(D)J Data - ' + app.model.outputs.datasetOptions?.find((o) => plRefsEqual(o.ref, datasetRef))?.label;
 };
+
+function setReceptors(selected: string[]) {
+  const chains: string[] = [];
+  if (selected.includes('IG')) {
+    chains.push('IGHeavy', 'IGLight');
+  }
+  if (selected.includes('TCRAB')) {
+    chains.push('TRB', 'TRA');
+  }
+  if (selected.includes('TCRGD')) {
+    chains.push('TRD', 'TRG');
+  }
+  app.model.args.chains = chains;
+}
+
+const selectedReceptors = computed<string[]>({
+  get: () => {
+    const c = app.model.args.chains ?? [];
+    const sel: string[] = [];
+    if (c.includes('IGHeavy') || c.includes('IGLight')) sel.push('IG');
+    if (c.includes('TRA') || c.includes('TRB')) sel.push('TCRAB');
+    if (c.includes('TRD') || c.includes('TRG')) sel.push('TCRGD');
+    return sel;
+  },
+  set: (val) => setReceptors(val),
+});
 
 const requiredCanonicalBase = [
   { key: 'cdr3-aa', label: 'CDR3 aa' },
@@ -140,8 +174,12 @@ const validationMessage = computed(() => {
   const formatName = result.format === 'qiagen'
     ? 'QIAseq Immune Repertoire Analysis'
     : result.format === 'mixcr'
-      ? 'MiXCR bulk immune repertoire format'
-      : result.format;
+      ? 'MiXCR bulk'
+      : result.format === 'mixcr-sc'
+        ? 'MiXCR single cell'
+        : result.format === 'cellranger'
+          ? 'Cell Ranger VDJ'
+          : result.format;
 
   return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
 });
@@ -160,9 +198,13 @@ function onModalUpdate(val: boolean) {
   app.model.ui.settingsOpen = val;
 }
 
+// Track previous format to avoid clearing all flags and causing hangs
+let _prevFormat: 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'custom' | 'immunoSeq' | 'airr' | undefined;
+
 watch(
   () => app.model.args,
   (args) => {
+    const fmt = (app.model.args as unknown as { format?: 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'custom' | 'immunoSeq' | 'airr' | undefined }).format;
     if (args.format === 'custom') {
       const a = app.model.args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
       if (!a.customMapping) a.customMapping = {};
@@ -185,24 +227,27 @@ watch(
         delete a.customMapping['read-count'];
       }
     }
-    // Reset qiagenColumnsPresent when format changes away from qiagen
-    if (args.format !== 'qiagen') {
-      app.model.args.qiagenColumnsPresent = undefined;
+    // Only clear the previous format flag when format actually changes
+    if (_prevFormat !== fmt) {
+      if (_prevFormat === 'qiagen') app.model.ui.qiagenColumnsPresent = false;
+      if (_prevFormat === 'mixcr' || _prevFormat === 'mixcr-sc') app.model.ui.mixcrColumnsPresent = false;
+      if (_prevFormat === 'cellranger') app.model.ui.crColumnsPresent = false;
+      _prevFormat = fmt;
     }
   },
   { immediate: true },
 );
 
-// Watch validation result and update the UI state
+// Watch validation result and update the UI state (only for the currently selected format)
 watch(
   validationResult,
   (result) => {
-    if (result && result.format === 'qiagen') {
-      app.model.ui.qiagenColumnsPresent = result.isValid;
-    }
-    if (result && result.format === 'mixcr') {
-      app.model.ui.mixcrColumnsPresent = result.isValid;
-    }
+    if (!result) return;
+    const currentFormat = app.model.args.format;
+    if (result.format !== currentFormat) return;
+    if (result.format === 'qiagen') app.model.ui.qiagenColumnsPresent = result.isValid;
+    if (result.format === 'mixcr' || result.format === 'mixcr-sc') app.model.ui.mixcrColumnsPresent = result.isValid;
+    if (result.format === 'cellranger') app.model.ui.crColumnsPresent = result.isValid;
   },
   { immediate: true },
 );
@@ -236,11 +281,24 @@ watch(
       <PlDropdown v-model="app.model.args.format" :options="formatOptions" label="Data format" required />
 
       <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
-        <template #title>Invalid {{ validationResult?.format === 'qiagen' ? 'QIAseq Immune Repertoire Analysis' : (validationResult?.format === 'mixcr' ? 'MiXCR bulk immune repertoire format' : validationResult?.format) }} dataset</template>
+        <template #title>
+          Invalid {{ validationResult?.format === 'qiagen'
+            ? 'QIAseq Immune Repertoire Analysis'
+            : (validationResult?.format === 'mixcr'
+              ? 'MiXCR bulk'
+              : (validationResult?.format === 'mixcr-sc'
+                ? 'MiXCR single cell'
+                : (validationResult?.format === 'cellranger'
+                  ? 'Cell Ranger VDJ'
+                  : validationResult?.format)))
+          }} dataset
+        </template>
         {{ validationMessage }}
       </PlAlert>
 
       <PlDropdownMulti v-if="!isSingleCell" v-model="app.model.args.chains" :options="chainsOptions" label="Chains to import" required />
+      <PlDropdownMulti v-else v-model="selectedReceptors" :options="receptorOptions" label="Immune receptors" required />
+      <!-- receptor selector for single-cell formats can be added here if needed -->
 
       <template v-if="app.model.args.format === 'custom'">
         <PlSectionSeparator>Required columns</PlSectionSeparator>

@@ -3,10 +3,9 @@ import { BlockModel, createPlDataTableStateV2, createPlDataTableV2, PColumnColle
 
 export type BlockArgs = {
   datasetRef?: PlRef;
-  format?: 'immunoSeq' | 'qiagen' | 'mixcr' | 'airr' | 'custom';
+  format?: 'immunoSeq' | 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'airr' | 'custom';
   chains: string[];
   customMapping?: Record<string, string | undefined>;
-  qiagenColumnsPresent?: boolean;
   primaryCountType?: 'read' | 'umi';
   secondaryCountType?: 'read' | 'umi';
 };
@@ -17,6 +16,7 @@ export type UiState = {
   settingsOpen: boolean;
   qiagenColumnsPresent: boolean;
   mixcrColumnsPresent: boolean;
+  crColumnsPresent: boolean;
 };
 
 export type ColumnDescription = {
@@ -36,10 +36,11 @@ export const model = BlockModel.create()
     settingsOpen: true,
     qiagenColumnsPresent: false,
     mixcrColumnsPresent: false,
+    crColumnsPresent: false,
   })
 
   .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping, qiagenColumnsPresent, primaryCountType } = ctx.args;
+    const { datasetRef, format, chains, customMapping, primaryCountType } = ctx.args;
     if (datasetRef === undefined) return false;
     if (format === undefined) return false;
     if (!Array.isArray(chains) || chains.length === 0) return false;
@@ -58,8 +59,12 @@ export const model = BlockModel.create()
       return ctx.uiState.qiagenColumnsPresent === true;
     }
 
-    if (format === 'mixcr') {
+    if (format === 'mixcr' || format === 'mixcr-sc') {
       return ctx.uiState.mixcrColumnsPresent === true;
+    }
+
+    if (format === 'cellranger') {
+      return ctx.uiState.crColumnsPresent === true;
     }
 
     // For other formats, basic args are sufficient
@@ -133,7 +138,6 @@ export const model = BlockModel.create()
 
     if (format === 'mixcr') {
       // MiXCR minimal requirements aligned with infer-columns-mixcr.lib.tengo
-      // We validate presence of native MiXCR headers which map to canonical keys
       const mixcrRequiredHeaders = [
         'readCount',
         'nSeqCDR3',
@@ -146,6 +150,40 @@ export const model = BlockModel.create()
         isValid: missingColumns.length === 0,
         missingColumns,
         format: 'mixcr',
+      };
+    }
+
+    if (format === 'mixcr-sc') {
+      // Same as MiXCR plus at least one tagValueCELL* column
+      const mixcrRequiredHeaders = [
+        'readCount',
+        'nSeqCDR3',
+        'aaSeqCDR3',
+      ];
+      const missingBase = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
+      const hasTagValueCell = headers.some((h) => h.startsWith('tagValueCELL'));
+      const missingColumns = [...missingBase, ...(hasTagValueCell ? [] as string[] : ['tagValueCELL*'])];
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'mixcr-sc',
+      };
+    }
+
+    if (format === 'cellranger') {
+      // Cell Ranger VDJ clones per-chain table minimal required headers
+      const cellrangerRequired = [
+        'cdr3_nt',
+        'cdr3',
+        'v_gene',
+        'j_gene',
+        'barcode',
+      ];
+      const missingColumns = cellrangerRequired.filter((col) => !headers.includes(col));
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'cellranger',
       };
     }
 
