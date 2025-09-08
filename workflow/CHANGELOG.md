@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.7.1
+
+### Patch Changes
+
+- f6168a2: Fix pip issue on windows (registry access errors)
+
 ## 1.7.0
 
 ### Minor Changes
