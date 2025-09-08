@@ -10,8 +10,8 @@ const app = useApp();
 const formatOptions = [
   { label: 'ImmunoSeq', value: 'immunoSeq' },
   { label: 'QIAseq Immune Repertoire Analysis', value: 'qiagen' },
-  { label: 'MiXCR immune repertoire format for bulk data', value: 'mixcr' },
-  { label: 'MiXCR immune repertoire format for single cell data', value: 'mixcr-sc' },
+  { label: 'MiXCR bulk', value: 'mixcr' },
+  { label: 'MiXCR single cell', value: 'mixcr-sc' },
   { label: 'Cell Ranger VDJ', value: 'cellranger' },
   { label: 'Custom', value: 'custom' },
 ];
@@ -285,9 +285,9 @@ watch(
           Invalid {{ validationResult?.format === 'qiagen'
             ? 'QIAseq Immune Repertoire Analysis'
             : (validationResult?.format === 'mixcr'
-              ? 'MiXCR bulk immune repertoire format'
+              ? 'MiXCR bulk'
               : (validationResult?.format === 'mixcr-sc'
-                ? 'MiXCR single cell immune repertoire format'
+                ? 'MiXCR single cell'
                 : (validationResult?.format === 'cellranger'
                   ? 'Cell Ranger VDJ'
                   : validationResult?.format)))
