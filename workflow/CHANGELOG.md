@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.8.0
+
+### Minor Changes
+
+- 9970900: new chain name variant added
+
 ## 1.7.1
 
 ### Patch Changes
