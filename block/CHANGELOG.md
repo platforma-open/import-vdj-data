@@ -1,5 +1,14 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.2.5
+
+### Patch Changes
+
+- Updated dependencies [8ed3041]
+  - @platforma-open/milaboratories.import-vdj.workflow@1.9.0
+  - @platforma-open/milaboratories.import-vdj.model@1.5.0
+  - @platforma-open/milaboratories.import-vdj.ui@1.6.0
+
 ## 1.2.4
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.model
 
+## 1.5.0
+
+### Minor Changes
+
+- 8ed3041: change chains name in columns specs
+
 ## 1.4.0
 
 ### Minor Changes
