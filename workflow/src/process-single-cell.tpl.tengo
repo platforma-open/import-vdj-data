@@ -160,7 +160,7 @@ self.body(func(inputs) {
 	for chain in chains { importResults.addXsvOutputToBuilder(stats, "stats-" + chain, "stats-" + chain) }
 
 	// SC branch per receptor
-	chainToReceptor := { "IGHeavy": "IG", "IGLight": "IG", "TRA": "TCRAB", "TRB": "TCRAB", "TRD": "TCRGD", "TRG": "TCRGD" }
+	chainToReceptor := { "IGHeavy": "IG", "IGLight": "IG", "TCRAlpha": "TCRAB", "TCRBeta": "TCRAB", "TCRDelta": "TCRGD", "TCRGamma": "TCRGD" }
 
 	mainAbundanceCount := "read-count"; mainAbundanceFraction := "read-fraction"
 	for col in columnsInfo.abundanceColumns {
@@ -199,8 +199,8 @@ self.body(func(inputs) {
 		if receptorsHandled[receptor] { continue }
 		receptorsHandled[receptor] = true
 
-		chainA := receptor == "IG" ? "IGHeavy" : (receptor == "TCRAB" ? "TRB" : "TRD")
-		chainB := receptor == "IG" ? "IGLight" : (receptor == "TCRAB" ? "TRA" : "TRG")
+		chainA := receptor == "IG" ? "IGHeavy" : (receptor == "TCRAB" ? "TCRBeta" : "TCRDelta")
+		chainB := receptor == "IG" ? "IGLight" : (receptor == "TCRAB" ? "TCRAlpha" : "TCRGamma")
 
 		hasA := false; hasB := false
 		for ch in chains { if ch == chainA { hasA = true }; if ch == chainB { hasB = true } }

@@ -128,10 +128,10 @@ self.body(func(inputs) {
     chainToLocusMap := {
         "IGHeavy":["IGH"],
         "IGLight": "IGL", // Default to IGL, IGK is handled below
-        "TRA": ["TCRA", "TRAC", "TRA"],
-        "TRB": ["TCRB", "TRBC", "TRB"],
-        "TRG": ["TCRG", "TRGC", "TRG"],
-        "TRD": ["TCRD", "TRDC", "TRD"]
+        "TCRAlpha": ["TCRA", "TRAC", "TRA"],
+        "TCRBeta": ["TCRB", "TRBC", "TRB"],
+        "TCRGamma": ["TCRG", "TRGC", "TRG"],
+        "TCRDelta": ["TCRD", "TRDC", "TRD"]
     }
 
     chainColumn := hasTopChains ? "top-chains" : "v-gene"

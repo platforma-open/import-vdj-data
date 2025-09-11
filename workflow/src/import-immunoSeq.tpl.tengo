@@ -58,10 +58,10 @@ self.body(func(inputs) {
 	chainToLocusMap := {
 		"IGHeavy": "IGH",
 		"IGLight": "IGL", // Default to IGL, IGK is handled below
-		"TRA": "TCRA",
-		"TRB": "TCRB",
-		"TRG": "TCRG",
-		"TRD": "TCRD"
+		"TCRAlpha": "TCRA",
+		"TCRBeta": "TCRB",
+		"TCRGamma": "TCRG",
+		"TCRDelta": "TCRD"
 	}
 
 	keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })

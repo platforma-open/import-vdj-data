@@ -58,10 +58,10 @@ self.body(func(inputs) {
 	chainToLocusMap := {
 		"IGHeavy": "IGH",
 		"IGLight": "IGL", // Special case handled below
-		"TRA": "TRA",
-		"TRB": "TRB", 
-		"TRG": "TRG",
-		"TRD": "TRD"
+		"TCRAlpha": "TRA",
+		"TCRBeta": "TRB", 
+		"TCRGamma": "TRG",
+		"TCRDelta": "TRD"
 	}
 
 	keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
