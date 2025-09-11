@@ -211,10 +211,10 @@ self.body(func(inputs) {
     chainToLocusMap := {
         "IGHeavy": "IGH",
         "IGLight": "IGL", // IGK handled below as well
-        "TRA": "TRA",
-        "TRB": "TRB",
-        "TRG": "TRG",
-        "TRD": "TRD"
+        "TCRAlpha": "TRA",
+        "TCRBeta": "TRB",
+        "TCRGamma": "TRG",
+        "TCRDelta": "TRD"
     }
 
     hasCellTags := columnsInfo.cellTagColumns != undefined && len(columnsInfo.cellTagColumns) > 0

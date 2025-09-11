@@ -19,10 +19,10 @@ const formatOptions = [
 const chainsOptions = [
   { label: 'IG Heavy', value: 'IGHeavy' },
   { label: 'IG Light', value: 'IGLight' },
-  { label: 'TRA', value: 'TRA' },
-  { label: 'TRB', value: 'TRB' },
-  { label: 'TRD', value: 'TRD' },
-  { label: 'TRG', value: 'TRG' },
+  { label: 'TRA', value: 'TCRAlpha' },
+  { label: 'TRB', value: 'TCRBeta' },
+  { label: 'TRD', value: 'TCRDelta' },
+  { label: 'TRG', value: 'TCRGamma' },
 ];
 
 const receptorOptions = [
@@ -62,10 +62,10 @@ function setReceptors(selected: string[]) {
     chains.push('IGHeavy', 'IGLight');
   }
   if (selected.includes('TCRAB')) {
-    chains.push('TRB', 'TRA');
+    chains.push('TCRBeta', 'TCRAlpha');
   }
   if (selected.includes('TCRGD')) {
-    chains.push('TRD', 'TRG');
+    chains.push('TCRDelta', 'TCRGamma');
   }
   app.model.args.chains = chains;
 }
@@ -75,8 +75,8 @@ const selectedReceptors = computed<string[]>({
     const c = app.model.args.chains ?? [];
     const sel: string[] = [];
     if (c.includes('IGHeavy') || c.includes('IGLight')) sel.push('IG');
-    if (c.includes('TRA') || c.includes('TRB')) sel.push('TCRAB');
-    if (c.includes('TRD') || c.includes('TRG')) sel.push('TCRGD');
+    if (c.includes('TCRAlpha') || c.includes('TCRBeta')) sel.push('TCRAB');
+    if (c.includes('TCRDelta') || c.includes('TCRGamma')) sel.push('TCRGD');
     return sel;
   },
   set: (val) => setReceptors(val),
@@ -269,6 +269,8 @@ watch(
     <PlSlideModal :model-value="forceSettingsOpen" @update:model-value="onModalUpdate">
       <template #title>Settings</template>
 
+      {{ app.model.args.chains }}
+
       <PlDropdownRef
         v-model="app.model.args.datasetRef"
         :options="app.model.outputs.datasetOptions"
@@ -311,7 +313,7 @@ watch(
             :label="f.label"
             clearable
             required
-            @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+            @update:model-value="(v: string | undefined) => setMapping(f.key, v as string | undefined)"
           />
 
           <PlDropdown
@@ -328,7 +330,7 @@ watch(
             label="Read count column (primary)"
             clearable
             required
-            @update:model-value="(v) => setMapping('read-count', v as string | undefined)"
+            @update:model-value="(v: string | undefined) => setMapping('read-count', v as string | undefined)"
           />
           <PlDropdown
             v-if="(app.model.args as any).primaryCountType === 'umi'"
@@ -337,7 +339,7 @@ watch(
             label="UMI count column (primary)"
             clearable
             required
-            @update:model-value="(v) => setMapping('umi-count', v as string | undefined)"
+            @update:model-value="(v: string | undefined) => setMapping('umi-count', v as string | undefined)"
           />
         </div>
 
@@ -357,7 +359,7 @@ watch(
                 :options="headerOptions"
                 label="UMI count column (secondary, optional)"
                 clearable
-                @update:model-value="(v) => setMapping('umi-count', v as string | undefined)"
+                @update:model-value="(v: string | undefined) => setMapping('umi-count', v as string | undefined)"
               />
               <PlDropdown
                 v-if="(app.model.args as any).secondaryCountType === 'read'"
@@ -365,7 +367,7 @@ watch(
                 :options="headerOptions"
                 label="Read count column (secondary, optional)"
                 clearable
-                @update:model-value="(v) => setMapping('read-count', v as string | undefined)"
+                @update:model-value="(v: string | undefined) => setMapping('read-count', v as string | undefined)"
               />
               <PlDropdown
                 v-for="f in optionalCanonical"
@@ -387,7 +389,7 @@ watch(
                 :options="headerOptions"
                 :label="f.label"
                 clearable
-                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+                @update:model-value="(v: string | undefined) => setMapping(f.key, v as string | undefined)"
               />
             </div>
           </PlAccordionSection>
@@ -400,7 +402,7 @@ watch(
                 :options="headerOptions"
                 :label="f.label"
                 clearable
-                @update:model-value="(v) => setMapping(f.key, v as string | undefined)"
+                @update:model-value="(v: string | undefined) => setMapping(f.key, v as string | undefined)"
               />
             </div>
           </PlAccordionSection>

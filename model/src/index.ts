@@ -27,7 +27,7 @@ export type ColumnDescription = {
 export const model = BlockModel.create()
 
   .withArgs<BlockArgs>({
-    chains: ['IGHeavy', 'IGLight', 'TRA', 'TRB', 'TRD', 'TRG'],
+    chains: ['IGHeavy', 'IGLight', 'TCRAlpha', 'TCRBeta', 'TCRDelta', 'TCRGamma'],
   })
 
   .withUiState<UiState>({

@@ -4,6 +4,7 @@ exec := import("@platforma-sdk/workflow-tengo:exec")
 assets:= import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
 maps := import("@platforma-sdk/workflow-tengo:maps")
+ll := import("@platforma-sdk/workflow-tengo:ll")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
 processBulkTpl := assets.importTemplate(":process-bulk")
@@ -19,7 +20,7 @@ wf.body(func(args) {
 	blockId := wf.blockId().getDataAsJson()
 
 	if chains == undefined {
-		chains = ["IGHeavy", "IGLight", "TRA", "TRB", "TRD", "TRG"]
+		chains = ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta", "TCRGamma"]
 	}
 
 	columnsInfo := render.create(inferColumnsTpl, {
