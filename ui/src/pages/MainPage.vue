@@ -269,8 +269,6 @@ watch(
     <PlSlideModal :model-value="forceSettingsOpen" @update:model-value="onModalUpdate">
       <template #title>Settings</template>
 
-      {{ app.model.args.chains }}
-
       <PlDropdownRef
         v-model="app.model.args.datasetRef"
         :options="app.model.outputs.datasetOptions"
