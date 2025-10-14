@@ -22,8 +22,8 @@ catalogs:
       specifier: 1.42.51
       version: 1.42.51
     '@platforma-sdk/tengo-builder':
-      specifier: 2.1.18
-      version: 2.1.18
+      specifier: ^2.3.0
+      version: 2.3.0
     '@platforma-sdk/test':
       specifier: 1.42.52
       version: 1.42.52
@@ -168,7 +168,7 @@ importers:
     devDependencies:
       '@platforma-sdk/tengo-builder':
         specifier: 'catalog:'
-        version: 2.1.18
+        version: 2.3.0
       '@platforma-sdk/test':
         specifier: 'catalog:'
         version: 1.42.52(@types/node@24.3.1)
@@ -920,6 +920,10 @@ packages:
     resolution: {integrity: sha512-oGTrQP74ckLp5ks6cY4ruVVf+7ivJKgY6HfaytCaARRqvYfEg8Yl0t6PItRu78RyByOsghzpOyS8wfPCUnFahQ==}
     engines: {node: '>=20.3.0'}
 
+  '@milaboratories/pl-client@2.15.0':
+    resolution: {integrity: sha512-RWlAX1qHz+qN9cJlGnImuAN9kv214WGPfwD49+paNiDOrFlLx/xq/2CsVniQz/aKp9LmjCxeBbYhG33BkVeYsw==}
+    engines: {node: '>=22.19.0'}
+
   '@milaboratories/pl-config@1.7.3':
     resolution: {integrity: sha512-9G/cpW6sv+QHYpNjcqgY/O+Q/mwCyFwqvAVD15EbvJy7WhZGSfNLp4mM/m4XeqxmioorNT1QhnHCTpo7RRHzHA==}
 
@@ -940,9 +944,15 @@ packages:
   '@milaboratories/pl-http@1.1.7':
     resolution: {integrity: sha512-UNi7WMEg8aEEhJa6ti5Y5/sPfkrs9nUCfo/4TaWslXrMkXpX7u0WYbzc2wBDjmkKHjz+VcgsNPsqndPKGGAvoQ==}
 
+  '@milaboratories/pl-http@1.2.0':
+    resolution: {integrity: sha512-5iRxug4TjE88+XoMU5LVcXe1PEmXYfZI3WxJGrayzYQFM/9GiKuwcUsQ0kDlFmw+s6UlEAzgC9+MsJFKvU7C5Q==}
+
   '@milaboratories/pl-middle-layer@1.42.32':
     resolution: {integrity: sha512-qO9wszOEBVzn4if0gqP9CcC7eNBet8scoBwVdoN7ZZRnpxVUSfNvPsoCB33e/GSsvGIUIXvuFctWXVviSUJ66g==}
     engines: {node: '>=20.16.0'}
+
+  '@milaboratories/pl-model-backend@1.1.15':
+    resolution: {integrity: sha512-beEhNalTdBNEIPqBvJ96BmsDIfck1ZyEtH2wN4yn3EmmRREtGUlXsJrrHfU6hv82j6/lh9K/kdxkob0oVwYGTA==}
 
   '@milaboratories/pl-model-backend@1.1.6':
     resolution: {integrity: sha512-UkrHDizWkQgzFeI7zwavz8OTkK9eCrZHOAbFvi+OMdPcHDs1atyv3fY2RuGvsiyDQFSU2RSc+Sh7a87sikHoxQ==}
@@ -952,6 +962,9 @@ packages:
 
   '@milaboratories/pl-model-common@1.19.17':
     resolution: {integrity: sha512-b4ijSyBAtQvJh0J4VvdGfqpxUn7egzhbUQYQ6wrgdzrJAhWImUbos6N1QMZm57T8P9Tzfz2HlVP0DGvPPUZOIQ==}
+
+  '@milaboratories/pl-model-common@1.21.2':
+    resolution: {integrity: sha512-m2VB7vny/myR3K0ZMjQ9eJvOeBVBsOl4JauTuxqm82tK4lQ/kxgoVjVizPCEI7TFJJV1opkPWVTVy0U6WHxPwQ==}
 
   '@milaboratories/pl-model-middle-layer@1.8.23':
     resolution: {integrity: sha512-YBNhVCCffYXiSe8/I4RSv6WKPN9LQWVxGiGM6Jx/YAnsRwnzu2C6yyzWuBjS4b7YNgkUGx3NiZ5AvBqUhtYMCQ==}
@@ -983,6 +996,10 @@ packages:
   '@milaboratories/ts-helpers@1.4.7':
     resolution: {integrity: sha512-hSTDITZ6O/oQH6DrjXQtY61kIIwipAVrpd9dVgvnCZYvEKrZj125nczR6ZZn4BMtVlrkEvRBCkbRb/as3XSi2g==}
     engines: {node: '>=20.16.0'}
+
+  '@milaboratories/ts-helpers@1.5.1':
+    resolution: {integrity: sha512-o8w+/6leOpELVk/GN7+bKnTWgTiL+lsIKq/UDtRGNhk6hYIsKfE+vWHGoTswKMvgoqfA0C3cZQ2HjUvo4VDE+w==}
+    engines: {node: '>=22.19.0'}
 
   '@milaboratories/uikit@2.4.12':
     resolution: {integrity: sha512-FCm9EUp96ED6j3TZo7LXv6iA6Odm+LZPwwuD0M12Tbk7PGbVm6+4LSlq2xyZFPwJl0W2AjVbQENMkveI1iU5ng==}
@@ -1123,9 +1140,9 @@ packages:
   '@platforma-sdk/model@1.42.51':
     resolution: {integrity: sha512-zjx3s2G8qMdhnOy2Q/bLmhPBYJfboVdQdRPI/spzkFXOaJTDbkVkr/3WpkhNtVK12X070KvvAsdB9iRoRjy3rg==}
 
-  '@platforma-sdk/tengo-builder@2.1.18':
-    resolution: {integrity: sha512-Y9oMj3ab5tMtuAItk275L5l3B8GgtY8j/X6SxTQIAZMwIt98QRvTyDJpwlu9rJoNvWllyXF64CYmjld4ToQVjw==}
-    engines: {node: '>=20'}
+  '@platforma-sdk/tengo-builder@2.3.0':
+    resolution: {integrity: sha512-asjeZ2mdbEVhXk5OqWDS5xPeVRIK5oPh3tN7YVTx9ZoRAtY4/d41Bcep35zLaS/MNBqzZ+WAmUy1/aqDTSFA2Q==}
+    engines: {node: '>=22'}
     hasBin: true
 
   '@platforma-sdk/test@1.42.52':
@@ -4415,6 +4432,10 @@ packages:
     resolution: {integrity: sha512-r8LA6i4LP4EeWOhqBaZZjDWwehd1xUJPCJd9Sv300H0ZmcUER4+JPh7bqqZeqs1o5pgtgvXm+d9UGrB5zZGDiQ==}
     engines: {node: 20 || >=22}
 
+  lru-cache@11.2.2:
+    resolution: {integrity: sha512-F9ODfyqML2coTIsQpSkRHnLSZMtkU8Q+mSfcaIyKwy58u+8k5nvAYeiNhsyMARvzNcXJ9QfWVrcPsC9e9rAxtg==}
+    engines: {node: 20 || >=22}
+
   lru-cache@6.0.0:
     resolution: {integrity: sha512-Jo6dJ04CmSjuznwJSS3pUeWmd/H0ffTlkXXgwZi+eq1UCmqQwCh+eLsYOYCwY991i2Fah4h1BEMCx4qThGbsiA==}
     engines: {node: '>=10'}
@@ -5106,6 +5127,10 @@ packages:
 
   undici@7.13.0:
     resolution: {integrity: sha512-l+zSMssRqrzDcb3fjMkjjLGmuiiK2pMIcV++mJaAc9vhjSGpvM7h43QgP+OAMb1GImHmbPyG2tBXeuyG5iY4gA==}
+    engines: {node: '>=20.18.1'}
+
+  undici@7.16.0:
+    resolution: {integrity: sha512-QEg3HPMll0o3t2ourKwOeUAZ159Kn9mx5pnzHRQO8+Wixmh88YdZRiIwat0iNzNNXn0yoEtXJqFpyW7eM8BV7g==}
     engines: {node: '>=20.18.1'}
 
   universalify@0.1.2:
@@ -6504,6 +6529,26 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@milaboratories/pl-client@2.15.0':
+    dependencies:
+      '@grpc/grpc-js': 1.13.4
+      '@milaboratories/pl-http': 1.2.0
+      '@milaboratories/pl-model-common': 1.21.2
+      '@milaboratories/ts-helpers': 1.5.1
+      '@protobuf-ts/grpc-transport': 2.11.1(@grpc/grpc-js@1.13.4)
+      '@protobuf-ts/runtime': 2.11.1
+      '@protobuf-ts/runtime-rpc': 2.11.1
+      canonicalize: 2.1.0
+      denque: 2.1.0
+      https-proxy-agent: 7.0.6
+      long: 5.3.2
+      lru-cache: 11.2.2
+      undici: 7.16.0
+      utility-types: 3.11.0
+      yaml: 2.8.1
+    transitivePeerDependencies:
+      - supports-color
+
   '@milaboratories/pl-config@1.7.3':
     dependencies:
       '@milaboratories/ts-helpers': 1.4.7
@@ -6569,6 +6614,13 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@milaboratories/pl-http@1.2.0':
+    dependencies:
+      https-proxy-agent: 7.0.6
+      undici: 7.16.0
+    transitivePeerDependencies:
+      - supports-color
+
   '@milaboratories/pl-middle-layer@1.42.32':
     dependencies:
       '@milaboratories/computable': 2.6.8
@@ -6605,6 +6657,14 @@ snapshots:
       - react-native-b4a
       - supports-color
 
+  '@milaboratories/pl-model-backend@1.1.15':
+    dependencies:
+      '@milaboratories/pl-client': 2.15.0
+      canonicalize: 2.1.0
+      zod: 3.23.8
+    transitivePeerDependencies:
+      - supports-color
+
   '@milaboratories/pl-model-backend@1.1.6':
     dependencies:
       '@milaboratories/pl-client': 2.11.13
@@ -6620,6 +6680,12 @@ snapshots:
       zod: 3.23.8
 
   '@milaboratories/pl-model-common@1.19.17':
+    dependencies:
+      '@milaboratories/pl-error-like': 1.12.5
+      canonicalize: 2.1.0
+      zod: 3.23.8
+
+  '@milaboratories/pl-model-common@1.21.2':
     dependencies:
       '@milaboratories/pl-error-like': 1.12.5
       canonicalize: 2.1.0
@@ -6666,6 +6732,11 @@ snapshots:
       '@oclif/core': 4.5.3
 
   '@milaboratories/ts-helpers@1.4.7':
+    dependencies:
+      canonicalize: 2.1.0
+      denque: 2.1.0
+
+  '@milaboratories/ts-helpers@1.5.1':
     dependencies:
       canonicalize: 2.1.0
       denque: 2.1.0
@@ -6873,12 +6944,12 @@ snapshots:
       utility-types: 3.11.0
       zod: 3.23.8
 
-  '@platforma-sdk/tengo-builder@2.1.18':
+  '@platforma-sdk/tengo-builder@2.3.0':
     dependencies:
-      '@milaboratories/pl-model-backend': 1.1.6
+      '@milaboratories/pl-model-backend': 1.1.15
       '@milaboratories/resolve-helper': 1.1.1
       '@milaboratories/tengo-tester': 1.6.4
-      '@milaboratories/ts-helpers': 1.4.7
+      '@milaboratories/ts-helpers': 1.5.1
       '@oclif/core': 4.5.3
       canonicalize: 2.1.0
       winston: 3.17.0
@@ -11040,6 +11111,8 @@ snapshots:
 
   lru-cache@11.2.1: {}
 
+  lru-cache@11.2.2: {}
+
   lru-cache@6.0.0:
     dependencies:
       yallist: 4.0.0
@@ -11703,6 +11776,8 @@ snapshots:
   undici-types@7.10.0: {}
 
   undici@7.13.0: {}
+
+  undici@7.16.0: {}
 
   universalify@0.1.2: {}
 
