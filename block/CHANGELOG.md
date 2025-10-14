@@ -1,5 +1,21 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.2.6
+
+### Patch Changes
+
+- 0ff776c: technical release
+- e0fd2e4: technical release
+- a178a23: technical release
+- 595e430: technical release
+- Updated dependencies [0ff776c]
+- Updated dependencies [e0fd2e4]
+- Updated dependencies [a178a23]
+- Updated dependencies [595e430]
+  - @platforma-open/milaboratories.import-vdj.model@1.5.1
+  - @platforma-open/milaboratories.import-vdj.ui@1.6.1
+  - @platforma-open/milaboratories.import-vdj.workflow@1.9.1
+
 ## 1.2.5
 
 ### Patch Changes
