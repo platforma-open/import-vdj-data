@@ -246,7 +246,7 @@ self.body(func(inputs) {
                     axes: axes,
                     // override trace to include chain name
                     columns: columnsInfo.abundanceColumns,
-                    storageFormat: "Binary",
+                    storageFormat: "Parquet",
                     partitionKeyLength: 0
                 },
                 traceSteps: traceSteps,
@@ -351,7 +351,7 @@ self.body(func(inputs) {
             settings: {
                 axes: axes,
                 columns: propertyColumns + aggAbundanceColumns,
-                storageFormat: "Binary",
+                storageFormat: "Parquet",
                 partitionKeyLength: 0
             },
             mem: "16GiB",
