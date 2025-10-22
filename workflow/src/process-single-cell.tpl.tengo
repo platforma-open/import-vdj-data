@@ -251,7 +251,7 @@ self.body(func(inputs) {
 							}
 						}
 					],
-					storageFormat: "Binary",
+					storageFormat: "Parquet",
 					partitionKeyLength: 1
 				},
 				mem: "12GiB",
@@ -291,7 +291,7 @@ self.body(func(inputs) {
 							}
 						}
 					],
-					storageFormat: "Binary",
+					storageFormat: "Parquet",
 					partitionKeyLength: 0
 				},
 				mem: "12GiB",
@@ -344,7 +344,7 @@ self.body(func(inputs) {
 							}
 							return out
 						})(selectedProps, chainNameU, text.to_upper(chainLetter), pPrefixU, pPrefixL, isPrimary),
-						storageFormat: "Binary",
+						storageFormat: "Parquet",
 						partitionKeyLength: 0
 					},
 					mem: "12GiB",
@@ -377,7 +377,7 @@ self.body(func(inputs) {
 							}
 						}
 					],
-					storageFormat: "Binary",
+					storageFormat: "Parquet",
 					partitionKeyLength: 1
 				},
 				mem: "12GiB",
@@ -387,7 +387,7 @@ self.body(func(inputs) {
 				traceSteps: scTraceSteps
 			}
 		]
-		
+
 		scResult := pframes.processColumn(
 			importResults.output("clonotypesTsvForSingleCell-" + chainA),
 			processSingleCellKeysTpl,
