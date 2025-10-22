@@ -1,5 +1,13 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.2.7
+
+### Patch Changes
+
+- 8e190ee: Parquet support
+- Updated dependencies [8e190ee]
+  - @platforma-open/milaboratories.import-vdj.workflow@1.9.2
+
 ## 1.2.6
 
 ### Patch Changes
