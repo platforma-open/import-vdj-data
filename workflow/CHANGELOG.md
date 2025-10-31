@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.10.0
+
+### Minor Changes
+
+- 4dc3e58: isProductive columns values changed to true or false
+
 ## 1.9.2
 
 ### Patch Changes
