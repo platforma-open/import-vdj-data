@@ -167,6 +167,11 @@ self.body(func(inputs) {
                     alias("is-productive")
             )
             chainDf = chainDf.filter(pt.col("is-productive"))
+
+            // Standardize productivity flag to lowercase string values
+            chainDf = chainDf.withColumns(
+                pt.when(pt.col("is-productive")).then(pt.lit("true")).otherwise(pt.lit("false")).alias("is-productive")
+            )
         }
 
         // Derive lengths if available

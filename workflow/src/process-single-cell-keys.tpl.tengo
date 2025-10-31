@@ -81,7 +81,9 @@ self.body(func(inputs) {
 
 		dfFilteredByRawRank := dfWithRawRank.filter(pt.col("rawChainRank").le(2))
 
-		isProductiveNumericExpr := pt.when(pt.col(mainIsProductiveColumn).eq("True")).
+		isProductiveNumericExpr := pt.when(
+			pt.col(mainIsProductiveColumn).eq("true").or(pt.col(mainIsProductiveColumn).eq("True"))
+		).
 			then(pt.lit(0)).
 			otherwise(pt.lit(1))
 		negativeAbundanceExpr := pt.col(mainAbundanceColumn).multiply(-1)

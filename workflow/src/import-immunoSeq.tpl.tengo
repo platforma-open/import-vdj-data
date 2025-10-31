@@ -96,6 +96,11 @@ self.body(func(inputs) {
 		// In the future, we may decide to import non-productive sequences as well.
 		chainDf = chainDf.filter(pt.col("is-productive"))
 
+		// Standardize productivity flag to lowercase string values
+		chainDf = chainDf.withColumns(
+			pt.when(pt.col("is-productive")).then(pt.lit("true")).otherwise(pt.lit("false")).alias("is-productive")
+		)
+
 		chainDf = chainDf.withColumns(pt.col("v-begin").cast("Int32").alias("v-begin"))
 		chainDf = chainDf.withColumns(
 			pt.col("sequence").strSlice(
