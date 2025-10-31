@@ -178,7 +178,7 @@ propertyColumnSpecs := {
 				"pl7.app/description": "A flag indicating whether the main sequence is productive (in-frame and without stop codons).",
 				"pl7.app/table/visibility": "optional",
 				"pl7.app/isDiscreteFilter": "true",
-				"pl7.app/discreteValues": string(json.encode(["True", "False"]))
+				"pl7.app/discreteValues": string(json.encode(["true", "false"]))
 			})
 		}
 	},

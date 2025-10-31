@@ -98,6 +98,11 @@ self.body(func(inputs) {
 		// Filter for productive sequences.
 		chainDf = chainDf.filter(pt.col("is-productive"))
 
+		// Standardize productivity flag to lowercase string values
+		chainDf = chainDf.withColumns(
+			pt.when(pt.col("is-productive")).then(pt.lit("true")).otherwise(pt.lit("false")).alias("is-productive")
+		)
+
 		// For Qiagen, CDR3 nucleotide and amino acid sequences are already provided
 		// Add length columns
 		chainDf = chainDf.withColumns(

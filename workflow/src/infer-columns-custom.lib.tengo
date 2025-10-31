@@ -148,7 +148,7 @@ propertyColumnSpecs := {
         spec: {
             name: "pl7.app/vdj/sequence/productive",
             valueType: "String",
-            annotations: a(79000, true, { "pl7.app/label": "Productive", "pl7.app/description": "A flag indicating whether the main sequence is productive (in-frame and without stop codons).", "pl7.app/table/visibility": "optional", "pl7.app/isDiscreteFilter": "true", "pl7.app/discreteValues": "[\"True\", \"False\"]" })
+            annotations: a(79000, true, { "pl7.app/label": "Productive", "pl7.app/description": "A flag indicating whether the main sequence is productive (in-frame and without stop codons).", "pl7.app/table/visibility": "optional", "pl7.app/isDiscreteFilter": "true", "pl7.app/discreteValues": "[\"true\", \"false\"]" })
         }
     },
     "v-gene": {

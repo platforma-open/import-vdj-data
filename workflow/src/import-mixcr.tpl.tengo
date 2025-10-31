@@ -232,6 +232,11 @@ self.body(func(inputs) {
         // Filter productive
         chainDf = chainDf.filter(pt.col("is-productive"))
 
+        // Standardize productivity flag to lowercase string values
+        chainDf = chainDf.withColumns(
+            pt.when(pt.col("is-productive")).then(pt.lit("true")).otherwise(pt.lit("false")).alias("is-productive")
+        )
+
         // Length cols
         chainDf = chainDf.withColumns(pt.col("cdr3-aa").strLenChars().alias("cdr3-aa-length"))
         chainDf = chainDf.withColumns(pt.col("cdr3-nt").strLenChars().alias("cdr3-nt-length"))
