@@ -375,24 +375,16 @@ getColumns := func(header) {
 			ll.panic("Missing required column in input file: %v", col)
 		}
 	}
-	if is_undefined(columnMapping["read-count"]) && is_undefined(columnMapping["umi-count"]) {
-		ll.panic("Input file must contain at least one abundance column: read-count or umi-count")
-	}
+    // ImmunoSEQ: keep only read-based abundance; ignore UMIs even if present
+    if is_undefined(columnMapping["read-count"]) {
+        ll.panic("ImmunoSEQ input must contain read-count abundance column (UMIs are ignored)")
+    }
 
-	hasUMIs := !is_undefined(columnMapping["umi-count"])
-	
-	if hasUMIs {
-		for _, col in readColumnSpecs {
-			col.spec.annotations["pl7.app/table/visibility"] = "optional"
-		}
-	}
+    hasUMIs := false
 
-	abundanceColumns := readColumnSpecs
-	if hasUMIs {
-		abundanceColumns = maps.merge(abundanceColumns, umiColumnSpecs)
-	}
-	mainAbundance := hasUMIs ? "umi-count" : "read-count"
-	mainFractionAbundance := hasUMIs ? "umi-fraction" : "read-fraction"
+    abundanceColumns := readColumnSpecs
+    mainAbundance := "read-count"
+    mainFractionAbundance := "read-fraction"
 	
 	abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
 	abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
@@ -412,7 +404,7 @@ getColumns := func(header) {
 		propertyColumns: maps.getValues(propertyColumns),
 		columnMapping: columnMapping,
 		clonotypeKeyStructure: "CDR3-nt-VGene-JGene",
-		clonotypeKeyColumns: ["cdr3-nt", "v-gene", "j-gene"]
+		clonotypeKeyColumns: ["cdr3-nt", "v-allele", "j-allele"]
 	}
 }
 
