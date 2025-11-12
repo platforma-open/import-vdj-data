@@ -65,7 +65,7 @@ self.body(func(inputs) {
 					name: "pl7.app/vdj/clonotypeKey",
 					domain: {
 						"pl7.app/vdj/chain": chain,
-						"pl7.app/vdj/vdjImport": blockId,
+						"pl7.app/vdj/clonotypingRunId": blockId,
 						"pl7.app/vdj/clonotypeKey/structure": columnsInfo.clonotypeKeyStructure
 					},
 					annotations: {
@@ -85,7 +85,7 @@ self.body(func(inputs) {
 					valueType: "Int",
 					domain: {
 						"pl7.app/vdj/chain": chain,
-						"pl7.app/vdj/vdjImport": blockId
+						"pl7.app/vdj/clonotypingRunId": blockId
 					},
 					annotations: {
 						"pl7.app/label": "Number of Clonotypes",
@@ -105,7 +105,7 @@ self.body(func(inputs) {
 						valueType: "Int",
 						domain: {
 							"pl7.app/vdj/chain": chain,
-							"pl7.app/vdj/vdjImport": blockId
+							"pl7.app/vdj/clonotypingRunId": blockId
 						},
 						annotations: {
 							"pl7.app/label": "Number of Reads",
@@ -179,14 +179,14 @@ self.body(func(inputs) {
 				domain: {
 					"pl7.app/vdj/receptor": receptor,
 					"pl7.app/vdj/scClonotypeKey/structure": columnsInfo.clonotypeKeyStructure,
-					"pl7.app/vdj/vdjImport": blockId
+					"pl7.app/vdj/clonotypingRunId": blockId
 				},
 				annotations: {
 					"pl7.app/label": "Clonotype ID",
 					"pl7.app/table/fontFamily": "monospace",
 					"pl7.app/table/visibility": "default",
 					"pl7.app/table/orderPriority": "110000",
-					"pl7.app/segmentedBy": string(json.encode(["pl7.app/vdj/vdjImport"]))
+					"pl7.app/segmentedBy": string(json.encode(["pl7.app/vdj/clonotypingRunId"]))
 				}
 			}
 		}

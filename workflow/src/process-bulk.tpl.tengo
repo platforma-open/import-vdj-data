@@ -140,7 +140,7 @@ self.body(func(inputs) {
                     name: "pl7.app/vdj/clonotypeKey",
                     domain: {
                         "pl7.app/vdj/chain": chain,
-                        "pl7.app/vdj/vdjImport": blockId,
+                        "pl7.app/vdj/clonotypingRunId": blockId,
                         "pl7.app/vdj/clonotypeKey/structure": columnsInfo.clonotypeKeyStructure
                     },
                     annotations: {
@@ -161,7 +161,7 @@ self.body(func(inputs) {
                 valueType: "Int",
                 domain: {
                     "pl7.app/vdj/chain": chain,
-                    "pl7.app/vdj/vdjImport": blockId
+                    "pl7.app/vdj/clonotypingRunId": blockId
                 },
                 annotations: {
                     "pl7.app/label": "Number of Clonotypes",
@@ -180,7 +180,7 @@ self.body(func(inputs) {
                     valueType: "Int",
                     domain: {
                         "pl7.app/vdj/chain": chain,
-                        "pl7.app/vdj/vdjImport": blockId
+                        "pl7.app/vdj/clonotypingRunId": blockId
                     },
                     annotations: {
                         "pl7.app/label": "Number of Reads",
@@ -200,7 +200,7 @@ self.body(func(inputs) {
                     valueType: "Float",
                     domain: {
                         "pl7.app/vdj/chain": chain,
-                        "pl7.app/vdj/vdjImport": blockId
+                        "pl7.app/vdj/clonotypingRunId": blockId
                     },
                     annotations: {
                         "pl7.app/label": "Number of UMIs",
@@ -300,7 +300,7 @@ self.body(func(inputs) {
                     name: "pl7.app/vdj/clonotypeKey",
                     domain: {
                         "pl7.app/vdj/chain": chain,
-                        "pl7.app/vdj/vdjImport": blockId,
+                        "pl7.app/vdj/clonotypingRunId": blockId,
                         "pl7.app/vdj/clonotypeKey/structure": columnsInfo.clonotypeKeyStructure
                     },
                     annotations: {
