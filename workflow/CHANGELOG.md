@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.12.0
+
+### Minor Changes
+
+- 010574a: Support older linux distributions
+
 ## 1.11.0
 
 ### Minor Changes
