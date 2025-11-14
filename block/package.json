@@ -30,7 +30,7 @@
       "url": "https://github.com/platforma-open/import-vdj-data",
       "docs": "https://docs.platforma.bio/guides/antibody-discovery/data-import/",
       "support": "mailto:support@milaboratories.com",
-      "description": "Imports V(D)J sequencing data from various formats (MiXCR, immunoSeq, AIRR, CSV, TSV) and normalizes it for downstream analysis in standardized pipelines.",
+      "description": "Imports V(D)J sequencing data from various formats (MiXCR, immunoSeq, QIAseq, Cell Ranger, CSV, TSV) and normalizes it for downstream analysis in standardized pipelines.",
       "longDescription": "file:../docs/description.md",
       "changelog": "file:../CHANGELOG.md",
       "tags": [
