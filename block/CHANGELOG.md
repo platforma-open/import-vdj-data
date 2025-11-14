@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.3.2
+
+### Patch Changes
+
+- d91baa0: Block metadata update.
+
 ## 1.3.1
 
 ### Patch Changes
