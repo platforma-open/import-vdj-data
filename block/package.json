@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj",
-  "version": "1.2.9",
+  "version": "1.3.2",
   "scripts": {
     "pretty": "prettier --write \"./**/*.{js,jsx,mjs,cjs,ts,tsx,json,vue}\"",
     "build": "rm -rf ./block-pack && block-tools pack",
@@ -28,8 +28,9 @@
       "title": "Import V(D)J Data",
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/import-vdj-data",
+      "docs": "https://docs.platforma.bio/guides/antibody-discovery/data-import/",
       "support": "mailto:support@milaboratories.com",
-      "description": "Import V(D)J data from various formats, including MiXCR, immunoSeq, AiRR and more.",
+      "description": "Imports V(D)J sequencing data from various formats (MiXCR, immunoSeq, QIAseq, Cell Ranger, CSV, TSV) and normalizes it for downstream analysis in standardized pipelines.",
       "longDescription": "file:../docs/description.md",
       "changelog": "file:../CHANGELOG.md",
       "tags": [

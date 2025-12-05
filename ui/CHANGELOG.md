@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.7.0
+
+### Minor Changes
+
+- c054836: updating SDK and keep one abundance column (read count)
+
+### Patch Changes
+
+- Updated dependencies [c054836]
+  - @platforma-open/milaboratories.import-vdj.model@1.6.0
+
 ## 1.6.1
 
 ### Patch Changes

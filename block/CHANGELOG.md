@@ -1,5 +1,31 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.3.2
+
+### Patch Changes
+
+- d91baa0: Block metadata update.
+
+## 1.3.1
+
+### Patch Changes
+
+- Updated dependencies [010574a]
+  - @platforma-open/milaboratories.import-vdj.workflow@1.12.0
+
+## 1.3.0
+
+### Minor Changes
+
+- c054836: updating SDK and keep one abundance column (read count)
+
+### Patch Changes
+
+- Updated dependencies [c054836]
+  - @platforma-open/milaboratories.import-vdj.workflow@1.11.0
+  - @platforma-open/milaboratories.import-vdj.model@1.6.0
+  - @platforma-open/milaboratories.import-vdj.ui@1.7.0
+
 ## 1.2.9
 
 ### Patch Changes

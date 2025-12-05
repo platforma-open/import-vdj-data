@@ -1,5 +1,17 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.12.0
+
+### Minor Changes
+
+- 010574a: Support older linux distributions
+
+## 1.11.0
+
+### Minor Changes
+
+- c054836: updating SDK and keep one abundance column (read count)
+
 ## 1.10.0
 
 ### Minor Changes
