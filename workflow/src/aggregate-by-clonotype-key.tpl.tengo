@@ -88,6 +88,8 @@ self.body(func(inputs) {
 	)
 
 	aggregatedDf := currentDf.groupBy("clonotypeKey").agg(aggExpressions...)
+	// Cast total to Int64 to match schema (Long), even if individual values were Float64
+	aggregatedDf = aggregatedDf.withColumns(pt.col(primaryAbundance + "-total").cast("Int64").alias(primaryAbundance + "-total"))
 	aggregatedDf = clonotypeLabel.addClonotypeLabelColumnsPt(aggregatedDf, "clonotypeKey", "clonotypeLabel", pt)
 	aggregatedDf.save("output.tsv")
 
