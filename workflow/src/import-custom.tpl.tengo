@@ -45,6 +45,16 @@ self.body(func(inputs) {
         }
     }
 
+    // Also remove any species prefixes from gene columns
+    stripSpecies := func(expr) { 
+        return expr.strReplace("^[a-z]I", "I", { replaceAll: true }).strReplace("^[a-z]T", "T", { replaceAll: true })
+    }
+    for col in geneColumns {
+        if columnsInfo.columnMapping[col] != undefined {
+            df = df.withColumns(stripSpecies(pt.col(col)).alias(col))
+        }
+    }
+
     // Basic row filters: require V and J genes to be present
     for col in ["j-gene", "v-gene"] {
         df = df.filter(pt.col(col).isNotNull().and(pt.col(col).neq("")))
