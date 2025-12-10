@@ -110,16 +110,28 @@ self.body(func(inputs) {
         df = df.filter(invalidExpr.not())
     }
 
-    // Convert numeric columns to a numeric type (We also remove floating points if present)
+    // Convert numeric columns to Int64 (remove floating points and thousand separators if present)
     if hasReads {
         castExpressions := [
-            pt.col("read-count").strReplace("\\..*", "").cast("Int64").alias("read-count")
+            pt.col("read-count").
+                strReplace(",", "", { replaceAll: true }).
+                strReplace("\\..*", "", { replaceAll: true }).
+                cast("Float64").
+                fillNull(0).
+                cast("Int64").
+                alias("read-count")
         ]
         df = df.withColumns(castExpressions...)
     }
     if hasUMIs {
         castExpressions := [
-            pt.col("umi-count").cast("Float64").alias("umi-count")
+            pt.col("umi-count").
+                strReplace(",", "", { replaceAll: true }).
+                strReplace("\\..*", "", { replaceAll: true }).
+                cast("Float64").
+                fillNull(0).
+                cast("Int64").
+                alias("umi-count")
         ]
         df = df.withColumns(castExpressions...)
     }
@@ -189,14 +201,8 @@ self.body(func(inputs) {
 
         chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
-        // Cast abundance columns present
-        // Read counts are always integers, but UMI counts can be fractional (e.g., ImmunoSeq estimated genome counts)
-        if hasUMIs {
-            chainDf = chainDf.withColumns(pt.col("umi-count").cast("Float64").alias("umi-count"))
-        }
-        if hasReads {
-            chainDf = chainDf.withColumns(pt.col("read-count").cast("Int64").alias("read-count"))
-        }
+        // Abundance columns are already cast to Int64 earlier (lines 108-132)
+        // No need to cast again here
 
         // Aggregate by clonotypeKey using whichever abundance exists
         aggregations := []

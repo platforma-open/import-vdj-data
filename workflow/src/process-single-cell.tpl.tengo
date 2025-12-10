@@ -102,7 +102,7 @@ self.body(func(inputs) {
 					column: "read-count",
 					spec: {
 						name: "pl7.app/vdj/stat/readCount",
-						valueType: "Int",
+						valueType: "Long",
 						domain: {
 							"pl7.app/vdj/chain": chain,
 							"pl7.app/vdj/vdjImport": blockId

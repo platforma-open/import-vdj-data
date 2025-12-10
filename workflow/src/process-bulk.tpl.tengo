@@ -177,7 +177,7 @@ self.body(func(inputs) {
                 column: "read-count",
                 spec: {
                     name: "pl7.app/vdj/stat/readCount",
-                    valueType: "Int",
+                    valueType: "Long",
                     domain: {
                         "pl7.app/vdj/chain": chain,
                         "pl7.app/vdj/vdjImport": blockId
@@ -197,7 +197,7 @@ self.body(func(inputs) {
                 column: "umi-count",
                 spec: {
                     name: "pl7.app/vdj/stat/umiCount",
-                    valueType: "Float",
+                    valueType: "Long",
                     domain: {
                         "pl7.app/vdj/chain": chain,
                         "pl7.app/vdj/vdjImport": blockId
@@ -294,7 +294,7 @@ self.body(func(inputs) {
         axes := [
             {
                 column: "clonotypeKey",
-                allowNA: false,
+                naRegex: "",
                 spec: {
                     type: "String",
                     name: "pl7.app/vdj/clonotypeKey",
@@ -337,7 +337,7 @@ self.body(func(inputs) {
                     name: "pl7.app/label",
                     valueType: "String",
                     annotations: {
-                        "pl7.app/label": "Clonotype ID",
+                        "pl7.app/label": "Clone label",
                         "pl7.app/description": "A short, human-readable label for the clonotype."
                     }
                 }

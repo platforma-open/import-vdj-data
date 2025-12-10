@@ -204,8 +204,8 @@ self.body(func(inputs) {
     }
     keyCols := columnsInfo.clonotypeKeyColumns
     if len(keyCols) == 0 { keyCols = inferKeyColumns() }
-    keyComponents := slices.map(keyCols, func(id) { return pt.col(id).fillNull("NA") })
-    clonotypeKeyExpr := pt.concatStr(keyComponents, {delimiter: "|"}).hash("sha256", "base64_alphanumeric", 120).alias("clonotypeKey")
+    keyComponents := slices.map(keyCols, func(id) { return pt.col(id).fillNull("") })
+    clonotypeKeyExpr := pt.concatStr(keyComponents, {delimiter: "#"}).hash("sha256", "base64_alphanumeric", 120).alias("clonotypeKey")
 
     // Filter by chains using V gene prefix
     chainToLocusMap := {
