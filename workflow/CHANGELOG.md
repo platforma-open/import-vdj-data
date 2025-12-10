@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.12.1
+
+### Patch Changes
+
+- c273321: Fix issue with species indicator prefix in gene labels
+
 ## 1.12.0
 
 ### Minor Changes
