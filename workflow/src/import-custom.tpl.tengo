@@ -39,18 +39,13 @@ self.body(func(inputs) {
     // For MiXCR/similar formats we might need to remove extra content from gene columns
     geneColumns := ["v-gene", "j-gene", "d-gene", "c-gene"]
     stripAllele := func(expr) { return expr.strReplace("\\*.*$", "", { replaceAll: true }) }
-    for col in geneColumns {
-        if columnsInfo.columnMapping[col] != undefined {
-            df = df.withColumns(stripAllele(pt.col(col)).alias(col))
-        }
-    }
-
     // Also remove any species prefixes from gene columns
     stripSpecies := func(expr) { 
         return expr.strReplace("^[a-z]I", "I", { replaceAll: true }).strReplace("^[a-z]T", "T", { replaceAll: true })
     }
     for col in geneColumns {
         if columnsInfo.columnMapping[col] != undefined {
+            df = df.withColumns(stripAllele(pt.col(col)).alias(col))
             df = df.withColumns(stripSpecies(pt.col(col)).alias(col))
         }
     }
