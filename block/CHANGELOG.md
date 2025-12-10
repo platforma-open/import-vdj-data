@@ -1,5 +1,18 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.4.0
+
+### Minor Changes
+
+- cb63c0c: Abundance columns type fix & updating dependencies
+
+### Patch Changes
+
+- Updated dependencies [cb63c0c]
+  - @platforma-open/milaboratories.import-vdj.workflow@1.13.0
+  - @platforma-open/milaboratories.import-vdj.model@1.7.0
+  - @platforma-open/milaboratories.import-vdj.ui@1.8.0
+
 ## 1.3.3
 
 ### Patch Changes

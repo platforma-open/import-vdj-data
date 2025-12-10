@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.test
 
+## 1.2.0
+
+### Minor Changes
+
+- cb63c0c: Abundance columns type fix & updating dependencies
+
 ## 1.1.0
 
 ### Minor Changes
