@@ -170,7 +170,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHitWithAllele",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "VGene" },
-            annotations: a(69000, true, { "pl7.app/label": "V Allele", "pl7.app/description": "The name of the best-matching V gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(69000, false, { "pl7.app/label": "V Allele", "pl7.app/description": "The name of the best-matching V gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
         }
     },
     "d-gene": {
@@ -192,7 +192,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHitWithAllele",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "DGene" },
-            annotations: a(59000, true, { "pl7.app/label": "D Allele", "pl7.app/description": "The name of the best-matching D gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(59000, false, { "pl7.app/label": "D Allele", "pl7.app/description": "The name of the best-matching D gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
         }
     },
     "j-gene": {
@@ -214,7 +214,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHitWithAllele",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "JGene" },
-            annotations: a(49000, true, { "pl7.app/label": "J Allele", "pl7.app/description": "The name of the best-matching J gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(49000, false, { "pl7.app/label": "J Allele", "pl7.app/description": "The name of the best-matching J gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
         }
     },
     // Additional optional fields aligned with MiXCR exports
