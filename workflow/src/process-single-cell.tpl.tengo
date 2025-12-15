@@ -327,7 +327,15 @@ self.body(func(inputs) {
 									originalLabel = col.spec.annotations["pl7.app/label"]
 								}
 								isTargetPrimary := (col.column == "cdr3-aa") || (col.column == "v-gene") || (col.column == "j-gene") || (col.column == "d-gene") || (col.column == "c-gene")
+								isTCRReceptor := receptor == "TCRAB" || receptor == "TCRGD"
 								desiredVisibility := (isPrimary && isTargetPrimary) ? "default" : "optional"
+								if isTCRReceptor {
+									if col.column == "isotype" {
+										desiredVisibility = "hidden"
+									} else if col.column == "c-gene" || col.column == "c-allele" {
+										desiredVisibility = "optional"
+									} 
+								} 
 								out = append(out, maps.deepMerge(col, {
 									spec: {
 										domain: {
