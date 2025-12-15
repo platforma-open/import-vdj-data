@@ -352,17 +352,17 @@ self.body(func(inputs) {
                 "isotype": "hidden"
             }
             propertyColumns = slices.map(propertyColumns, func(col) {
-            visibility := visibilitySettings[col.column]
-            if !is_undefined(visibility) {
-                return maps.deepMerge(col, {
-                    spec: {
-                        annotations: maps.merge(col.spec.annotations, {
-                            "pl7.app/table/visibility": visibility
-                        })
-                    }
-                })
-            }
-            return col
+                visibility := visibilitySettings[col.column]
+                if !is_undefined(visibility) {
+                    return maps.deepMerge(col, {
+                        spec: {
+                            annotations: maps.merge(col.spec.annotations, {
+                                "pl7.app/table/visibility": visibility
+                            })
+                        }
+                    })
+                }
+                return col
             })
         }
 

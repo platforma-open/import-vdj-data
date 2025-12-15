@@ -101,7 +101,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/sequence",
             valueType: "String",
             domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "CDR3" },
-            annotations: a(100000, true, { "pl7.app/label": "CDR3 nt", "pl7.app/description": "The nucleotide sequence of the CDR3 region.", "pl7.app/table/visibility": "optional" })
+            annotations: a(100000, true, { "pl7.app/label": "CDR3 nt", "pl7.app/description": "The nucleotide sequence of the CDR3 region."})
         }
     },
     "cdr3-aa": {
@@ -112,7 +112,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/sequence",
             valueType: "String",
             domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "CDR3" },
-            annotations: a(99000, true, { "pl7.app/label": "CDR3 aa", "pl7.app/description": "The amino acid sequence of the CDR3 region.", "pl7.app/table/visibility": "default" })
+            annotations: a(99000, true, { "pl7.app/label": "CDR3 aa", "pl7.app/description": "The amino acid sequence of the CDR3 region."})
         }
     },
     "cdr3-aa-length": {
@@ -123,7 +123,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/sequenceLength",
             valueType: "Int",
             domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "CDR3" },
-            annotations: a(80000, true, { "pl7.app/label": "CDR3 Length, aa", "pl7.app/description": "The length of the CDR3 amino acid sequence.", "pl7.app/table/visibility": "optional" })
+            annotations: a(80000, true, { "pl7.app/label": "CDR3 Length, aa", "pl7.app/description": "The length of the CDR3 amino acid sequence."})
         }
     },
     "cdr3-nt-length": {
@@ -134,7 +134,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/sequenceLength",
             valueType: "Int",
             domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "CDR3" },
-            annotations: a(79999, false, { "pl7.app/label": "CDR3 Length, nt", "pl7.app/description": "The length of the CDR3 nucleotide sequence.", "pl7.app/table/visibility": "optional" })
+            annotations: a(79999, false, { "pl7.app/label": "CDR3 Length, nt", "pl7.app/description": "The length of the CDR3 nucleotide sequence."})
         }
     },
     "is-productive": {
@@ -144,7 +144,7 @@ propertyColumnSpecs := {
         spec: {
             name: "pl7.app/vdj/sequence/productive",
             valueType: "String",
-            annotations: a(79000, true, { "pl7.app/label": "Productive", "pl7.app/description": "A flag indicating whether the main sequence is productive (in-frame and without stop codons).", "pl7.app/table/visibility": "optional", "pl7.app/isDiscreteFilter": "true", "pl7.app/discreteValues": string(json.encode(["true", "false"])) })
+            annotations: a(79000, true, { "pl7.app/label": "Productive", "pl7.app/description": "A flag indicating whether the main sequence is productive (in-frame and without stop codons).", "pl7.app/isDiscreteFilter": "true", "pl7.app/discreteValues": string(json.encode(["true", "false"])) })
         }
     },
     "v-gene": {
@@ -155,7 +155,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHit",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "VGene" },
-            annotations: a(69000, true, { "pl7.app/label": "V Gene", "pl7.app/description": "The name of the best-matching V gene.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(69000, true, { "pl7.app/label": "V Gene", "pl7.app/description": "The name of the best-matching V gene.", "pl7.app/isDiscreteFilter": "true"})
         }
     },
     "v-allele": {
@@ -166,7 +166,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHitWithAllele",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "VGene" },
-            annotations: a(69000, false, { "pl7.app/label": "V Allele", "pl7.app/description": "The name of the best-matching V gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(69000, false, { "pl7.app/label": "V Allele", "pl7.app/description": "The name of the best-matching V gene, including allele information.", "pl7.app/isDiscreteFilter": "true"})
         }
     },
     "d-gene": {
@@ -177,7 +177,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHit",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "DGene" },
-            annotations: a(59000, true, { "pl7.app/label": "D Gene", "pl7.app/description": "The name of the best-matching D gene.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(59000, true, { "pl7.app/label": "D Gene", "pl7.app/description": "The name of the best-matching D gene.", "pl7.app/isDiscreteFilter": "true"})
         }
     },
     "d-allele": {
@@ -188,7 +188,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHitWithAllele",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "DGene" },
-            annotations: a(59000, false, { "pl7.app/label": "D Allele", "pl7.app/description": "The name of the best-matching D gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(59000, false, { "pl7.app/label": "D Allele", "pl7.app/description": "The name of the best-matching D gene, including allele information.", "pl7.app/isDiscreteFilter": "true"})
         }
     },
     "j-gene": {
@@ -199,7 +199,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHit",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "JGene" },
-            annotations: a(49000, true, { "pl7.app/label": "J Gene", "pl7.app/description": "The name of the best-matching J gene.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(49000, true, { "pl7.app/label": "J Gene", "pl7.app/description": "The name of the best-matching J gene.", "pl7.app/isDiscreteFilter": "true"})
         }
     },
     "j-allele": {
@@ -210,7 +210,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHitWithAllele",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "JGene" },
-            annotations: a(49000, false, { "pl7.app/label": "J Allele", "pl7.app/description": "The name of the best-matching J gene, including allele information.", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "default" })
+            annotations: a(49000, false, { "pl7.app/label": "J Allele", "pl7.app/description": "The name of the best-matching J gene, including allele information.", "pl7.app/isDiscreteFilter": "true"})
         }
     },
     "c-gene": {
@@ -221,7 +221,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHit",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "CGene" },
-            annotations: a(48000, false, { "pl7.app/label": "C Gene", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+            annotations: a(48000, false, { "pl7.app/label": "C Gene", "pl7.app/isDiscreteFilter": "true"})
         }
     },
     "c-allele": {
@@ -232,7 +232,7 @@ propertyColumnSpecs := {
             name: "pl7.app/vdj/geneHitWithAllele",
             valueType: "String",
             domain: { "pl7.app/vdj/reference": "CGene" },
-            annotations: a(47900, false, { "pl7.app/label": "C Allele", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+            annotations: a(47900, false, { "pl7.app/label": "C Allele", "pl7.app/isDiscreteFilter": "true"})
         }
     },
 
@@ -245,7 +245,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "FR1" },
-			annotations: a(47000, false, { "pl7.app/label": "FR1 nt", "pl7.app/table/visibility": "optional" })
+			annotations: a(47000, false, { "pl7.app/label": "FR1 nt"})
 		}
 	},
 	"cdr1-nt": {
@@ -256,7 +256,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "CDR1" },
-			annotations: a(46990, false, { "pl7.app/label": "CDR1 nt", "pl7.app/table/visibility": "optional" })
+			annotations: a(46990, false, { "pl7.app/label": "CDR1 nt"})
 		}
 	},
 	"cdr2-nt": {
@@ -267,7 +267,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "CDR2" },
-			annotations: a(46985, false, { "pl7.app/label": "CDR2 nt", "pl7.app/table/visibility": "optional" })
+			annotations: a(46985, false, { "pl7.app/label": "CDR2 nt"})
 		}
 	},
 	"fr2-nt": {
@@ -278,7 +278,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "FR2" },
-			annotations: a(46980, false, { "pl7.app/label": "FR2 nt", "pl7.app/table/visibility": "optional" })
+			annotations: a(46980, false, { "pl7.app/label": "FR2 nt"})
 		}
 	},
 	"fr3-nt": {
@@ -289,7 +289,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "FR3" },
-			annotations: a(46970, false, { "pl7.app/label": "FR3 nt", "pl7.app/table/visibility": "optional" })
+			annotations: a(46970, false, { "pl7.app/label": "FR3 nt"})
 		}
 	},
 	"fr4-nt": {
@@ -300,7 +300,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "FR4" },
-			annotations: a(46960, false, { "pl7.app/label": "FR4 nt", "pl7.app/table/visibility": "optional" })
+			annotations: a(46960, false, { "pl7.app/label": "FR4 nt"})
 		}
 	},
 
@@ -313,7 +313,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "FR1" },
-			annotations: a(46950, false, { "pl7.app/label": "FR1 aa", "pl7.app/table/visibility": "optional" })
+			annotations: a(46950, false, { "pl7.app/label": "FR1 aa"})
 		}
 	},
 	"cdr1-aa": {
@@ -324,7 +324,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "CDR1" },
-			annotations: a(46940, false, { "pl7.app/label": "CDR1 aa", "pl7.app/table/visibility": "optional" })
+			annotations: a(46940, false, { "pl7.app/label": "CDR1 aa"})
 		}
 	},
 	"cdr2-aa": {
@@ -335,7 +335,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "CDR2" },
-			annotations: a(46935, false, { "pl7.app/label": "CDR2 aa", "pl7.app/table/visibility": "optional" })
+			annotations: a(46935, false, { "pl7.app/label": "CDR2 aa"})
 		}
 	},
 	"fr2-aa": {
@@ -346,7 +346,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "FR2" },
-			annotations: a(46930, false, { "pl7.app/label": "FR2 aa", "pl7.app/table/visibility": "optional" })
+			annotations: a(46930, false, { "pl7.app/label": "FR2 aa"})
 		}
 	},
 	"fr3-aa": {
@@ -357,7 +357,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "FR3" },
-			annotations: a(46910, false, { "pl7.app/label": "FR3 aa", "pl7.app/table/visibility": "optional" })
+			annotations: a(46910, false, { "pl7.app/label": "FR3 aa"})
 		}
 	},
 	"fr4-aa": {
@@ -368,7 +368,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "FR4" },
-			annotations: a(46900, false, { "pl7.app/label": "FR4 aa", "pl7.app/table/visibility": "optional" })
+			annotations: a(46900, false, { "pl7.app/label": "FR4 aa"})
 		}
 	},
 
@@ -381,7 +381,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "nucleotide", "pl7.app/vdj/feature": "VDJRegion" },
-			annotations: a(46880, false, { "pl7.app/label": "VDJRegion nt", "pl7.app/table/visibility": "optional" })
+			annotations: a(46880, false, { "pl7.app/label": "VDJRegion nt"})
 		}
 	},
 	"vdj-aa": {
@@ -392,7 +392,7 @@ propertyColumnSpecs := {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
 			domain: { "pl7.app/alphabet": "aminoacid", "pl7.app/vdj/feature": "VDJRegionInFrame" },
-			annotations: a(46870, false, { "pl7.app/label": "VDJRegionInFrame aa", "pl7.app/table/visibility": "optional" })
+			annotations: a(46870, false, { "pl7.app/label": "VDJRegionInFrame aa"})
 		}
 	},
 
@@ -404,7 +404,7 @@ propertyColumnSpecs := {
 		spec: {
 			name: "pl7.app/vdj/isotype",
 			valueType: "String",
-			annotations: a(46890, true, { "pl7.app/label": "IG isotype", "pl7.app/isDiscreteFilter": "true", "pl7.app/table/visibility": "optional" })
+			annotations: a(46890, true, { "pl7.app/label": "IG isotype", "pl7.app/isDiscreteFilter": "true"})
 		}
 	}
 }
