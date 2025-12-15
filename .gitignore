@@ -11,6 +11,7 @@ test-dry-run.json
 vite.config.*.timestamp-*
 .DS_Store
 /.idea
+.vscode/sftp.json
 
 # BUG in vue-tsc, it enables incremental builds when we do not ask it
 ui/tsconfig.app.tsbuildinfo
