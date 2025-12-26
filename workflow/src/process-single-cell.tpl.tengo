@@ -372,7 +372,16 @@ self.body(func(inputs) {
 				settings: {
 					axes: [
 						{ column: "sampleId", spec: sampleIdAxisSpec },
-						{ column: "cellKey", spec: { name: "pl7.app/sc/cellId", type: "String" } },
+						{ column: "cellKey", spec: { name: "pl7.app/sc/cellId",
+							type: "String",
+							"annotations": {
+								"pl7.app/label": "Cell ID",
+								"pl7.app/parents": "[\"pl7.app/sampleId\"]",
+								"pl7.app/table/fontFamily": "monospace",
+								"pl7.app/table/orderPriority": "110000",
+								"pl7.app/table/visibility": "default"
+							}
+							}},
 						axisByScClonotypeKey(receptor)
 					],
 					columns: [
@@ -381,7 +390,12 @@ self.body(func(inputs) {
 							spec: {
 								name: "pl7.app/sc/cellLinker",
 								valueType: "Int",
-								annotations: { "pl7.app/isLinkerColumn": "true" }
+								annotations: { 
+									"pl7.app/isLinkerColumn": "true",
+									"pl7.app/label": "Cell Linker",
+									"pl7.app/table/orderPriority": "0",
+									"pl7.app/table/visibility": "hidden"	
+								}
 							}
 						}
 					],
