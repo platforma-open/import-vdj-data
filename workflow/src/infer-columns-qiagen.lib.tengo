@@ -4,54 +4,12 @@ sets := import("@platforma-sdk/workflow-tengo:sets")
 json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 
-// Helper to add common annotations for table view properties
-a := func(order, defaultVisibility, spec) {
-	return maps.merge(spec, {
-		"pl7.app/table/orderPriority": string(order),
-		"pl7.app/table/visibility": is_undefined(defaultVisibility) ? "hidden" : defaultVisibility ? "default" : "optional"
-	})
-}
+common := import(":infer-columns-common")
 
-umiColumnSpecs := {
-	"umi-count": {
-		id: "umi-count",
-		column: "umi-count",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/vdj/uniqueMoleculeCount",
-			valueType: "Long",
-			annotations: a(90000, true, {
-				"pl7.app/isAbundance": "true",
-				"pl7.app/min": "0",
-				"pl7.app/abundance/unit": "molecules",
-				"pl7.app/abundance/normalized": "false",
-				"pl7.app/label": "Number Of UMIs",
-				"pl7.app/description": "The number of unique molecules (UMIs) in the sample assigned to the clonotype.",
-				"pl7.app/table/visibility": "default"
-			})
-		}
-	},
-	"umi-fraction": {
-		id: "umi-fraction",
-		column: "umi-fraction",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/vdj/uniqueMoleculeFraction",
-			valueType: "Double",
-			annotations: a(89999, false, {
-				"pl7.app/isAbundance": "true",
-				"pl7.app/min": "0",
-				"pl7.app/max": "1",
-				"pl7.app/abundance/unit": "molecules",
-				"pl7.app/abundance/normalized": "true",
-				"pl7.app/label": "UMI Fraction",
-				"pl7.app/description": "The fraction of total UMIs in the sample assigned to the clonotype.",
-				"pl7.app/format": ".2p",
-				"pl7.app/table/visibility": "default"
-			})
-		}
-	}
-}
+// Helper to add common annotations for table view properties
+a := common.a
+
+umiColumnSpecs := common.umiColumnSpecs
 
 propertyColumnSpecs := {
 	"cdr3-nt": {
@@ -218,6 +176,9 @@ propertyColumnSpecs := {
 		}
 	}
 }
+
+// Centralize shared specs (keep Qiagen-specific columns like `chain`, `read set`, etc.)
+propertyColumnSpecs = maps.merge(common.propertyColumnSpecs, propertyColumnSpecs)
 
 // sourceAliases maps Qiagen column names to our internal canonical names
 sourceAliases := {

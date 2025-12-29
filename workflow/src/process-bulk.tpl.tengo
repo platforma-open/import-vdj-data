@@ -9,15 +9,10 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 sets := import("@platforma-sdk/workflow-tengo:sets")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
+formats := import(":formats")
 
 json := import("json")
 text := import("text")
-
-immunoSeqTpl := assets.importTemplate(":import-immunoSeq")
-qiagenTpl := assets.importTemplate(":import-qiagen")
-customTpl := assets.importTemplate(":import-custom")
-mixcrTpl := assets.importTemplate(":import-mixcr")
-cellrangerTpl := assets.importTemplate(":import-cellranger")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
 
 // Helper to add common annotations for table view properties
@@ -108,21 +103,37 @@ self.body(func(inputs) {
 	format := inputs.format
     blockId := inputs.blockId
 
-    importTpl := undefined
-    if format == "immunoSeq" {
-        importTpl = immunoSeqTpl
-    } else if format == "qiagen" {
-        importTpl = qiagenTpl
-    } else if format == "custom" {
-        importTpl = customTpl
-    } else if format == "mixcr" {
-        importTpl = mixcrTpl
-    } else if format == "cellranger" {
-		importTpl = cellrangerTpl
+	formatSpec := formats.mustGet(format)
+	importTemplates := {
+		":import-generic-light": assets.importTemplate(":import-generic-light"),
+		":import-immunoSeq": assets.importTemplate(":import-immunoSeq"),
+		":import-qiagen": assets.importTemplate(":import-qiagen"),
+		":import-custom": assets.importTemplate(":import-custom")
 	}
-    if importTpl == undefined {
-        ll.panic("Import template is undefined, format: " + format)
-    }
+	importTpl := importTemplates[formatSpec.importTplId]
+	if importTpl == undefined {
+		ll.panic("Unsupported import template: " + formatSpec.importTplId)
+	}
+	importCfg := formatSpec.importCfg
+	
+	// For AIRR format (both bulk and single-cell), detect file extension and override xsvType if needed
+	// AIRR files can be TSV or CSV, so we should use the actual file extension
+	if (format == "airr" || format == "airr-sc") && !is_undefined(inputs.dataset) && !is_undefined(inputs.dataset.spec) && !is_undefined(inputs.dataset.spec.domain) {
+		fileExtension := inputs.dataset.spec.domain["pl7.app/fileExtension"]
+		if fileExtension == "csv" || fileExtension == "csv.gz" {
+			// Override xsvType to match the actual file format
+			if is_undefined(importCfg) {
+				importCfg = {}
+			}
+			importCfg.xsvType = "csv"
+		} else if fileExtension == "tsv" || fileExtension == "tsv.gz" {
+			// Ensure TSV for TSV files
+			if is_undefined(importCfg) {
+				importCfg = {}
+			}
+			importCfg.xsvType = "tsv"
+		}
+	}
 
     result := pframes.pFrameBuilder()
     stats := pframes.pFrameBuilder()
@@ -280,7 +291,9 @@ self.body(func(inputs) {
 
 			extra: {
                 columnsInfo: columnsInfo,
-                chains: chains
+                chains: chains,
+				config: importCfg,
+				primaryCountType: inputs.primaryCountType
             }
 		}
 	)
