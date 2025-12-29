@@ -356,6 +356,29 @@ self.body(func(inputs) {
                 }
         }]
 
+        // Modify column visibility for TCR chains
+        isTCRChain := text.has_prefix(chain, "TCR")
+        if isTCRChain {
+            visibilitySettings := {
+                "c-gene": "optional",
+                "c-allele": "optional",
+                "isotype": "hidden"
+            }
+            propertyColumns = slices.map(propertyColumns, func(col) {
+                visibility := visibilitySettings[col.column]
+                if !is_undefined(visibility) {
+                    return maps.deepMerge(col, {
+                        spec: {
+                            annotations: maps.merge(col.spec.annotations, {
+                                "pl7.app/table/visibility": visibility
+                            })
+                        }
+                    })
+                }
+                return col
+            })
+        }
+
         aggAbundanceColumns := abundanceAggColumns(columnsInfo)
 
         aggOutputs := [{

@@ -1,5 +1,18 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.13.2
+
+### Patch Changes
+
+- 8a99e00: Fix single-cel to VDJ linker
+- ce8598e: Fix linker specs
+
+## 1.13.1
+
+### Patch Changes
+
+- 1ee9f03: Update column visibility
+
 ## 1.13.0
 
 ### Minor Changes
