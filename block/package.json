@@ -25,7 +25,7 @@
       "ui": "@platforma-open/milaboratories.import-vdj.ui/dist"
     },
     "meta": {
-      "title": "Import V(D)J Data",
+      "title": "Import V(D)J Data ref",
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/import-vdj-data",
       "docs": "https://docs.platforma.bio/guides/antibody-discovery/data-import/",

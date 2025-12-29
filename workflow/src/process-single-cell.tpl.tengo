@@ -7,11 +7,10 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 text := import("text")
 assets := import("@platforma-sdk/workflow-tengo:assets")
+formats := import(":formats")
 
 json := import("json")
 
-mixcrTpl := assets.importTemplate(":import-mixcr")
-cellrangerTpl := assets.importTemplate(":import-cellranger")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
 processSingleCellKeysTpl := assets.importTemplate(":process-single-cell-keys")
 
@@ -45,13 +44,37 @@ self.body(func(inputs) {
 	result := pframes.pFrameBuilder()
 	stats := pframes.pFrameBuilder()
 
-	importTpl := undefined
-	if format == "mixcr-sc" {
-		importTpl = mixcrTpl
-	} else if format == "cellranger" {
-		importTpl = cellrangerTpl
+	formatSpec := formats.mustGet(format)
+	if !formatSpec.isSingleCell {
+		ll.panic("Single-cell processor requires single-cell format, got: " + format)
 	}
-	if importTpl == undefined { ll.panic("Import template is undefined, format: " + format) }
+	importTemplates := {
+		":import-generic-light": assets.importTemplate(":import-generic-light")
+	}
+	importTpl := importTemplates[formatSpec.importTplId]
+	if importTpl == undefined {
+		ll.panic("Unsupported import template for single-cell: " + formatSpec.importTplId)
+	}
+	importCfg := formatSpec.importCfg
+	
+	// For AIRR single-cell format, detect file extension and override xsvType if needed
+	// AIRR files can be TSV or CSV, so we should use the actual file extension
+	if format == "airr-sc" && !is_undefined(inputs.dataset) && !is_undefined(inputs.dataset.spec) && !is_undefined(inputs.dataset.spec.domain) {
+		fileExtension := inputs.dataset.spec.domain["pl7.app/fileExtension"]
+		if fileExtension == "csv" || fileExtension == "csv.gz" {
+			// Override xsvType to match the actual file format
+			if is_undefined(importCfg) {
+				importCfg = {}
+			}
+			importCfg.xsvType = "csv"
+		} else if fileExtension == "tsv" || fileExtension == "tsv.gz" {
+			// Ensure TSV for TSV files
+			if is_undefined(importCfg) {
+				importCfg = {}
+			}
+			importCfg.xsvType = "tsv"
+		}
+	}
 
 	// Import per-chain, producing clonotype and per-cell-tag TSVs
 	importOutputs := []
@@ -152,7 +175,9 @@ self.body(func(inputs) {
 			passAggregationAxesNames: true,
 			extra: {
 				columnsInfo: columnsInfo,
-				chains: chains
+				chains: chains,
+				config: importCfg,
+				primaryCountType: inputs.primaryCountType
 			}
 		}
 	)

@@ -1,0 +1,178 @@
+ll := import("@platforma-sdk/workflow-tengo:ll")
+text := import("text")
+
+mixcr := import(":infer-columns-mixcr")
+cellranger := import(":infer-columns-cellranger")
+qiagen := import(":infer-columns-qiagen")
+immunoSeq := import(":infer-columns-immunoSeq")
+custom := import(":infer-columns-custom")
+airr := import(":infer-columns-airr")
+
+// NOTE: `infer` functions here accept (header, opts) and return columnsInfo
+// opts may contain:
+// - customMapping
+// - primaryCountType
+
+specs := {
+	"immunoSeq": {
+		id: "immunoSeq",
+		label: "ImmunoSeq",
+		isSingleCell: false,
+		importTplId: ":import-immunoSeq",
+		infer: func(header, opts) {
+			return immunoSeq.getColumns(header)
+		}
+	},
+	"qiagen": {
+		id: "qiagen",
+		label: "QIAseq Immune Repertoire Analysis",
+		isSingleCell: false,
+		importTplId: ":import-qiagen",
+		infer: func(header, opts) {
+			return qiagen.getColumns(header)
+		}
+	},
+	"mixcr": {
+		id: "mixcr",
+		label: "MiXCR bulk",
+		isSingleCell: false,
+		importTplId: ":import-generic-light",
+		importCfg: {
+			xsvType: "tsv",
+			alleleMode: "mixcr",
+			productivityMode: "from_cdr3_aa",
+			primaryAbundancePolicy: "args",
+			byCell: {
+				enabled: true,
+				cellKeyMode: "hash_join",
+				exportStage: "after_productivity_filter"
+			}
+		},
+		infer: func(header, opts) {
+			return mixcr.getColumns(header)
+		}
+	},
+	"mixcr-sc": {
+		id: "mixcr-sc",
+		label: "MiXCR single cell",
+		isSingleCell: true,
+		importTplId: ":import-generic-light",
+		importCfg: {
+			xsvType: "tsv",
+			alleleMode: "mixcr",
+			productivityMode: "from_cdr3_aa",
+			primaryAbundancePolicy: "args",
+			byCell: {
+				enabled: true,
+				cellKeyMode: "hash_join",
+				exportStage: "after_productivity_filter"
+			}
+		},
+		infer: func(header, opts) {
+			return mixcr.getColumns(header)
+		}
+	},
+	"cellranger": {
+		id: "cellranger",
+		label: "Cell Ranger VDJ",
+		isSingleCell: true,
+		importTplId: ":import-generic-light",
+		importCfg: {
+			xsvType: "csv",
+			alleleMode: "none",
+			productivityMode: "from_column_true",
+			primaryAbundancePolicy: "force_umi",
+			byCell: {
+				enabled: true,
+				cellKeyMode: "strip_suffix",
+				stripSuffixRegex: "-[0-9]+$",
+				exportStage: "before_productivity_filter"
+			}
+		},
+		infer: func(header, opts) {
+			return cellranger.getColumns(header)
+		}
+	},
+	"custom": {
+		id: "custom",
+		label: "Custom",
+		isSingleCell: false,
+		importTplId: ":import-custom",
+		infer: func(header, opts) {
+			// opts.customMapping and opts.primaryCountType are required once mapping is complete;
+			// infer-columns.tpl already gates incomplete mapping by returning headerColumns.
+			customMapping := is_undefined(opts) ? undefined : opts.customMapping
+			primaryCountType := is_undefined(opts) ? undefined : opts.primaryCountType
+			return custom.getColumns(header, customMapping, primaryCountType)
+		}
+	},
+	"airr": {
+		id: "airr",
+		label: "AIRR",
+		isSingleCell: false,
+		importTplId: ":import-generic-light",
+		importCfg: {
+			xsvType: "tsv",
+			alleleMode: "none",
+			productivityMode: "none",
+			primaryAbundancePolicy: "args",
+			byCell: { enabled: false },
+			geneNormalization: "stripAllele"
+		},
+		infer: func(header, opts) {
+			return airr.getColumns(header)
+		}
+	},
+	"airr-sc": {
+		id: "airr-sc",
+		label: "AIRR single cell",
+		isSingleCell: true,
+		importTplId: ":import-generic-light",
+		importCfg: {
+			xsvType: "tsv",
+			alleleMode: "none",
+			productivityMode: "none",
+			primaryAbundancePolicy: "args",
+			byCell: {
+				enabled: true,
+				cellKeyMode: "direct",
+				exportStage: "after_productivity_filter"
+			},
+			geneNormalization: "stripAllele"
+		},
+		infer: func(header, opts) {
+			return airr.getColumns(header)
+		}
+	}
+}
+
+list := func() {
+	out := []
+	// Stable order for UI
+	for id in ["immunoSeq", "qiagen", "mixcr", "mixcr-sc", "cellranger", "airr", "airr-sc", "custom"] {
+		s := specs[id]
+		out = append(out, { id: s.id, label: s.label, isSingleCell: s.isSingleCell })
+	}
+	return out
+}
+
+mustGet := func(id) {
+	s := specs[id]
+	if is_undefined(s) {
+		ll.panic("Unknown format: " + id)
+	}
+	return s
+}
+
+export {
+	list: list,
+	mustGet: mustGet
+}
+
+
+
+
+
+
+
+

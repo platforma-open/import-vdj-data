@@ -4,96 +4,15 @@ sets := import("@platforma-sdk/workflow-tengo:sets")
 json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 
+common := import(":infer-columns-common")
+
 // Helper to add common annotations for table view properties
-a := func(order, defaultVisibility, spec) {
-    return maps.merge(spec, {
-        "pl7.app/table/orderPriority": string(order),
-        "pl7.app/table/visibility": is_undefined(defaultVisibility) ? "hidden" : defaultVisibility ? "default" : "optional"
-    })
-}
+a := common.a
 
 // Define spec templates (subset aligned with immunoSeq lib)
-readColumnSpecs := {
-    "read-count": {
-        id: "read-count",
-        column: "read-count",
-        allowNA: false,
-        spec: {
-            name: "pl7.app/vdj/readCount",
-            valueType: "Long",
-            annotations: a(89000, true, {
-                "pl7.app/isAbundance": "true",
-                "pl7.app/min": "0",
-                "pl7.app/abundance/unit": "reads",
-                "pl7.app/abundance/normalized": "false",
-                "pl7.app/label": "Number Of Reads",
-                "pl7.app/description": "The raw number of sequencing reads in the sample assigned to the clonotype.",
-                "pl7.app/table/visibility": "default"
-            })
-        }
-    },
-    "read-fraction": {
-        id: "read-fraction",
-        column: "read-fraction",
-        allowNA: false,
-        spec: {
-            name: "pl7.app/vdj/readFraction",
-            valueType: "Double",
-            annotations: a(88999, false, {
-                "pl7.app/isAbundance": "true",
-                "pl7.app/min": "0",
-                "pl7.app/max": "1",
-                "pl7.app/abundance/unit": "reads",
-                "pl7.app/abundance/normalized": "true",
-                "pl7.app/label": "Read Fraction",
-                "pl7.app/description": "The fraction of total reads in the sample assigned to the clonotype.",
-                "pl7.app/format": ".2p",
-                "pl7.app/table/visibility": "default"
-            })
-        }
-    }
-}
+readColumnSpecs := common.readColumnSpecs
 
-umiColumnSpecs := {
-    "umi-count": {
-        id: "umi-count",
-        column: "umi-count",
-        allowNA: false,
-        spec: {
-            name: "pl7.app/vdj/uniqueMoleculeCount",
-            valueType: "Long",
-            annotations: a(90000, true, {
-                "pl7.app/isAbundance": "true",
-                "pl7.app/min": "0",
-                "pl7.app/abundance/unit": "molecules",
-                "pl7.app/abundance/normalized": "false",
-                "pl7.app/label": "Number Of UMIs",
-                "pl7.app/description": "The number of unique molecules (UMIs) in the sample assigned to the clonotype.",
-                "pl7.app/table/visibility": "optional"
-            })
-        }
-    },
-    "umi-fraction": {
-        id: "umi-fraction",
-        column: "umi-fraction",
-        allowNA: false,
-        spec: {
-            name: "pl7.app/vdj/uniqueMoleculeFraction",
-            valueType: "Double",
-            annotations: a(89999, false, {
-                "pl7.app/isAbundance": "true",
-                "pl7.app/min": "0",
-                "pl7.app/max": "1",
-                "pl7.app/abundance/unit": "molecules",
-                "pl7.app/abundance/normalized": "true",
-                "pl7.app/label": "UMI Fraction",
-                "pl7.app/description": "The fraction of total UMIs in the sample assigned to the clonotype.",
-                "pl7.app/format": ".2p",
-                "pl7.app/table/visibility": "optional"
-            })
-        }
-    }
-}
+umiColumnSpecs := common.umiColumnSpecs
 
 // Property specs (subset)
 propertyColumnSpecs := {
@@ -552,6 +471,9 @@ propertyColumnSpecs := {
         }
     }
 }
+
+// Centralize shared specs (keep custom-only extensions).
+propertyColumnSpecs = maps.merge(common.propertyColumnSpecs, propertyColumnSpecs)
 
 // Required columns cannot be used here because input columns are selected one by one triggering prerun
 // requiredColumns := ["cdr3-aa", "v-gene", "j-gene"]
