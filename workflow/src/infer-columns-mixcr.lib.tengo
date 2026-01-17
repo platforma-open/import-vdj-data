@@ -211,11 +211,22 @@ getColumns := func(header) {
 		keyColumns = append(keyColumns, "cdr3-aa")
         keyStructure = keyStructure + "CDR3-aa"
 	}
-	if columnMapping["v-gene"] != undefined { 
+	// Include v-gene and j-gene in key if available (either directly or derivable from all* columns)
+	hasVGeneInKey := columnMapping["v-gene"] != undefined || 
+		columnMapping["v-allele"] != undefined || 
+		columnMapping["allVHitsWithScore"] != undefined || 
+		columnMapping["allVHits"] != undefined || 
+		columnMapping["allVGenes"] != undefined
+	if hasVGeneInKey {
         keyColumns = append(keyColumns, "v-gene")
         keyStructure = keyStructure + "-VGene"
     }
-	if columnMapping["j-gene"] != undefined { 
+	hasJGeneInKey := columnMapping["j-gene"] != undefined || 
+		columnMapping["j-allele"] != undefined || 
+		columnMapping["allJHitsWithScore"] != undefined || 
+		columnMapping["allJHits"] != undefined || 
+		columnMapping["allJGenes"] != undefined
+	if hasJGeneInKey {
         keyColumns = append(keyColumns, "j-gene")
         keyStructure = keyStructure + "-JGene"
     }

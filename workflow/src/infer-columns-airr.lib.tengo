@@ -14,13 +14,15 @@ propertyColumnSpecs := common.propertyColumnSpecs
 // We keep keys lowercase and match on text.to_lower(h).
 sourceAliases := {
 	// abundance
-	"duplicate_count": "read-count",
-	"consensus_count": "umi-count",
+	"duplicate_count": "umi-count",
+	"consensus_count": "read-count",
+	"umi_count": "umi-count",
 
 	// sequences
 	"junction": "cdr3-nt",
 	"junction_aa": "cdr3-aa",
-	"cdr3": "cdr3-aa",
+	"cdr3_aa": "cdr3-aa",
+	"cdr3": "cdr3-nt",
 
 	// gene calls
 	"v_call": "v-gene",
@@ -54,6 +56,9 @@ getColumns := func(header) {
 	// Detect single-cell tag columns: AIRR uses cell_id or barcode
 	isSingleCell := false
 	cellTagColumns := []
+	umiCountHeader := undefined
+	duplicateCountHeader := undefined
+	consensusCountHeader := undefined
 	for h in headerArray {
 		hStr := string(h)
 		hTrimmed := text.trim_space(hStr)
@@ -63,6 +68,15 @@ getColumns := func(header) {
 		canonical := sourceAliases[k]
 		if canonical != undefined && columnMapping[canonical] == undefined {
 			columnMapping[canonical] = hTrimmed
+		}
+		if k == "umi_count" {
+			umiCountHeader = hTrimmed
+		}
+		if k == "duplicate_count" {
+			duplicateCountHeader = hTrimmed
+		}
+		if k == "consensus_count" {
+			consensusCountHeader = hTrimmed
 		}
 		
 		// Check for single-cell identifiers (after mapping canonical columns)
@@ -78,6 +92,19 @@ getColumns := func(header) {
 			// This ensures the column can be accessed by its original name
 			columnMapping[hTrimmed] = hTrimmed
 		}
+	}
+
+	// Prefer umi_count over duplicate_count when both exist.
+	if !is_undefined(umiCountHeader) {
+		columnMapping["umi-count"] = umiCountHeader
+	} else if !is_undefined(duplicateCountHeader) && columnMapping["umi-count"] == undefined {
+		columnMapping["umi-count"] = duplicateCountHeader
+	}
+
+	// If no UMI-related columns exist, treat duplicate_count as read-count.
+	if is_undefined(umiCountHeader) && is_undefined(consensusCountHeader) && !is_undefined(duplicateCountHeader) {
+		columnMapping["read-count"] = duplicateCountHeader
+		columnMapping["umi-count"] = undefined
 	}
 	
 	// Ensure all cell tag columns are in columnMapping for downstream access
@@ -176,7 +203,8 @@ getColumns := func(header) {
 		columnMapping: columnMapping,
 		clonotypeKeyStructure: keyStructure,
 		clonotypeKeyColumns: keyColumns,
-		cellTagColumns: cellTagColumns
+		cellTagColumns: cellTagColumns,
+		cdr3FallbackToAa: columnMapping["cdr3-aa"] != undefined
 	}
 }
 

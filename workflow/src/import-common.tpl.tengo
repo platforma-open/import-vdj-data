@@ -21,7 +21,7 @@ self.defineOutputs("tsv", "stats", "tsvForSingleCell")
 //    - exportStage: "before_productivity_filter" | "after_productivity_filter"
 // - chainFilterMode: "prefixes"
 // - primaryAbundancePolicy: "prefer_umi" | "force_umi" | "args"
-
+//
 self.body(func(inputs) {
 	inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
 	columnsInfo := inputs.columnsInfo
@@ -165,6 +165,10 @@ self.body(func(inputs) {
 		}
 	}
 
+	// Allele/best-gene helpers (MiXCR mode)
+	alleleMode := "none"
+	if !is_undefined(config) && !is_undefined(config.alleleMode) { alleleMode = config.alleleMode }
+
 	// Remove rows where any sequence column contains "region_not_covered"
 	seqCols := nt_cols + aa_cols + ["vdj-nt", "vdj-aa"]
 	invalidExpr := undefined
@@ -174,13 +178,11 @@ self.body(func(inputs) {
 			if invalidExpr == undefined { invalidExpr = cond } else { invalidExpr = invalidExpr.or(cond) }
 		}
 	}
-	if invalidExpr != undefined {
+	// MiXCR uses region_not_covered as NA marker; keep rows in that mode.
+	if invalidExpr != undefined && alleleMode != "mixcr" {
 		df = df.filter(invalidExpr.not())
 	}
 
-	// Allele/best-gene helpers (MiXCR mode)
-	alleleMode := "none"
-	if !is_undefined(config) && !is_undefined(config.alleleMode) { alleleMode = config.alleleMode }
 	if alleleMode == "mixcr" {
 		// Ensure allele columns presence according to rules:
 		// If any of bestXHit/allXHits/allXHitsWithScore exist in input, create x-allele.
@@ -196,9 +198,11 @@ self.body(func(inputs) {
 				stripParens := func(expr) { return expr.strReplace("\\(.*$", "", { replaceAll: true }) }
 				bestGene := prefix + "-gene"
 				if columnsInfo.columnMapping[keyAllWS] != undefined {
-					alleleExpressions = append(alleleExpressions, stripParens(firstItem(keyAllWS)).alias(keyBest))
+					originalCol := columnsInfo.columnMapping[keyAllWS]
+					alleleExpressions = append(alleleExpressions, stripParens(firstItem(originalCol)).alias(keyBest))
 				} else if columnsInfo.columnMapping[keyAll] != undefined {
-					alleleExpressions = append(alleleExpressions, firstItem(keyAll).alias(keyBest))
+					originalCol := columnsInfo.columnMapping[keyAll]
+					alleleExpressions = append(alleleExpressions, firstItem(originalCol).alias(keyBest))
 				} else if columnsInfo.columnMapping[bestGene] != undefined {
 					alleleExpressions = append(alleleExpressions, pt.col(bestGene).alias(keyBest))
 				} else {
@@ -219,7 +223,7 @@ self.body(func(inputs) {
 			allHits := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Hits"
 			allGenes := "all" + (prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C") + "Genes"
 
-			firstItem := func(col) { return pt.col(col).strReplace(",.*$", "", { replaceAll: true }) }
+			firstItem := func(col) { return pt.col(col).fillNull("").strReplace(",.*$", "", { replaceAll: true }) }
 			stripParens := func(expr) { return expr.strReplace("\\(.*$", "", { replaceAll: true }) }
 			stripAllele2 := func(expr) { return expr.strReplace("\\*.*$", "", { replaceAll: true }) }
 
@@ -229,19 +233,47 @@ self.body(func(inputs) {
 			hasAllGenes := columnsInfo.columnMapping[allGenes] != undefined
 			hasAllHits := columnsInfo.columnMapping[allHits] != undefined
 
-			if hasBestGene { return pt.col(bestGene).alias(bestGene) }
-			if hasBestHit { return stripAllele2(pt.col(bestHit)).alias(bestGene) }
-			if hasAllWithScore { return stripAllele2(stripParens(firstItem(allWithScore))).alias(bestGene) }
-			if hasAllGenes { return firstItem(allGenes).alias(bestGene) }
-			if hasAllHits { return stripAllele2(firstItem(allHits)).alias(bestGene) }
+			if hasBestGene { return pt.col(bestGene).fillNull("").alias(bestGene) }
+			if hasBestHit { return stripAllele2(pt.col(bestHit).fillNull("")).alias(bestGene) }
+			if hasAllWithScore { 
+				originalCol := columnsInfo.columnMapping[allWithScore]
+				return stripAllele2(stripParens(firstItem(originalCol))).fillNull("").alias(bestGene) 
+			}
+			if hasAllGenes { 
+				originalCol := columnsInfo.columnMapping[allGenes]
+				return firstItem(originalCol).fillNull("").alias(bestGene) 
+			}
+			if hasAllHits { 
+				originalCol := columnsInfo.columnMapping[allHits]
+				return stripAllele2(firstItem(originalCol)).fillNull("").alias(bestGene) 
+			}
 			return pt.lit("").alias(bestGene)
 		}
 		df = df.withColumns(deriveBestGene("v"), deriveBestGene("d"), deriveBestGene("j"), deriveBestGene("c"))
 	}
 
-	// Basic row filters: require V and J genes to be present
-	for col in ["j-gene", "v-gene"] {
-		df = df.filter(pt.col(col).isNotNull().and(pt.col(col).neq("")))
+	// Basic row filters: require V and J genes when available/derivable
+	hasVGene := columnsInfo.columnMapping["v-gene"] != undefined
+	hasJGene := columnsInfo.columnMapping["j-gene"] != undefined
+	if alleleMode == "mixcr" {
+		if columnsInfo.columnMapping["v-allele"] != undefined ||
+			columnsInfo.columnMapping["allVHitsWithScore"] != undefined ||
+			columnsInfo.columnMapping["allVHits"] != undefined ||
+			columnsInfo.columnMapping["allVGenes"] != undefined {
+			hasVGene = true
+		}
+		if columnsInfo.columnMapping["j-allele"] != undefined ||
+			columnsInfo.columnMapping["allJHitsWithScore"] != undefined ||
+			columnsInfo.columnMapping["allJHits"] != undefined ||
+			columnsInfo.columnMapping["allJGenes"] != undefined {
+			hasJGene = true
+		}
+	}
+	if hasVGene {
+		df = df.filter(pt.col("v-gene").isNotNull().and(pt.col("v-gene").neq("")))
+	}
+	if hasJGene {
+		df = df.filter(pt.col("j-gene").isNotNull().and(pt.col("j-gene").neq("")))
 	}
 
 	// Build clonotypeKey with robust fallback when columnsInfo.clonotypeKeyColumns empty.
@@ -250,14 +282,28 @@ self.body(func(inputs) {
 		if columnsInfo.columnMapping["vdj-nt"] != undefined { cols = append(cols, "vdj-nt") }
 		if len(cols) == 0 && columnsInfo.columnMapping["cdr3-nt"] != undefined { cols = append(cols, "cdr3-nt") }
 		if len(cols) == 0 && columnsInfo.columnMapping["cdr3-aa"] != undefined { cols = append(cols, "cdr3-aa") }
-		if columnsInfo.columnMapping["v-gene"] != undefined { cols = append(cols, "v-gene") }
-		if columnsInfo.columnMapping["j-gene"] != undefined { cols = append(cols, "j-gene") }
+		// Check if v-gene exists (either in mapping or was derived in mixcr mode)
+		if columnsInfo.columnMapping["v-gene"] != undefined || (alleleMode == "mixcr" && hasVGene) { cols = append(cols, "v-gene") }
+		// Check if j-gene exists (either in mapping or was derived in mixcr mode)
+		if columnsInfo.columnMapping["j-gene"] != undefined || (alleleMode == "mixcr" && hasJGene) { cols = append(cols, "j-gene") }
 		if columnsInfo.columnMapping["c-gene"] != undefined { cols = append(cols, "c-gene") }
 		return cols
 	}
 	keyCols := columnsInfo.clonotypeKeyColumns
 	if len(keyCols) == 0 { keyCols = inferKeyColumns() }
-	keyComponents := slices.map(keyCols, func(id) { return pt.col(id).fillNull("") })
+	keyComponents := slices.map(keyCols, func(id) {
+		// AIRR fallback: if cdr3-nt is empty, use cdr3-aa when available
+		if id == "cdr3-nt" &&
+			columnsInfo.cdr3FallbackToAa == true &&
+			columnsInfo.columnMapping["cdr3-aa"] != undefined {
+			ntExpr := pt.col("cdr3-nt").fillNull("")
+			aaExpr := pt.col("cdr3-aa").fillNull("")
+			return pt.when(ntExpr.neq("")).
+				then(ntExpr).
+				otherwise(aaExpr)
+		}
+		return pt.col(id).fillNull("")
+	})
 	clonotypeKeyExpr := pt.concatStr(keyComponents, { delimiter: "#" }).hash("sha256", "base64_alphanumeric", 120).alias("clonotypeKey")
 
 	// Chain filtering (prefixes) uses either top-chains or v-gene when available.
@@ -278,7 +324,7 @@ self.body(func(inputs) {
 	// Cast abundance columns - only cast what exists
 	if hasReadCount {
 		df = df.withColumns(
-			pt.col("read-count").strReplace(",", "", { replaceAll: true }).cast("Float64").fillNull(0).cast("Int64").alias("read-count")
+			pt.col("read-count").cast("String").strReplace(",", "", { replaceAll: true }).cast("Float64").fillNull(0).cast("Int64").alias("read-count")
 		)
 	}
 	if hasUmiCount {
@@ -313,12 +359,18 @@ self.body(func(inputs) {
 	// Productivity config
 	productivityMode := "none"
 	if !is_undefined(config) && !is_undefined(config.productivityMode) { productivityMode = config.productivityMode }
-	
+
 	// Handle AIRR is-productive column if present (convert boolean to "true"/"false" string)
 	if columnsInfo.columnMapping["is-productive"] != undefined && productivityMode == "none" {
 		// AIRR productive column is boolean, convert to string "true"/"false"
+		isProductiveExpr := pt.col("is-productive").eq(true).
+			or(pt.col("is-productive").eq("true")).
+			or(pt.col("is-productive").eq("True")).
+			or(pt.col("is-productive").eq("TRUE")).
+			or(pt.col("is-productive").eq("t")).
+			or(pt.col("is-productive").eq("T"))
 		df = df.withColumns(
-			pt.when(pt.col("is-productive").eq(true).or(pt.col("is-productive").eq("true").or(pt.col("is-productive").eq("True").or(pt.col("is-productive").eq("TRUE"))))).
+			pt.when(isProductiveExpr).
 				then(pt.lit("true")).
 				otherwise(pt.lit("false")).
 				alias("is-productive")

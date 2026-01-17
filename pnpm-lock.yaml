@@ -123,14 +123,14 @@ importers:
         version: link:../../samples-and-data/model
       '@platforma-sdk/model':
         specifier: 'catalog:'
-        version: 1.46.0
+        version: 1.48.14
       this-block:
         specifier: workspace:@platforma-open/milaboratories.import-vdj@*
         version: link:../block
     devDependencies:
       '@platforma-sdk/test':
         specifier: 'catalog:'
-        version: 1.48.20(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.6.3))(@types/node@24.10.2)(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.6.3))(typescript@5.6.3)(yaml@2.8.2)
+        version: 1.48.20(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.6.3))(@types/node@25.0.1)(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.6.3))(typescript@5.6.3)(yaml@2.8.2)
       typescript:
         specifier: 'catalog:'
         version: 5.6.3
@@ -180,7 +180,7 @@ importers:
         version: 2.4.6
       '@platforma-sdk/test':
         specifier: 'catalog:'
-        version: 1.48.20(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.8.2))(@types/node@24.10.2)(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.8.2))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.8.2))(typescript@5.8.2)(yaml@2.8.2)
+        version: 1.48.20(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.8.2))(@types/node@25.0.1)(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.8.2))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.8.2))(typescript@5.8.2)(yaml@2.8.2)
       vitest:
         specifier: 'catalog:'
         version: 2.1.9(@types/node@25.0.1)
@@ -5153,7 +5153,7 @@ snapshots:
       '@milaboratories/pl-model-middle-layer': 1.8.45
       '@milaboratories/ts-helpers': 1.5.4
       '@platforma-sdk/model': 1.48.14
-      es-toolkit: 1.42.0
+      es-toolkit: 1.43.0
       lru-cache: 11.2.4
     transitivePeerDependencies:
       - encoding
@@ -5554,7 +5554,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@platforma-sdk/test@1.48.20(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.6.3))(@types/node@24.10.2)(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.6.3))(typescript@5.6.3)(yaml@2.8.2)':
+  '@platforma-sdk/test@1.48.20(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.6.3))(@types/node@25.0.1)(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.6.3))(typescript@5.6.3)(yaml@2.8.2)':
     dependencies:
       '@milaboratories/computable': 2.7.5
       '@milaboratories/eslint-config': 1.0.5(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.6.3))(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.6.3))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(eslint@9.39.1)(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.6.3))(typescript@5.6.3)
@@ -5563,9 +5563,9 @@ snapshots:
       '@milaboratories/pl-tree': 1.8.26
       '@milaboratories/ts-helpers': 1.5.4
       '@platforma-sdk/model': 1.48.14
-      '@vitest/coverage-istanbul': 4.0.16(vitest@4.0.16(@types/node@24.10.2)(yaml@2.8.2))
+      '@vitest/coverage-istanbul': 4.0.16(vitest@4.0.16(@types/node@25.0.1)(yaml@2.8.2))
       eslint: 9.39.1
-      vitest: 4.0.16(@types/node@24.10.2)(yaml@2.8.2)
+      vitest: 4.0.16(@types/node@25.0.1)(yaml@2.8.2)
     transitivePeerDependencies:
       - '@edge-runtime/vm'
       - '@eslint/js'
@@ -5601,7 +5601,7 @@ snapshots:
       - typescript-eslint
       - yaml
 
-  '@platforma-sdk/test@1.48.20(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.8.2))(@types/node@24.10.2)(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.8.2))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.8.2))(typescript@5.8.2)(yaml@2.8.2)':
+  '@platforma-sdk/test@1.48.20(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.8.2))(@types/node@25.0.1)(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.8.2))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.8.2))(typescript@5.8.2)(yaml@2.8.2)':
     dependencies:
       '@milaboratories/computable': 2.7.5
       '@milaboratories/eslint-config': 1.0.5(@eslint/js@9.39.1)(@stylistic/eslint-plugin@2.13.0(eslint@9.39.1)(typescript@5.8.2))(eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.8.2))(eslint-plugin-vue@9.33.0(eslint@9.39.1))(eslint@9.39.1)(globals@15.15.0)(typescript-eslint@8.49.0(eslint@9.39.1)(typescript@5.8.2))(typescript@5.8.2)
@@ -5610,9 +5610,9 @@ snapshots:
       '@milaboratories/pl-tree': 1.8.26
       '@milaboratories/ts-helpers': 1.5.4
       '@platforma-sdk/model': 1.48.14
-      '@vitest/coverage-istanbul': 4.0.16(vitest@4.0.16(@types/node@24.10.2)(yaml@2.8.2))
+      '@vitest/coverage-istanbul': 4.0.16(vitest@4.0.16(@types/node@25.0.1)(yaml@2.8.2))
       eslint: 9.39.1
-      vitest: 4.0.16(@types/node@24.10.2)(yaml@2.8.2)
+      vitest: 4.0.16(@types/node@25.0.1)(yaml@2.8.2)
     transitivePeerDependencies:
       - '@edge-runtime/vm'
       - '@eslint/js'
@@ -6451,7 +6451,7 @@ snapshots:
       vite: 6.4.1(@types/node@25.0.1)(yaml@2.8.2)
       vue: 3.5.25(typescript@5.6.3)
 
-  '@vitest/coverage-istanbul@4.0.16(vitest@4.0.16(@types/node@24.10.2)(yaml@2.8.2))':
+  '@vitest/coverage-istanbul@4.0.16(vitest@4.0.16(@types/node@25.0.1)(yaml@2.8.2))':
     dependencies:
       '@istanbuljs/schema': 0.1.3
       '@jridgewell/gen-mapping': 0.3.13
@@ -6464,7 +6464,7 @@ snapshots:
       magicast: 0.5.1
       obug: 2.1.1
       tinyrainbow: 3.0.3
-      vitest: 4.0.16(@types/node@24.10.2)(yaml@2.8.2)
+      vitest: 4.0.16(@types/node@25.0.1)(yaml@2.8.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -6492,7 +6492,7 @@ snapshots:
     optionalDependencies:
       vite: 5.4.21(@types/node@25.0.1)
 
-  '@vitest/mocker@4.0.16(vite@7.2.7(@types/node@24.10.2)(yaml@2.8.2))':
+  '@vitest/mocker@4.0.16(vite@7.2.7(@types/node@25.0.1)(yaml@2.8.2))':
     dependencies:
       '@vitest/spy': 4.0.16
       estree-walker: 3.0.3
@@ -7274,7 +7274,7 @@ snapshots:
   eslint-plugin-n@17.23.1(eslint@9.39.1)(typescript@5.8.2):
     dependencies:
       '@eslint-community/eslint-utils': 4.9.0(eslint@9.39.1)
-      enhanced-resolve: 5.18.3
+      enhanced-resolve: 5.18.4
       eslint: 9.39.1
       eslint-plugin-es-x: 7.8.0(eslint@9.39.1)
       get-tsconfig: 4.13.0
@@ -8638,10 +8638,10 @@ snapshots:
       - supports-color
       - terser
 
-  vitest@4.0.16(@types/node@24.10.2)(yaml@2.8.2):
+  vitest@4.0.16(@types/node@25.0.1)(yaml@2.8.2):
     dependencies:
       '@vitest/expect': 4.0.16
-      '@vitest/mocker': 4.0.16(vite@7.2.7(@types/node@24.10.2)(yaml@2.8.2))
+      '@vitest/mocker': 4.0.16(vite@7.2.7(@types/node@25.0.1)(yaml@2.8.2))
       '@vitest/pretty-format': 4.0.16
       '@vitest/runner': 4.0.16
       '@vitest/snapshot': 4.0.16

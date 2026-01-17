@@ -293,15 +293,14 @@ getColumns := func(header) {
 		columnMapping["j-allele"] = columnMapping["j-gene"]
 	}
 
+	// Validate minimal requirements (do not panic; UI will show alert)
+	missingRequired := []
 	for col in requiredColumns {
 		if is_undefined(columnMapping[col]) {
-			ll.panic("Missing required column in input file: %v", col)
+			missingRequired = append(missingRequired, col)
 		}
 	}
     // ImmunoSEQ: keep only read-based abundance; ignore UMIs even if present
-    if is_undefined(columnMapping["read-count"]) {
-        ll.panic("ImmunoSEQ input must contain read-count abundance column (UMIs are ignored)")
-    }
 
     hasUMIs := false
 
@@ -314,17 +313,47 @@ getColumns := func(header) {
 	abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
 
 
-	propertyColumns := propertyColumnSpecs
+	// Only include property columns that are present or computed
+	propertyColumns := [
+		propertyColumnSpecs["cdr3-nt"],
+		propertyColumnSpecs["cdr3-aa"],
+		propertyColumnSpecs["cdr3-aa-length"],
+		propertyColumnSpecs["cdr3-nt-length"],
+		propertyColumnSpecs["is-productive"],
+		propertyColumnSpecs["v-gene"],
+		propertyColumnSpecs["d-gene"],
+		propertyColumnSpecs["j-gene"],
+		propertyColumnSpecs["v-allele"],
+		propertyColumnSpecs["d-allele"],
+		propertyColumnSpecs["j-allele"]
+	]
+	if columnMapping["c-gene"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["c-gene"])
+	}
+	if columnMapping["c-allele"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["c-allele"])
+	}
+	// Optional feature columns (include only if present in source)
+	optKeys := [
+		"fr1-nt", "cdr1-nt", "cdr2-nt", "fr2-nt", "fr3-nt", "fr4-nt",
+		"fr1-aa", "cdr1-aa", "cdr2-aa", "fr2-aa", "fr3-aa", "fr4-aa",
+		"vdj-nt", "vdj-aa", "isotype"
+	]
+	for k in optKeys {
+		if columnMapping[k] != undefined {
+			propertyColumns = append(propertyColumns, propertyColumnSpecs[k])
+		}
+	}
 	// @TODO: make this configurable
-	propertyColumns["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-	propertyColumns["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
-	propertyColumns["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-	propertyColumns["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+	propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+	propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+	propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+	propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
 
 	return {
 		hasUMIs: hasUMIs,
 		abundanceColumns: maps.getValues(abundanceColumns),
-		propertyColumns: maps.getValues(propertyColumns),
+		propertyColumns: propertyColumns,
 		columnMapping: columnMapping,
 		clonotypeKeyStructure: "CDR3-nt-VAllele-JAllele",
 		clonotypeKeyColumns: ["cdr3-nt", "v-allele", "j-allele"]

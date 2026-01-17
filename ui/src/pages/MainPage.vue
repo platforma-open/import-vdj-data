@@ -139,6 +139,7 @@ const optionalMutations = [
 ];
 
 const headerOptions = computed(() => (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })));
+const ui = app.model.ui as typeof app.model.ui & { immunoSeqColumnsPresent: boolean };
 
 function getMapping(key: string): string | undefined {
   const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined> };
@@ -180,23 +181,25 @@ const validationMessage = computed(() => {
 
   const formatName = result.format === 'qiagen'
     ? 'QIAseq Immune Repertoire Analysis'
-    : result.format === 'mixcr'
-      ? 'MiXCR bulk'
-      : result.format === 'mixcr-sc'
-        ? 'MiXCR single cell'
-        : result.format === 'cellranger'
-          ? 'Cell Ranger VDJ'
-          : result.format === 'airr'
-            ? 'AIRR'
-            : result.format === 'airr-sc'
-              ? 'AIRR single cell'
-              : result.format;
+    : result.format === 'immunoSeq'
+      ? 'ImmunoSeq'
+      : result.format === 'mixcr'
+        ? 'MiXCR bulk'
+        : result.format === 'mixcr-sc'
+          ? 'MiXCR single cell'
+          : result.format === 'cellranger'
+            ? 'Cell Ranger VDJ'
+            : result.format === 'airr'
+              ? 'AIRR'
+              : result.format === 'airr-sc'
+                ? 'AIRR single cell'
+                : result.format;
 
   return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
 });
 
 // Track previous format to avoid clearing all flags and causing hangs
-let _prevFormat: 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'custom' | 'immunoSeq' | 'airr' | 'airr-sc' | undefined;
+let _prevFormat: 'qiagen' | 'immunoSeq' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'custom' | 'airr' | 'airr-sc' | undefined;
 
 watch(
   () => app.model.args,
@@ -227,6 +230,7 @@ watch(
     // Clear all format flags when format changes to ensure clean state
     if (_prevFormat !== fmt) {
       app.model.ui.qiagenColumnsPresent = false;
+      ui.immunoSeqColumnsPresent = false;
       app.model.ui.mixcrColumnsPresent = false;
       app.model.ui.crColumnsPresent = false;
       app.model.ui.airrColumnsPresent = false;
@@ -241,38 +245,49 @@ watch(
 watchEffect(() => {
   const result = validationResult.value;
   const currentFormat = app.model.args.format;
-  
+
   // If no result, don't update flags (format change watch handles clearing, result might be loading)
   if (!result) return;
-  
+
   // If format mismatch, clear flags for the mismatched format only
   if (result.format !== currentFormat) {
     if (result.format === 'qiagen') app.model.ui.qiagenColumnsPresent = false;
+    if (result.format === 'immunoSeq') ui.immunoSeqColumnsPresent = false;
     if (result.format === 'mixcr' || result.format === 'mixcr-sc') app.model.ui.mixcrColumnsPresent = false;
     if (result.format === 'cellranger') app.model.ui.crColumnsPresent = false;
     if (result.format === 'airr' || result.format === 'airr-sc') app.model.ui.airrColumnsPresent = false;
     return;
   }
-  
+
   // Set flag only for the current format and clear others
   if (result.format === 'qiagen') {
     app.model.ui.qiagenColumnsPresent = result.isValid;
+    ui.immunoSeqColumnsPresent = false;
+    app.model.ui.mixcrColumnsPresent = false;
+    app.model.ui.crColumnsPresent = false;
+    app.model.ui.airrColumnsPresent = false;
+  } else if (result.format === 'immunoSeq') {
+    ui.immunoSeqColumnsPresent = result.isValid;
+    app.model.ui.qiagenColumnsPresent = false;
     app.model.ui.mixcrColumnsPresent = false;
     app.model.ui.crColumnsPresent = false;
     app.model.ui.airrColumnsPresent = false;
   } else if (result.format === 'mixcr' || result.format === 'mixcr-sc') {
     app.model.ui.mixcrColumnsPresent = result.isValid;
     app.model.ui.qiagenColumnsPresent = false;
+    ui.immunoSeqColumnsPresent = false;
     app.model.ui.crColumnsPresent = false;
     app.model.ui.airrColumnsPresent = false;
   } else if (result.format === 'cellranger') {
     app.model.ui.crColumnsPresent = result.isValid;
     app.model.ui.qiagenColumnsPresent = false;
+    ui.immunoSeqColumnsPresent = false;
     app.model.ui.mixcrColumnsPresent = false;
     app.model.ui.airrColumnsPresent = false;
   } else if (result.format === 'airr' || result.format === 'airr-sc') {
     app.model.ui.airrColumnsPresent = result.isValid;
     app.model.ui.qiagenColumnsPresent = false;
+    ui.immunoSeqColumnsPresent = false;
     app.model.ui.mixcrColumnsPresent = false;
     app.model.ui.crColumnsPresent = false;
   }
@@ -291,8 +306,6 @@ function onModalUpdate(val: boolean) {
   }
   app.model.ui.settingsOpen = val;
 }
-
-
 </script>
 
 <template>
@@ -306,8 +319,6 @@ function onModalUpdate(val: boolean) {
         </template>
       </PlBtnGhost>
     </template>
-
-    {{ app.model.outputs.headerColumns }}
 
     <PlSlideModal :model-value="forceSettingsOpen" @update:model-value="onModalUpdate">
       <template #title>Settings</template>
@@ -327,15 +338,17 @@ function onModalUpdate(val: boolean) {
         <template #title>
           Invalid {{ validationResult?.format === 'qiagen'
             ? 'QIAseq Immune Repertoire Analysis'
-            : (validationResult?.format === 'mixcr'
-              ? 'MiXCR bulk'
-              : (validationResult?.format === 'mixcr-sc'
-                ? 'MiXCR single cell'
-                : (validationResult?.format === 'cellranger'
-                  ? 'Cell Ranger VDJ'
-                  : (validationResult?.format === 'airr'
-                    ? 'AIRR'
-                    : validationResult?.format))))
+            : (validationResult?.format === 'immunoSeq'
+              ? 'ImmunoSeq'
+              : (validationResult?.format === 'mixcr'
+                ? 'MiXCR bulk'
+                : (validationResult?.format === 'mixcr-sc'
+                  ? 'MiXCR single cell'
+                  : (validationResult?.format === 'cellranger'
+                    ? 'Cell Ranger VDJ'
+                    : (validationResult?.format === 'airr'
+                      ? 'AIRR'
+                      : validationResult?.format)))))
           }} dataset
         </template>
         {{ validationMessage }}
