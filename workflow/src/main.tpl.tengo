@@ -5,6 +5,7 @@ assets:= import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 ll := import("@platforma-sdk/workflow-tengo:ll")
+formats := import(":formats")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
 processBulkTpl := assets.importTemplate(":process-bulk")
@@ -19,7 +20,7 @@ wf.body(func(args) {
 	chains := args.chains
 	blockId := wf.blockId().getDataAsJson()
 
-	if chains == undefined {
+	if chains == undefined || len(chains) == 0 {
 		chains = ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta", "TCRGamma"]
 	}
 
@@ -30,7 +31,8 @@ wf.body(func(args) {
 		primaryCountType: args.primaryCountType
 	}).output("columnsInfo")
 
-	isSingleCell := (format == "cellranger") || (format == "mixcr-sc")
+	formatSpec := formats.mustGet(format)
+	isSingleCell := formatSpec.isSingleCell
 	
 	tpl := isSingleCell ? processSingleCellTpl : processBulkTpl
 

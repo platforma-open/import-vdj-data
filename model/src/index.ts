@@ -3,7 +3,7 @@ import { BlockModel, createPlDataTableStateV2, createPlDataTableV2, PColumnColle
 
 export type BlockArgs = {
   datasetRef?: PlRef;
-  format?: 'immunoSeq' | 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'airr' | 'custom';
+  format?: 'immunoSeq' | 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'airr' | 'airr-sc' | 'custom';
   chains: string[];
   customMapping?: Record<string, string | undefined>;
   primaryCountType?: 'read' | 'umi';
@@ -15,8 +15,10 @@ export type UiState = {
   title: string;
   settingsOpen: boolean;
   qiagenColumnsPresent: boolean;
+  immunoSeqColumnsPresent: boolean;
   mixcrColumnsPresent: boolean;
   crColumnsPresent: boolean;
+  airrColumnsPresent: boolean;
 };
 
 export type ColumnDescription = {
@@ -35,8 +37,10 @@ export const model = BlockModel.create()
     title: 'Import V(D)J Data',
     settingsOpen: true,
     qiagenColumnsPresent: false,
+    immunoSeqColumnsPresent: false,
     mixcrColumnsPresent: false,
     crColumnsPresent: false,
+    airrColumnsPresent: false,
   })
 
   .argsValid((ctx) => {
@@ -59,12 +63,20 @@ export const model = BlockModel.create()
       return ctx.uiState.qiagenColumnsPresent === true;
     }
 
+    if (format === 'immunoSeq') {
+      return ctx.uiState.immunoSeqColumnsPresent === true;
+    }
+
     if (format === 'mixcr' || format === 'mixcr-sc') {
       return ctx.uiState.mixcrColumnsPresent === true;
     }
 
     if (format === 'cellranger') {
       return ctx.uiState.crColumnsPresent === true;
+    }
+
+    if (format === 'airr' || format === 'airr-sc') {
+      return ctx.uiState.airrColumnsPresent === true;
     }
 
     // For other formats, basic args are sufficient
@@ -136,6 +148,26 @@ export const model = BlockModel.create()
       };
     }
 
+    if (format === 'immunoSeq') {
+      const hasAny = (aliases: string[]) => aliases.some((alias) => headers.includes(alias));
+      const missingColumns: string[] = [];
+      if (!hasAny(['rearrangement', 'nucleotide'])) missingColumns.push('sequence');
+      if (!hasAny(['amino_acid_sequence', 'amino_acid', 'aminoAcid'])) missingColumns.push('cdr3-aa');
+      if (!hasAny(['v_gene', 'v-gene', 'vGene', 'vGeneName'])) missingColumns.push('v-gene');
+      if (!hasAny(['d_gene', 'd-gene', 'dGene', 'dGeneName'])) missingColumns.push('d-gene');
+      if (!hasAny(['j_gene', 'j-gene', 'jGene', 'jGeneName'])) missingColumns.push('j-gene');
+      if (!hasAny(['v-index', 'v_index', 'vIndex'])) missingColumns.push('v-begin');
+      if (!hasAny(['count (templates/reads)', 'count (reads)', 'seq_reads', 'reads', 'count'])) {
+        missingColumns.push('read-count');
+      }
+
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: 'immunoSeq',
+      };
+    }
+
     if (format === 'mixcr') {
       // MiXCR minimal requirements aligned with infer-columns-mixcr.lib.tengo
       const mixcrRequiredHeaders = [
@@ -184,6 +216,45 @@ export const model = BlockModel.create()
         isValid: missingColumns.length === 0,
         missingColumns,
         format: 'cellranger',
+      };
+    }
+
+    if (format === 'airr' || format === 'airr-sc') {
+      // AIRR format uses case-insensitive column names
+      // Required: duplicate_count, junction (CDR3 nt), v_call, j_call
+      // For single-cell: also requires cell_id
+      // Handle case where headerColumns might be a single comma-separated string or array of strings
+      const flattenedHeaders: string[] = [];
+      for (const h of headers) {
+        const str = String(h).trim();
+        // If the string contains commas, split it
+        if (str.includes(',')) {
+          flattenedHeaders.push(...str.split(',').map((s) => s.trim()).filter((s) => s.length > 0));
+        } else {
+          flattenedHeaders.push(str);
+        }
+      }
+      const headersLower = flattenedHeaders.map((h) => h.toLowerCase());
+      const airrRequired = [
+        'duplicate_count',
+        'junction',
+        'v_call',
+        'j_call',
+      ];
+      const missingColumns = airrRequired.filter((req) => !headersLower.includes(req));
+
+      // For single-cell AIRR, also require cell_id
+      if (format === 'airr-sc') {
+        const hasCellId = headersLower.includes('cell_id');
+        if (!hasCellId) {
+          missingColumns.push('cell_id');
+        }
+      }
+
+      return {
+        isValid: missingColumns.length === 0,
+        missingColumns,
+        format: format,
       };
     }
 
