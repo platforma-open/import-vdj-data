@@ -13,7 +13,7 @@ const formatOptions = [
   { label: 'MiXCR bulk', value: 'mixcr' },
   { label: 'MiXCR single cell', value: 'mixcr-sc' },
   { label: 'Cell Ranger VDJ', value: 'cellranger' },
-  { label: 'AIRR', value: 'airr' },
+  { label: 'AIRR bulk', value: 'airr' },
   { label: 'AIRR single cell', value: 'airr-sc' },
   { label: 'Custom', value: 'custom' },
 ];
@@ -190,7 +190,7 @@ const validationMessage = computed(() => {
           : result.format === 'cellranger'
             ? 'Cell Ranger VDJ'
             : result.format === 'airr'
-              ? 'AIRR'
+              ? 'AIRR bulk'
               : result.format === 'airr-sc'
                 ? 'AIRR single cell'
                 : result.format;
@@ -347,7 +347,7 @@ function onModalUpdate(val: boolean) {
                   : (validationResult?.format === 'cellranger'
                     ? 'Cell Ranger VDJ'
                     : (validationResult?.format === 'airr'
-                      ? 'AIRR'
+                      ? 'AIRR bulk'
                       : validationResult?.format)))))
           }} dataset
         </template>
