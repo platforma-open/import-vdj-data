@@ -43,13 +43,6 @@ watchEffect(() => {
       parts.push(datasetOption.label);
     }
   }
-  // Add format if available
-  if (args.format) {
-    const formatLabel = formatOptions.find((f) => f.value === args.format)?.label;
-    if (formatLabel) {
-      parts.push(formatLabel);
-    }
-  }
   // Add chains if available
   if (args.chains && args.chains.length > 0) {
     parts.push(args.chains.join(', '));
