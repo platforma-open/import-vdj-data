@@ -2,7 +2,7 @@
 import type { PlRef } from '@platforma-sdk/model';
 import { plRefsEqual } from '@platforma-sdk/model';
 import { PlAccordion, PlAccordionSection, PlAgDataTableV2, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlElementList, PlMaskIcon24, PlSectionSeparator, PlSlideModal, usePlDataTableSettingsV2 } from '@platforma-sdk/ui-vue';
-import { computed, watch } from 'vue';
+import { computed, watch, watchEffect } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
@@ -31,6 +31,25 @@ const receptorOptions = [
   { value: 'TCRGD', label: 'TCR-ɣδ' },
 ];
 
+// updating defaultBlockLabel
+watchEffect(() => {
+  const args = app.model.args as any;
+  const parts: string[] = [];
+  // Add dataset name if available
+  if (args.datasetRef) {
+    const datasetOptions = app.model.outputs.datasetOptions ?? [];
+    const datasetOption = datasetOptions.find((p: any) => args.datasetRef && plRefsEqual(p.ref, args.datasetRef));
+    if (datasetOption?.label) {
+      parts.push(datasetOption.label);
+    }
+  }
+  // Add chains if available
+  if (args.chains && args.chains.length > 0) {
+    parts.push(args.chains.join(', '));
+  }
+  args.defaultBlockLabel = parts.filter(Boolean).join(' - ');
+});
+
 const countTypeOptions = [
   { label: 'Reads', value: 'read' },
   { label: 'UMIs', value: 'umi' },
@@ -46,14 +65,11 @@ const secondaryTypeOptions = computed(() => {
 const isSingleCell = computed(() => app.model.args.format === 'mixcr-sc' || app.model.args.format === 'cellranger');
 
 const tableSettings = usePlDataTableSettingsV2({
-  sourceId: () => app.model.args.datasetRef,
   model: () => app.model.outputs.stats,
 });
 
 const setDataset = (datasetRef: PlRef | undefined) => {
   app.model.args.datasetRef = datasetRef;
-  if (datasetRef)
-    app.model.ui.title = 'Import V(D)J Data - ' + app.model.outputs.datasetOptions?.find((o) => plRefsEqual(o.ref, datasetRef))?.label;
 };
 
 function setReceptors(selected: string[]) {
@@ -255,8 +271,9 @@ watch(
 </script>
 
 <template>
-  <PlBlockPage>
-    <template #title>{{ app.model.ui.title }}</template>
+  <PlBlockPage
+    title="Import V(D)J Data"
+  >
     <template #append>
       <PlBtnGhost @click.stop="() => (app.model.ui.settingsOpen = true)">
         Settings
