@@ -28,7 +28,7 @@ export type ColumnDescription = {
 export const model = BlockModel.create()
 
   .withArgs<BlockArgs>({
-    defaultBlockLabel: '',
+    defaultBlockLabel: 'Select Dataset',
     customBlockLabel: '',
     chains: ['IGHeavy', 'IGLight', 'TCRAlpha', 'TCRBeta', 'TCRDelta', 'TCRGamma'],
   })
