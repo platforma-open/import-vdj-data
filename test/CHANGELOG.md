@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.test
 
+## 1.3.0
+
+### Minor Changes
+
+- cef5de2: refactoring, airr format and dependencies updates
+
 ## 1.2.0
 
 ### Minor Changes

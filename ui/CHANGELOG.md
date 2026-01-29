@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.10.0
+
+### Minor Changes
+
+- cef5de2: refactoring, airr format and dependencies updates
+
+### Patch Changes
+
+- Updated dependencies [cef5de2]
+  - @platforma-open/milaboratories.import-vdj.model@1.9.0
+
 ## 1.9.0
 
 ### Minor Changes
