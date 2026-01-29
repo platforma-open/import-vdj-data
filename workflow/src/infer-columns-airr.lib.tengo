@@ -1,0 +1,219 @@
+maps := import("@platforma-sdk/workflow-tengo:maps")
+slices := import("@platforma-sdk/workflow-tengo:slices")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+text := import("text")
+
+common := import(":infer-columns-common")
+
+a := common.a
+readColumnSpecs := common.readColumnSpecs
+umiColumnSpecs := common.umiColumnSpecs
+propertyColumnSpecs := common.propertyColumnSpecs
+
+// AIRR rearrangement schema headers (case-insensitive).
+// We keep keys lowercase and match on text.to_lower(h).
+sourceAliases := {
+	// abundance
+	"duplicate_count": "umi-count",
+	"consensus_count": "read-count",
+	"umi_count": "umi-count",
+
+	// sequences
+	"junction": "cdr3-nt",
+	"junction_aa": "cdr3-aa",
+	"cdr3_aa": "cdr3-aa",
+	"cdr3": "cdr3-nt",
+
+	// gene calls
+	"v_call": "v-gene",
+	"d_call": "d-gene",
+	"j_call": "j-gene",
+	"c_call": "c-gene",
+	
+	// productivity
+	"productive": "is-productive",
+	
+	// single-cell identifiers (map to themselves for cell tag columns)
+	"cell_id": "uniqueTagValueCELL"
+}
+
+requiredColumns := ["read-count", "cdr3-nt", "v-gene", "j-gene"]
+
+getColumns := func(header) {
+	// Handle case where header might be an array with a single comma-separated string
+	headerArray := header
+	if len(header) == 1 {
+		first := header[0]
+		firstStr := string(first)
+		if text.contains(firstStr, ",") {
+			// Single element contains commas - split it
+			headerArray = text.split(firstStr, ",")
+		}
+	}
+	
+	columnMapping := {}
+	
+	// Detect single-cell tag columns: AIRR uses cell_id or barcode
+	isSingleCell := false
+	cellTagColumns := []
+	umiCountHeader := undefined
+	duplicateCountHeader := undefined
+	consensusCountHeader := undefined
+	for h in headerArray {
+		hStr := string(h)
+		hTrimmed := text.trim_space(hStr)
+		if len(hTrimmed) == 0 { continue }
+		k := text.to_lower(hTrimmed)
+		
+		canonical := sourceAliases[k]
+		if canonical != undefined && columnMapping[canonical] == undefined {
+			columnMapping[canonical] = hTrimmed
+		}
+		if k == "umi_count" {
+			umiCountHeader = hTrimmed
+		}
+		if k == "duplicate_count" {
+			duplicateCountHeader = hTrimmed
+		}
+		if k == "consensus_count" {
+			consensusCountHeader = hTrimmed
+		}
+		
+		// Check for single-cell identifiers (after mapping canonical columns)
+		if k == "cell_id" || k == "barcode" || k == "clone_id" {
+			isSingleCell = true
+			// Ensure we don't add duplicates
+			alreadyAdded := false
+			for ex in cellTagColumns { if ex == hTrimmed { alreadyAdded = true } }
+			if !alreadyAdded {
+				cellTagColumns = append(cellTagColumns, hTrimmed)
+			}
+			// Map to itself so it's available in columnMapping - use original trimmed name
+			// This ensures the column can be accessed by its original name
+			columnMapping[hTrimmed] = hTrimmed
+		}
+	}
+
+	// Prefer umi_count over duplicate_count when both exist.
+	if !is_undefined(umiCountHeader) {
+		columnMapping["umi-count"] = umiCountHeader
+	} else if !is_undefined(duplicateCountHeader) && columnMapping["umi-count"] == undefined {
+		columnMapping["umi-count"] = duplicateCountHeader
+	}
+
+	// If no UMI-related columns exist, treat duplicate_count as read-count.
+	if is_undefined(umiCountHeader) && is_undefined(consensusCountHeader) && !is_undefined(duplicateCountHeader) {
+		columnMapping["read-count"] = duplicateCountHeader
+		columnMapping["umi-count"] = undefined
+	}
+	
+	// Ensure all cell tag columns are in columnMapping for downstream access
+	for tagCol in cellTagColumns {
+		if columnMapping[tagCol] == undefined {
+			columnMapping[tagCol] = tagCol
+		}
+	}
+
+	// Missing requirements (do not panic; validation is done in formats)
+	missingRequired := []
+	for c in requiredColumns {
+		if is_undefined(columnMapping[c]) { missingRequired = append(missingRequired, c) }
+	}
+
+	// Abundance columns (AIRR commonly provides counts, sometimes fractions, and optionally UMIs)
+	abundanceColumns := {}
+	hasReads := !is_undefined(columnMapping["read-count"]) || !is_undefined(columnMapping["read-fraction"])
+	hasUMIs := !is_undefined(columnMapping["umi-count"]) || !is_undefined(columnMapping["umi-fraction"])
+	
+	if hasReads {
+		abundanceColumns = maps.merge(abundanceColumns, readColumnSpecs)
+	}
+	if hasUMIs {
+		abundanceColumns = maps.merge(abundanceColumns, umiColumnSpecs)
+	}
+	
+	// Determine primary abundance: prefer UMI if available, otherwise use read-count
+	mainAbundance := hasUMIs ? "umi-count" : (hasReads ? "read-count" : "")
+	mainFractionAbundance := hasUMIs ? "umi-fraction" : (hasReads ? "read-fraction" : "")
+	
+	if mainAbundance != "" && abundanceColumns[mainAbundance] != undefined {
+		abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+		abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
+	}
+	if mainFractionAbundance != "" && abundanceColumns[mainFractionAbundance] != undefined {
+		abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+	}
+
+	// Property columns
+	propertyColumns := [
+		propertyColumnSpecs["cdr3-nt"],
+		propertyColumnSpecs["v-gene"],
+		propertyColumnSpecs["j-gene"]
+	]
+	if columnMapping["cdr3-aa"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["cdr3-aa"])
+	}
+	if columnMapping["d-gene"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["d-gene"])
+	}
+	if columnMapping["c-gene"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["c-gene"])
+	}
+	// computed lengths
+	propertyColumns = append(propertyColumns, propertyColumnSpecs["cdr3-nt-length"])
+	if columnMapping["cdr3-aa"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["cdr3-aa-length"])
+	}
+	// is-productive column if available
+	if columnMapping["is-productive"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["is-productive"])
+	}
+	
+	// Extract alleles from gene calls if they contain allele information (e.g., "IGHV1-1*01")
+	// AIRR v_call, d_call, j_call, c_call can contain alleles after *
+	// We'll extract them in the import template, but we need to map the source columns
+	// For now, we check if the original header has allele-specific columns or if gene calls contain *
+	// The import template will handle extracting alleles from gene calls
+	if columnMapping["v-gene"] != undefined {
+		// v-gene column exists, alleles can be extracted from it
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["v-allele"])
+	}
+	if columnMapping["d-gene"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["d-allele"])
+	}
+	if columnMapping["j-gene"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["j-allele"])
+	}
+	if columnMapping["c-gene"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["c-allele"])
+	}
+
+	// Clonotype key (CDR3 nt + V/J + optional C)
+	keyColumns := ["cdr3-nt", "v-gene", "j-gene"]
+	keyStructure := "CDR3-nt-VGene-JGene"
+	if columnMapping["c-gene"] != undefined {
+		keyColumns = append(keyColumns, "c-gene")
+		keyStructure = keyStructure + "-CGene"
+	}
+
+	return {
+		hasUMIs: hasUMIs,
+		abundanceColumns: maps.getValues(abundanceColumns),
+		propertyColumns: propertyColumns,
+		columnMapping: columnMapping,
+		clonotypeKeyStructure: keyStructure,
+		clonotypeKeyColumns: keyColumns,
+		cellTagColumns: cellTagColumns,
+		cdr3FallbackToAa: columnMapping["cdr3-aa"] != undefined
+	}
+}
+
+export { getColumns: getColumns }
+
+
+
+
+
+
+
+

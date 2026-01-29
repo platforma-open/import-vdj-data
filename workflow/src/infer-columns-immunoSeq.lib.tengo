@@ -4,94 +4,14 @@ sets := import("@platforma-sdk/workflow-tengo:sets")
 json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 
+common := import(":infer-columns-common")
+
 // Helper to add common annotations for table view properties
-a := func(order, defaultVisibility, spec) {
-	return maps.merge(spec, {
-		"pl7.app/table/orderPriority": string(order),
-		"pl7.app/table/visibility": is_undefined(defaultVisibility) ? "hidden" : defaultVisibility ? "default" : "optional"
-	})
-}
+a := common.a
 
-readColumnSpecs := {
-	"read-count": {
-		id: "read-count",
-		column: "read-count",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/vdj/readCount",
-			valueType: "Long",
-			annotations: a(89000, true, {
-				"pl7.app/isAbundance": "true",
-				"pl7.app/min": "0",
-				"pl7.app/abundance/unit": "reads",
-				"pl7.app/abundance/normalized": "false",
-				"pl7.app/label": "Number Of Reads",
-				"pl7.app/description": "The raw number of sequencing reads in the sample assigned to the clonotype.",
-				"pl7.app/table/visibility": "default"
-			})
-		}
-	},
-	"read-fraction": {
-		id: "read-fraction",	
-		column: "read-fraction",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/vdj/readFraction",
-			valueType: "Double",
-			annotations: a(88999, false, { 
-				"pl7.app/isAbundance": "true",
-				"pl7.app/min": "0",
-			  	"pl7.app/max": "1",
-				"pl7.app/abundance/unit": "reads",
-				"pl7.app/abundance/normalized": "true",
-				"pl7.app/label": "Read Fraction",
-				"pl7.app/description": "The fraction of total reads in the sample assigned to the clonotype.",
-				"pl7.app/format": ".2p",
-				"pl7.app/table/visibility": "default"
-			})
-		}
-	}
-}
+readColumnSpecs := common.readColumnSpecs
 
-umiColumnSpecs := {
-	"umi-count": {
-		id: "umi-count",
-		column: "umi-count",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/vdj/uniqueMoleculeCount",
-			valueType: "Long",
-			annotations: a(90000, true, {
-				"pl7.app/isAbundance": "true",
-				"pl7.app/min": "0",
-				"pl7.app/abundance/unit": "molecules",
-				"pl7.app/abundance/normalized": "false",
-				"pl7.app/label": "Number Of UMIs",
-				"pl7.app/description": "The number of unique molecules (UMIs) in the sample assigned to the clonotype.",
-				"pl7.app/table/visibility": "default" 
-			})
-		}
-	},
-	"umi-fraction": {
-		id: "umi-fraction",
-		column: "umi-fraction",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/vdj/uniqueMoleculeFraction",
-			valueType: "Double",
-			annotations: a(89999, false, { 
-				"pl7.app/isAbundance": "true",
-				"pl7.app/min": "0",
-				"pl7.app/max": "1",
-				"pl7.app/abundance/unit": "molecules",
-				"pl7.app/abundance/normalized": "true",
-				"pl7.app/label": "UMI Fraction",
-				"pl7.app/description": "The fraction of total UMIs in the sample assigned to the clonotype.",
-				"pl7.app/format": ".2p", "pl7.app/table/visibility": "default"
-			})
-		}
-	}
-}
+umiColumnSpecs := common.umiColumnSpecs
 
 propertyColumnSpecs := {
 	"cdr3-nt": {
@@ -292,6 +212,9 @@ propertyColumnSpecs := {
 	}
 }
 
+// Centralize shared specs (definition above is legacy / kept for diffs).
+propertyColumnSpecs = common.propertyColumnSpecs
+
 // sourceAliases maps various column names found in immunoSEQ files to our internal canonical names.
 sourceAliases := {
 	// sequence (not necessarily cdr3)
@@ -370,15 +293,14 @@ getColumns := func(header) {
 		columnMapping["j-allele"] = columnMapping["j-gene"]
 	}
 
+	// Validate minimal requirements (do not panic; UI will show alert)
+	missingRequired := []
 	for col in requiredColumns {
 		if is_undefined(columnMapping[col]) {
-			ll.panic("Missing required column in input file: %v", col)
+			missingRequired = append(missingRequired, col)
 		}
 	}
     // ImmunoSEQ: keep only read-based abundance; ignore UMIs even if present
-    if is_undefined(columnMapping["read-count"]) {
-        ll.panic("ImmunoSEQ input must contain read-count abundance column (UMIs are ignored)")
-    }
 
     hasUMIs := false
 
@@ -391,17 +313,47 @@ getColumns := func(header) {
 	abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
 
 
-	propertyColumns := propertyColumnSpecs
+	// Only include property columns that are present or computed
+	propertyColumns := [
+		propertyColumnSpecs["cdr3-nt"],
+		propertyColumnSpecs["cdr3-aa"],
+		propertyColumnSpecs["cdr3-aa-length"],
+		propertyColumnSpecs["cdr3-nt-length"],
+		propertyColumnSpecs["is-productive"],
+		propertyColumnSpecs["v-gene"],
+		propertyColumnSpecs["d-gene"],
+		propertyColumnSpecs["j-gene"],
+		propertyColumnSpecs["v-allele"],
+		propertyColumnSpecs["d-allele"],
+		propertyColumnSpecs["j-allele"]
+	]
+	if columnMapping["c-gene"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["c-gene"])
+	}
+	if columnMapping["c-allele"] != undefined {
+		propertyColumns = append(propertyColumns, propertyColumnSpecs["c-allele"])
+	}
+	// Optional feature columns (include only if present in source)
+	optKeys := [
+		"fr1-nt", "cdr1-nt", "cdr2-nt", "fr2-nt", "fr3-nt", "fr4-nt",
+		"fr1-aa", "cdr1-aa", "cdr2-aa", "fr2-aa", "fr3-aa", "fr4-aa",
+		"vdj-nt", "vdj-aa", "isotype"
+	]
+	for k in optKeys {
+		if columnMapping[k] != undefined {
+			propertyColumns = append(propertyColumns, propertyColumnSpecs[k])
+		}
+	}
 	// @TODO: make this configurable
-	propertyColumns["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-	propertyColumns["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
-	propertyColumns["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-	propertyColumns["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+	propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+	propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
+	propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
+	propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
 
 	return {
 		hasUMIs: hasUMIs,
 		abundanceColumns: maps.getValues(abundanceColumns),
-		propertyColumns: maps.getValues(propertyColumns),
+		propertyColumns: propertyColumns,
 		columnMapping: columnMapping,
 		clonotypeKeyStructure: "CDR3-nt-VAllele-JAllele",
 		clonotypeKeyColumns: ["cdr3-nt", "v-allele", "j-allele"]

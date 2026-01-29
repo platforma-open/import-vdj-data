@@ -1,0 +1,100 @@
+maps := import("@platforma-sdk/workflow-tengo:maps")
+json := import("json")
+
+columnsToSchema := func(columns) {
+	schema := []
+	for col in columns {
+		schema += [ { column: col.column, type: col.spec.valueType } ]
+	}
+	return schema
+}
+
+buildStatsColumns := func(chain, blockId, columnsInfo) {
+	statsColumns := [
+		{
+			id: "clonotype-count",
+			column: "clonotype-count",
+			spec: {
+				name: "pl7.app/vdj/stat/clonotypeCount",
+				valueType: "Int",
+				domain: {
+					"pl7.app/vdj/chain": chain,
+					"pl7.app/vdj/clonotypingRunId": blockId
+				},
+				annotations: {
+					"pl7.app/label": "Number of Clonotypes",
+					"pl7.app/description": "The number of clonotypes in the dataset.",
+					"pl7.app/table/visibility": "default"
+				}
+			}
+		}
+	]
+	hasReads := columnsInfo.columnMapping["read-count"] != undefined
+	if hasReads {
+		statsColumns += [
+			{
+				id: "read-count",
+				column: "read-count",
+				spec: {
+					name: "pl7.app/vdj/stat/readCount",
+					valueType: "Long",
+					domain: {
+						"pl7.app/vdj/chain": chain,
+					"pl7.app/vdj/clonotypingRunId": blockId
+					},
+					annotations: {
+						"pl7.app/label": "Number of Reads",
+						"pl7.app/description": "The number of reads in the dataset.",
+						"pl7.app/table/visibility": "default"
+					}
+				}
+			}
+		]
+	}
+	return statsColumns
+}
+
+toCombinedDomainValue := func(spec) {
+	result := [spec.name]
+	if is_undefined(spec.domain) { return result }
+	for domain in maps.getKeys(spec.domain) {
+		result = append(result, [domain, spec.domain[domain]])
+	}
+	return result
+}
+
+buildClonotypeKeyStructure := func(columnsInfo, keyColumns) {
+	if keyColumns == undefined { return string(json.encode([])) }
+	columnsByName := {}
+	for col in columnsInfo.propertyColumns { columnsByName[col.column] = col }
+	for col in columnsInfo.abundanceColumns { columnsByName[col.column] = col }
+	keyStructure := []
+	for keyColumn in keyColumns {
+		columnSpec := columnsByName[keyColumn]
+		if !is_undefined(columnSpec) && !is_undefined(columnSpec.spec) {
+			keyStructure = append(keyStructure, toCombinedDomainValue(columnSpec.spec))
+		}
+	}
+	return string(json.encode(keyStructure))
+}
+
+applyXsvType := func(importCfg, datasetSpec) {
+	if is_undefined(datasetSpec) || is_undefined(datasetSpec.domain) { return importCfg }
+	fileExtension := datasetSpec.domain["pl7.app/fileExtension"]
+	if is_undefined(fileExtension) { return importCfg }
+	cfg := importCfg
+	if is_undefined(cfg) { cfg = {} }
+	if fileExtension == "csv" || fileExtension == "csv.gz" {
+		cfg.xsvType = "csv"
+	} else if fileExtension == "tsv" || fileExtension == "tsv.gz" {
+		cfg.xsvType = "tsv"
+	}
+	return cfg
+}
+
+export {
+	columnsToSchema: columnsToSchema,
+	buildStatsColumns: buildStatsColumns,
+	buildClonotypeKeyStructure: buildClonotypeKeyStructure,
+	applyXsvType: applyXsvType
+}

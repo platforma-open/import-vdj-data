@@ -13,6 +13,8 @@ const formatOptions = [
   { label: 'MiXCR bulk', value: 'mixcr' },
   { label: 'MiXCR single cell', value: 'mixcr-sc' },
   { label: 'Cell Ranger VDJ', value: 'cellranger' },
+  { label: 'AIRR bulk', value: 'airr' },
+  { label: 'AIRR single cell', value: 'airr-sc' },
   { label: 'Custom', value: 'custom' },
 ];
 
@@ -179,48 +181,42 @@ const mappingComplete = computed(() => {
 });
 
 const validationResult = computed(() => {
-  const outputs = app.model.outputs as { validationResult?: { isValid: boolean; missingColumns: string[]; format: string } };
-  return outputs.validationResult;
+  // Access format to create dependency and ensure reactivity when format changes
+  const format = app.model.args.format;
+  // Access outputs - Vue should track this if outputs is reactive
+  const outputs = app.model.outputs;
+  const result = (outputs as { validationResult?: { isValid: boolean; missingColumns: string[]; format: string } })?.validationResult;
+  // Return result - format dependency ensures recomputation when format changes
+  return format ? result : result;
 });
 
 const validationMessage = computed(() => {
   const result = validationResult.value;
   if (!result || result.isValid) return '';
 
-  const formatName = result.format === 'qiagen'
+  const formatKey = result.format?.toLowerCase?.() ?? result.format;
+  const formatName = formatKey === 'qiagen'
     ? 'QIAseq Immune Repertoire Analysis'
-    : result.format === 'mixcr'
-      ? 'MiXCR bulk'
-      : result.format === 'mixcr-sc'
-        ? 'MiXCR single cell'
-        : result.format === 'cellranger'
-          ? 'Cell Ranger VDJ'
-          : result.format;
+    : formatKey === 'immunoseq'
+      ? 'ImmunoSeq'
+      : formatKey === 'mixcr'
+        ? 'MiXCR bulk'
+        : formatKey === 'mixcr-sc'
+          ? 'MiXCR single cell'
+          : formatKey === 'cellranger'
+            ? 'Cell Ranger VDJ'
+            : formatKey === 'airr'
+              ? 'AIRR bulk'
+              : formatKey === 'airr-sc'
+                ? 'AIRR single cell'
+                : result.format;
 
   return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
 });
 
-const forceSettingsOpen = computed(() => {
-  const mustStayOpen = app.model.args.format === 'custom' && !mappingComplete.value;
-  return app.model.ui.settingsOpen || mustStayOpen;
-});
-
-function onModalUpdate(val: boolean) {
-  const mustStayOpen = app.model.args.format === 'custom' && !mappingComplete.value;
-  if (mustStayOpen) {
-    app.model.ui.settingsOpen = true;
-    return;
-  }
-  app.model.ui.settingsOpen = val;
-}
-
-// Track previous format to avoid clearing all flags and causing hangs
-let _prevFormat: 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'custom' | 'immunoSeq' | 'airr' | undefined;
-
 watch(
   () => app.model.args,
   (args) => {
-    const fmt = (app.model.args as unknown as { format?: 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'custom' | 'immunoSeq' | 'airr' | undefined }).format;
     if (args.format === 'custom') {
       const a = app.model.args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
       if (!a.customMapping) a.customMapping = {};
@@ -243,31 +239,47 @@ watch(
         delete a.customMapping['read-count'];
       }
     }
-    // Only clear the previous format flag when format actually changes
-    if (_prevFormat !== fmt) {
-      if (_prevFormat === 'qiagen') app.model.ui.qiagenColumnsPresent = false;
-      if (_prevFormat === 'mixcr' || _prevFormat === 'mixcr-sc') app.model.ui.mixcrColumnsPresent = false;
-      if (_prevFormat === 'cellranger') app.model.ui.crColumnsPresent = false;
-      _prevFormat = fmt;
+  },
+  { immediate: true },
+);
+
+const formatFlags = {
+  'qiagen': 'qiagenColumnsPresent',
+  'immunoSeq': 'immunoSeqColumnsPresent',
+  'immunoseq': 'immunoSeqColumnsPresent',
+  'mixcr': 'mixcrColumnsPresent',
+  'mixcr-sc': 'mixcrColumnsPresent',
+  'cellranger': 'crColumnsPresent',
+  'airr': 'airrColumnsPresent',
+  'airr-sc': 'airrColumnsPresent',
+} as const;
+
+watch([() => app.model.args.format, validationResult], ([format, result]) => {
+  Object.values(formatFlags).forEach((flag) => (app.model.ui[flag] = false));
+
+  if (!result) return;
+
+  if (result.format === format) {
+    const flag = formatFlags[result.format as keyof typeof formatFlags];
+    if (flag) {
+      app.model.ui[flag] = result.isValid;
     }
-  },
-  { immediate: true },
-);
+  }
+}, { immediate: true, deep: true });
 
-// Watch validation result and update the UI state (only for the currently selected format)
-watch(
-  validationResult,
-  (result) => {
-    if (!result) return;
-    const currentFormat = app.model.args.format;
-    if (result.format !== currentFormat) return;
-    if (result.format === 'qiagen') app.model.ui.qiagenColumnsPresent = result.isValid;
-    if (result.format === 'mixcr' || result.format === 'mixcr-sc') app.model.ui.mixcrColumnsPresent = result.isValid;
-    if (result.format === 'cellranger') app.model.ui.crColumnsPresent = result.isValid;
-  },
-  { immediate: true },
-);
+const forceSettingsOpen = computed(() => {
+  const mustStayOpen = app.model.args.format === 'custom' && !mappingComplete.value;
+  return app.model.ui.settingsOpen || mustStayOpen;
+});
 
+function onModalUpdate(val: boolean) {
+  const mustStayOpen = app.model.args.format === 'custom' && !mappingComplete.value;
+  if (mustStayOpen) {
+    app.model.ui.settingsOpen = true;
+    return;
+  }
+  app.model.ui.settingsOpen = val;
+}
 </script>
 
 <template>
@@ -301,13 +313,17 @@ watch(
         <template #title>
           Invalid {{ validationResult?.format === 'qiagen'
             ? 'QIAseq Immune Repertoire Analysis'
-            : (validationResult?.format === 'mixcr'
-              ? 'MiXCR bulk'
-              : (validationResult?.format === 'mixcr-sc'
-                ? 'MiXCR single cell'
-                : (validationResult?.format === 'cellranger'
-                  ? 'Cell Ranger VDJ'
-                  : validationResult?.format)))
+            : (validationResult?.format === 'immunoSeq' || validationResult?.format === 'immunoseq'
+              ? 'ImmunoSeq'
+              : (validationResult?.format === 'mixcr'
+                ? 'MiXCR bulk'
+                : (validationResult?.format === 'mixcr-sc'
+                  ? 'MiXCR single cell'
+                  : (validationResult?.format === 'cellranger'
+                    ? 'Cell Ranger VDJ'
+                    : (validationResult?.format === 'airr'
+                      ? 'AIRR bulk'
+                      : validationResult?.format)))))
           }} dataset
         </template>
         {{ validationMessage }}
