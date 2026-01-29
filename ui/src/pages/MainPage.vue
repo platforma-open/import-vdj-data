@@ -2,7 +2,7 @@
 import type { PlRef } from '@platforma-sdk/model';
 import { plRefsEqual } from '@platforma-sdk/model';
 import { PlAccordion, PlAccordionSection, PlAgDataTableV2, PlAlert, PlBlockPage, PlBtnGhost, PlDropdown, PlDropdownMulti, PlDropdownRef, PlElementList, PlMaskIcon24, PlSectionSeparator, PlSlideModal, usePlDataTableSettingsV2 } from '@platforma-sdk/ui-vue';
-import { computed, watch, watchEffect } from 'vue';
+import { computed, watch } from 'vue';
 import { useApp } from '../app';
 
 const app = useApp();
@@ -139,7 +139,6 @@ const optionalMutations = [
 ];
 
 const headerOptions = computed(() => (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })));
-const ui = app.model.ui as typeof app.model.ui & { immunoSeqColumnsPresent: boolean };
 
 function getMapping(key: string): string | undefined {
   const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined> };
@@ -179,32 +178,29 @@ const validationMessage = computed(() => {
   const result = validationResult.value;
   if (!result || result.isValid) return '';
 
-  const formatName = result.format === 'qiagen'
+  const formatKey = result.format?.toLowerCase?.() ?? result.format;
+  const formatName = formatKey === 'qiagen'
     ? 'QIAseq Immune Repertoire Analysis'
-    : result.format === 'immunoSeq'
+    : formatKey === 'immunoseq'
       ? 'ImmunoSeq'
-      : result.format === 'mixcr'
+      : formatKey === 'mixcr'
         ? 'MiXCR bulk'
-        : result.format === 'mixcr-sc'
+        : formatKey === 'mixcr-sc'
           ? 'MiXCR single cell'
-          : result.format === 'cellranger'
+          : formatKey === 'cellranger'
             ? 'Cell Ranger VDJ'
-            : result.format === 'airr'
+            : formatKey === 'airr'
               ? 'AIRR bulk'
-              : result.format === 'airr-sc'
+              : formatKey === 'airr-sc'
                 ? 'AIRR single cell'
                 : result.format;
 
   return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(', ')}. Please verify the format selection or choose a different dataset.`;
 });
 
-// Track previous format to avoid clearing all flags and causing hangs
-let _prevFormat: 'qiagen' | 'immunoSeq' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'custom' | 'airr' | 'airr-sc' | undefined;
-
 watch(
   () => app.model.args,
   (args) => {
-    const fmt = app.model.args.format;
     if (args.format === 'custom') {
       const a = app.model.args as unknown as { customMapping?: Record<string, string>; primaryCountType?: 'read' | 'umi'; secondaryCountType?: 'read' | 'umi' };
       if (!a.customMapping) a.customMapping = {};
@@ -227,71 +223,33 @@ watch(
         delete a.customMapping['read-count'];
       }
     }
-    // Clear all format flags when format changes to ensure clean state
-    if (_prevFormat !== fmt) {
-      app.model.ui.qiagenColumnsPresent = false;
-      ui.immunoSeqColumnsPresent = false;
-      app.model.ui.mixcrColumnsPresent = false;
-      app.model.ui.crColumnsPresent = false;
-      app.model.ui.airrColumnsPresent = false;
-      _prevFormat = fmt;
-    }
   },
   { immediate: true },
 );
 
-// Watch validation result and format, update the UI state (only for the currently selected format)
-// Use watchEffect to automatically track all dependencies including outputs changes
-watchEffect(() => {
-  const result = validationResult.value;
-  const currentFormat = app.model.args.format;
+const formatFlags = {
+  'qiagen': 'qiagenColumnsPresent',
+  'immunoSeq': 'immunoSeqColumnsPresent',
+  'immunoseq': 'immunoSeqColumnsPresent',
+  'mixcr': 'mixcrColumnsPresent',
+  'mixcr-sc': 'mixcrColumnsPresent',
+  'cellranger': 'crColumnsPresent',
+  'airr': 'airrColumnsPresent',
+  'airr-sc': 'airrColumnsPresent',
+} as const;
 
-  // If no result, don't update flags (format change watch handles clearing, result might be loading)
+watch([() => app.model.args.format, validationResult], ([format, result]) => {
+  Object.values(formatFlags).forEach((flag) => (app.model.ui[flag] = false));
+
   if (!result) return;
 
-  // If format mismatch, clear flags for the mismatched format only
-  if (result.format !== currentFormat) {
-    if (result.format === 'qiagen') app.model.ui.qiagenColumnsPresent = false;
-    if (result.format === 'immunoSeq') ui.immunoSeqColumnsPresent = false;
-    if (result.format === 'mixcr' || result.format === 'mixcr-sc') app.model.ui.mixcrColumnsPresent = false;
-    if (result.format === 'cellranger') app.model.ui.crColumnsPresent = false;
-    if (result.format === 'airr' || result.format === 'airr-sc') app.model.ui.airrColumnsPresent = false;
-    return;
+  if (result.format === format) {
+    const flag = formatFlags[result.format as keyof typeof formatFlags];
+    if (flag) {
+      app.model.ui[flag] = result.isValid;
+    }
   }
-
-  // Set flag only for the current format and clear others
-  if (result.format === 'qiagen') {
-    app.model.ui.qiagenColumnsPresent = result.isValid;
-    ui.immunoSeqColumnsPresent = false;
-    app.model.ui.mixcrColumnsPresent = false;
-    app.model.ui.crColumnsPresent = false;
-    app.model.ui.airrColumnsPresent = false;
-  } else if (result.format === 'immunoSeq') {
-    ui.immunoSeqColumnsPresent = result.isValid;
-    app.model.ui.qiagenColumnsPresent = false;
-    app.model.ui.mixcrColumnsPresent = false;
-    app.model.ui.crColumnsPresent = false;
-    app.model.ui.airrColumnsPresent = false;
-  } else if (result.format === 'mixcr' || result.format === 'mixcr-sc') {
-    app.model.ui.mixcrColumnsPresent = result.isValid;
-    app.model.ui.qiagenColumnsPresent = false;
-    ui.immunoSeqColumnsPresent = false;
-    app.model.ui.crColumnsPresent = false;
-    app.model.ui.airrColumnsPresent = false;
-  } else if (result.format === 'cellranger') {
-    app.model.ui.crColumnsPresent = result.isValid;
-    app.model.ui.qiagenColumnsPresent = false;
-    ui.immunoSeqColumnsPresent = false;
-    app.model.ui.mixcrColumnsPresent = false;
-    app.model.ui.airrColumnsPresent = false;
-  } else if (result.format === 'airr' || result.format === 'airr-sc') {
-    app.model.ui.airrColumnsPresent = result.isValid;
-    app.model.ui.qiagenColumnsPresent = false;
-    ui.immunoSeqColumnsPresent = false;
-    app.model.ui.mixcrColumnsPresent = false;
-    app.model.ui.crColumnsPresent = false;
-  }
-});
+}, { immediate: true, deep: true });
 
 const forceSettingsOpen = computed(() => {
   const mustStayOpen = app.model.args.format === 'custom' && !mappingComplete.value;
@@ -338,7 +296,7 @@ function onModalUpdate(val: boolean) {
         <template #title>
           Invalid {{ validationResult?.format === 'qiagen'
             ? 'QIAseq Immune Repertoire Analysis'
-            : (validationResult?.format === 'immunoSeq'
+            : (validationResult?.format === 'immunoSeq' || validationResult?.format === 'immunoseq'
               ? 'ImmunoSeq'
               : (validationResult?.format === 'mixcr'
                 ? 'MiXCR bulk'
