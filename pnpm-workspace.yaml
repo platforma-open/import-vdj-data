@@ -26,5 +26,6 @@ catalog:
   "vitest": ~2.1.9
   "@vitejs/plugin-vue": ^5.2.4
   "vite-plugin-dts": ^4.3.0
+  'shx': ^0.4.0
 
   "@changesets/cli": ^2.29.6
