@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.model
 
+## 1.8.0
+
+### Minor Changes
+
+- 9de2e3c: Support custom block title and running status
+
 ## 1.7.0
 
 ### Minor Changes

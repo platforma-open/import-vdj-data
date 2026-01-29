@@ -2,6 +2,8 @@ import type { InferOutputsType, PlDataTableStateV2, PlRef } from '@platforma-sdk
 import { BlockModel, createPlDataTableStateV2, createPlDataTableV2, PColumnCollection } from '@platforma-sdk/model';
 
 export type BlockArgs = {
+  defaultBlockLabel: string;
+  customBlockLabel: string;
   datasetRef?: PlRef;
   format?: 'immunoSeq' | 'qiagen' | 'mixcr' | 'mixcr-sc' | 'cellranger' | 'airr' | 'airr-sc' | 'custom';
   chains: string[];
@@ -12,7 +14,6 @@ export type BlockArgs = {
 
 export type UiState = {
   tableState: PlDataTableStateV2;
-  title: string;
   settingsOpen: boolean;
   qiagenColumnsPresent: boolean;
   immunoSeqColumnsPresent: boolean;
@@ -29,12 +30,13 @@ export type ColumnDescription = {
 export const model = BlockModel.create()
 
   .withArgs<BlockArgs>({
+    defaultBlockLabel: '',
+    customBlockLabel: '',
     chains: ['IGHeavy', 'IGLight', 'TCRAlpha', 'TCRBeta', 'TCRDelta', 'TCRGamma'],
   })
 
   .withUiState<UiState>({
     tableState: createPlDataTableStateV2(),
-    title: 'Import V(D)J Data',
     settingsOpen: true,
     qiagenColumnsPresent: false,
     immunoSeqColumnsPresent: false,
@@ -266,7 +268,7 @@ export const model = BlockModel.create()
     };
   })
 
-  .output('stats', (ctx) => {
+  .outputWithStatus('stats', (ctx) => {
     const pCols = ctx.outputs?.resolve('stats')?.getPColumns();
     if (pCols === undefined) {
       return undefined;
@@ -281,7 +283,9 @@ export const model = BlockModel.create()
 
   .sections((_ctx) => [{ type: 'link', href: '/', label: 'Main' }])
 
-  .title((ctx) => ctx.uiState.title)
+  .title(() => 'Import V(D)J Data')
+
+  .subtitle((ctx) => ctx.args.customBlockLabel || ctx.args.defaultBlockLabel || '')
 
   .done(2);
 

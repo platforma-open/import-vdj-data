@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.9.0
+
+### Minor Changes
+
+- 9de2e3c: Support custom block title and running status
+
+### Patch Changes
+
+- Updated dependencies [9de2e3c]
+  - @platforma-open/milaboratories.import-vdj.model@1.8.0
+
 ## 1.8.0
 
 ### Minor Changes
