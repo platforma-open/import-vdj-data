@@ -49,7 +49,7 @@ self.body(func(inputs) {
 	if importTpl == undefined {
 		ll.panic("Unsupported import template for single-cell: " + formatSpec.importTplId)
 	}
-	importCfg := processUtils.applyAirrXsvType(format, formatSpec.importCfg, inputs.dataset.spec)
+	importCfg := processUtils.applyXsvType(formatSpec.importCfg, inputs.dataset.spec)
 
 	// Import per-chain, producing clonotype and per-cell-tag TSVs
 	importOutputs := []

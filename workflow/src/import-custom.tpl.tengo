@@ -10,13 +10,16 @@ self.body(func(inputs) {
     inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
     columnsInfo := inputs.columnsInfo
     chains := inputs.chains
+    config := inputs.config
+    xsvType := "tsv"
+    if !is_undefined(config) && !is_undefined(config.xsvType) { xsvType = config.xsvType }
 
     wf := pt.workflow().mem("8GiB").cpu(4)
 
     dataFrames := []
     for key, file in inputFiles.inputs() {
         dataFrames = append(dataFrames, wf.frame(file, {
-            xsvType: "tsv",
+            xsvType: xsvType,
             id: "table_" + key,
             // MiXCR files can have mixed types (strings in columns with floats)
 			inferSchema: false

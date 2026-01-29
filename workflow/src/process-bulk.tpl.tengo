@@ -107,7 +107,7 @@ self.body(func(inputs) {
 	if importTpl == undefined {
 		ll.panic("Unsupported import template: " + formatSpec.importTplId)
 	}
-	importCfg := processUtils.applyAirrXsvType(format, formatSpec.importCfg, inputs.dataset.spec)
+	importCfg := processUtils.applyXsvType(formatSpec.importCfg, inputs.dataset.spec)
 
     result := pframes.pFrameBuilder()
     stats := pframes.pFrameBuilder()

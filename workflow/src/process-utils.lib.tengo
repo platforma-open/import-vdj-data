@@ -78,8 +78,7 @@ buildClonotypeKeyStructure := func(columnsInfo, keyColumns) {
 	return string(json.encode(keyStructure))
 }
 
-applyAirrXsvType := func(format, importCfg, datasetSpec) {
-	if format != "airr" && format != "airr-sc" { return importCfg }
+applyXsvType := func(importCfg, datasetSpec) {
 	if is_undefined(datasetSpec) || is_undefined(datasetSpec.domain) { return importCfg }
 	fileExtension := datasetSpec.domain["pl7.app/fileExtension"]
 	if is_undefined(fileExtension) { return importCfg }
@@ -97,5 +96,5 @@ export {
 	columnsToSchema: columnsToSchema,
 	buildStatsColumns: buildStatsColumns,
 	buildClonotypeKeyStructure: buildClonotypeKeyStructure,
-	applyAirrXsvType: applyAirrXsvType
+	applyXsvType: applyXsvType
 }

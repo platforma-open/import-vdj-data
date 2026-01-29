@@ -34,9 +34,9 @@ self.body(func(inputs) {
 
     headerContent := txt.head(inputFile, {lines: 1})
     separator := "\t"
-    if fileExtension == "tsv" {
+    if fileExtension == "tsv" || fileExtension == "tsv.gz" {
         separator = "\t"
-    } else if fileExtension == "csv" {
+    } else if fileExtension == "csv" || fileExtension == "csv.gz" {
         separator = ","
     } else {
         ll.panic("Unsupported file extension: " + fileExtension)
