@@ -268,7 +268,7 @@ export const model = BlockModel.create()
     };
   })
 
-  .outputWithStatus('stats', (ctx) => {
+  .retentiveOutputWithStatus('stats', (ctx) => {
     const pCols = ctx.outputs?.resolve('stats')?.getPColumns();
     if (pCols === undefined) {
       return undefined;
