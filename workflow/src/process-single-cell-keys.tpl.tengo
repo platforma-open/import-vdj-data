@@ -164,11 +164,18 @@ self.body(func(inputs) {
 		pt.col("sampleId").nUnique().alias("sampleCount")
 	)
 	clonotypeTableDf = clonotypeLabel.addClonotypeLabelColumnsPt(clonotypeTableDf, "scClonotypeKey", "clonotypeLabel", pt)
-	clonotypeTableDf.save("clonotype.tsv")
 
 	cellCountsDf := allChainsFilteredDf.groupBy("sampleId", "scClonotypeKey").agg(
 		pt.col("cellKey").count().alias("uniqueCellCount")
 	)
+	cellCountsTotalDf := cellCountsDf.groupBy("scClonotypeKey").agg(
+		pt.col("uniqueCellCount").sum().alias("uniqueCellCountTotal")
+	)
+	clonotypeTableDf = clonotypeTableDf.join(cellCountsTotalDf, {
+		how: "left",
+		on: ["scClonotypeKey"]
+	})
+	clonotypeTableDf.save("clonotype.tsv")
 	cellCountsWithFractionDf := cellCountsDf.withColumns(
 		pt.col("uniqueCellCount").truediv(pt.col("uniqueCellCount").sum().over("sampleId")).alias("uniqueCellFraction")
 	)
@@ -192,7 +199,8 @@ self.body(func(inputs) {
 		{ column: "clonotypeKeyA2", type: "String" },
 		{ column: "clonotypeKeyB1", type: "String" },
 		{ column: "clonotypeKeyB2", type: "String" },
-		{ column: "sampleCount", type: "Int" }
+		{ column: "sampleCount", type: "Int" },
+		{ column: "uniqueCellCountTotal", type: "Long" }
 	], inferSchema: false })
 
 	propsADf := outputProcessingWf.frame(propertiesAFile, {xsvType: "tsv", schema: [{ column: "clonotypeKey", type: "String" }], inferSchema: false })
