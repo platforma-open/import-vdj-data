@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.model
 
+## 1.10.0
+
+### Minor Changes
+
+- 2b91d14: Supporting cells column added, dependencies updates
+
 ## 1.9.0
 
 ### Minor Changes

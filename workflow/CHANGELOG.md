@@ -1,5 +1,12 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.15.0
+
+### Minor Changes
+
+- 643eaa1: Add supporting cells column
+- 2b91d14: Supporting cells column added, dependencies updates
+
 ## 1.14.0
 
 ### Minor Changes

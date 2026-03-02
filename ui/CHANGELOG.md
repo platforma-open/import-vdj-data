@@ -1,5 +1,17 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.11.0
+
+### Minor Changes
+
+- 643eaa1: Add supporting cells column
+- 2b91d14: Supporting cells column added, dependencies updates
+
+### Patch Changes
+
+- Updated dependencies [2b91d14]
+  - @platforma-open/milaboratories.import-vdj.model@1.10.0
+
 ## 1.10.0
 
 ### Minor Changes
