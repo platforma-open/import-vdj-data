@@ -227,6 +227,21 @@ self.body(func(inputs) {
 					axes: [ axisByScClonotypeKey(receptor) ],
 					columns: [
 						{
+							column: "uniqueCellCountTotal",
+							spec: {
+								name: "pl7.app/vdj/uniqueCellCountTotal",
+								valueType: "Long",
+								annotations: annot(87120, true, {
+									"pl7.app/min": "1",
+									"pl7.app/isAbundance": "true",
+									"pl7.app/abundance/normalized": "false",
+									"pl7.app/abundance/unit": "cells",
+									"pl7.app/label": "Supporting Cells",
+									"pl7.app/description": "The sum of a clonotype's cell counts across all samples."
+								})
+							}
+						},
+						{
 							column: "sampleCount",
 							spec: {
 								name: "pl7.app/vdj/sampleCount",
