@@ -67,6 +67,13 @@ catalogs:
 importers:
 
   .:
+    dependencies:
+      oxfmt:
+        specifier: '*'
+        version: 0.35.0
+      oxlint:
+        specifier: '*'
+        version: 1.43.0
     devDependencies:
       '@changesets/cli':
         specifier: 'catalog:'
