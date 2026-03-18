@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.15.1
+
+### Patch Changes
+
+- ee7ef70: Rename clonotype label to id
+
 ## 1.15.0
 
 ### Minor Changes
