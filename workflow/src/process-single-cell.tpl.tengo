@@ -261,7 +261,7 @@ self.body(func(inputs) {
 								name: "pl7.app/label",
 								valueType: "String",
 								annotations: annot(100000, false, {
-									"pl7.app/label": "Clone label"
+									"pl7.app/label": "Clone Id"
 								})
 							}
 						}
