@@ -287,8 +287,8 @@ self.body(func(inputs) {
                     name: "pl7.app/label",
                     valueType: "String",
                     annotations: {
-                        "pl7.app/label": "Clone label",
-                        "pl7.app/description": "A short, human-readable label for the clonotype."
+                        "pl7.app/label": "Clone Id",
+                        "pl7.app/description": "A short, human-readable identifier for the clonotype."
                     }
                 }
         }]

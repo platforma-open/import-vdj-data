@@ -19,6 +19,7 @@
     "turbo": "catalog:",
     "@changesets/cli": "catalog:",
     "@platforma-sdk/blocks-deps-updater": "catalog:",
+    "@milaboratories/ts-builder": "catalog:",
     "shx": "catalog:"
   },
   "packageManager": "pnpm@9.12.0",
@@ -34,12 +35,16 @@
     }
   },
   "pnpm": {
-    "overrides": { }
+    "overrides": {}
   },
   "//pnpm": {
     "overrides": {
       "@platforma-sdk/workflow-tengo": "file:/Users/poslavskysv/Projects/milab/platforma/platforma-uber-repo/core/platforma/sdk/workflow-tengo/package.tgz",
       "@platforma-open/milaboratories.software-ptabler": "file:/Users/poslavskysv/Projects/milab/platforma/platforma-uber-repo/core/platforma/lib/ptabler/software/package.tgz"
     }
+  },
+  "peerDependencies": {
+    "oxlint": "*",
+    "oxfmt": "*"
   }
 }
