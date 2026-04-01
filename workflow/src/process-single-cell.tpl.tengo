@@ -7,6 +7,7 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 text := import("text")
 assets := import("@platforma-sdk/workflow-tengo:assets")
+pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 formats := import(":formats")
 processUtils := import(":process-utils")
 
@@ -454,6 +455,22 @@ self.body(func(inputs) {
 			result.add("clonotypeProperties/" + receptor + "/cellsLinkerTable/" + columnName, scResult.outputSpec("cellsLinkerTable", columnName), scResult.outputData("cellsLinkerTable", columnName))
 		}
 	}
+
+	// Marker column for downstream block discovery (analogous to mixcr.com/clns).
+	// Spec-only, with dataset trace so forceTraceElements can derive labels.
+	runTrace := pSpec.makeTrace(datasetSpec, {type: "milaboratories.importVDJ", id: blockId, importance: 80, label: "Import VDJ"})
+	result.add("run", runTrace.inject({
+		kind: "PColumn",
+		name: "pl7.app/vdj/run",
+		axesSpec: [],
+		domain: {
+			"pl7.app/vdj/clonotypingRunId": blockId
+		},
+		valueType: "String",
+		annotations: {
+			"pl7.app/label": "VDJ Import Run"
+		}
+	}))
 
 	return { result: result.build(), stats: stats.build() }
 })
