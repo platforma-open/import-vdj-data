@@ -64,7 +64,7 @@ const secondaryTypeOptions = computed(() => {
   return countTypeOptions;
 });
 
-const isSingleCell = computed(() => app.model.args.format === 'mixcr-sc' || app.model.args.format === 'cellranger');
+const isSingleCell = computed(() => app.model.args.format === 'mixcr-sc' || app.model.args.format === 'cellranger' || app.model.args.format === 'airr-sc');
 
 const tableSettings = usePlDataTableSettingsV2({
   model: () => app.model.outputs.stats,
