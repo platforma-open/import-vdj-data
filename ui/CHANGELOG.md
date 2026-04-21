@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.ui
 
+## 1.11.1
+
+### Patch Changes
+
+- 2d651a2: Chain options adjusted for airr-sc dataset imports
+
 ## 1.11.0
 
 ### Minor Changes
