@@ -260,7 +260,7 @@ self.body(func(inputs) {
 							spec: {
 								name: "pl7.app/label",
 								valueType: "String",
-								annotations: annot(100000, false, {
+								annotations: annot(100000, true, {
 									"pl7.app/label": "Clone Id",
 									"pl7.app/description": "A short, human-readable identifier for the clonotype."
 								})
