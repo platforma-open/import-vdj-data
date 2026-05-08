@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.15.2
+
+### Patch Changes
+
+- 497d5e5: Make axis label visible by default
+
 ## 1.15.1
 
 ### Patch Changes
