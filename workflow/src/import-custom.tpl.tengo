@@ -2,6 +2,7 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 self := import("@platforma-sdk/workflow-tengo:tpl.light")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 slices := import("@platforma-sdk/workflow-tengo:slices")
+maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 
 self.defineOutputs("tsv", "stats")
@@ -17,7 +18,9 @@ self.body(func(inputs) {
     wf := pt.workflow().mem("8GiB").cpu(4)
 
     dataFrames := []
-    for key, file in inputFiles.inputs() {
+    inputMap := inputFiles.inputs()
+    for key in maps.getKeys(inputMap) {
+        file := inputMap[key]
         dataFrames = append(dataFrames, wf.frame(file, {
             xsvType: xsvType,
             id: "table_" + key,
@@ -34,7 +37,8 @@ self.body(func(inputs) {
 
     // Rename original columns to canonical IDs
     renameExpressions := []
-    for canonical, original in columnsInfo.columnMapping {
+    for canonical in maps.getKeys(columnsInfo.columnMapping) {
+        original := columnsInfo.columnMapping[canonical]
         renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
     }
     df = df.withColumns(renameExpressions...)

@@ -35,8 +35,11 @@ self.body(func(inputs) {
 
 	wf := pt.workflow().mem("8GiB").cpu(4)
 
+	// Sorted iteration: input file order ends up in polars output bytes.
 	dataFrames := []
-	for key, file in inputFiles.inputs() {
+	inputMap := inputFiles.inputs()
+	for key in maps.getKeys(inputMap) {
+		file := inputMap[key]
 		dataFrames = append(dataFrames, wf.frame(file, {
 			xsvType: xsvType,
 			id: "table_" + key,
@@ -51,9 +54,10 @@ self.body(func(inputs) {
 	df := undefined
 	if len(dataFrames) > 1 { df = pt.concat(dataFrames) } else { df = dataFrames[0] }
 
-	// Rename original columns to canonical IDs used downstream
+	// Rename original columns to canonical IDs used downstream.
 	renameExpressions := []
-	for canonical, original in columnsInfo.columnMapping {
+	for canonical in maps.getKeys(columnsInfo.columnMapping) {
+		original := columnsInfo.columnMapping[canonical]
 		if original != undefined {
 			// Avoid self-alias which can create duplicate column names
 			if canonical != original {

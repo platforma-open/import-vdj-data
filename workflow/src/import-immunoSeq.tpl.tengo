@@ -46,7 +46,8 @@ self.body(func(inputs) {
 
 	// Rename original columns to their target IDs for downstream processing.
 	renameExpressions := []
-	for canonical, original in columnsInfo.columnMapping {
+	for canonical in maps.getKeys(columnsInfo.columnMapping) {
+		original := columnsInfo.columnMapping[canonical]
 		renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
 	}
 	df = df.withColumns(renameExpressions...)
