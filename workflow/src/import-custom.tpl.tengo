@@ -2,6 +2,7 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 self := import("@platforma-sdk/workflow-tengo:tpl.light")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 slices := import("@platforma-sdk/workflow-tengo:slices")
+maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 
 self.defineOutputs("tsv", "stats")
@@ -17,7 +18,9 @@ self.body(func(inputs) {
     wf := pt.workflow().mem("8GiB").cpu(4)
 
     dataFrames := []
-    for key, file in inputFiles.inputs() {
+    inputMap := inputFiles.inputs()
+    for key in maps.getKeys(inputMap) {
+        file := inputMap[key]
         dataFrames = append(dataFrames, wf.frame(file, {
             xsvType: xsvType,
             id: "table_" + key,
@@ -32,12 +35,20 @@ self.body(func(inputs) {
 
     df := pt.concat(dataFrames)
 
-    // Rename original columns to canonical IDs
+    // Rename original columns to canonical IDs.
+    // Sorted iteration: array order ends up in polars schema / output bytes.
+    // Skip self-aliases (canonical == original): `col("x").alias("x")` would
+    // create a duplicate column and fail (matches the guard in import-common).
     renameExpressions := []
-    for canonical, original in columnsInfo.columnMapping {
-        renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+    for canonical in maps.getKeys(columnsInfo.columnMapping) {
+        original := columnsInfo.columnMapping[canonical]
+        if original != undefined && canonical != original {
+            renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+        }
     }
-    df = df.withColumns(renameExpressions...)
+    if len(renameExpressions) > 0 {
+        df = df.withColumns(renameExpressions...)
+    }
 
     // For MiXCR/similar formats we might need to remove extra content from gene columns
     geneColumns := ["v-gene", "j-gene", "d-gene", "c-gene"]

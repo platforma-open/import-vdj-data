@@ -727,10 +727,10 @@ getColumns := func(header, customMapping, primaryCountType) {
 
     // Column mapping canonical -> source
     columnMapping := {}
-    for key, src in customMapping {
+    for key in maps.getKeys(customMapping) {
+        src := customMapping[key]
         if is_undefined(src) || src == "" { continue }
         columnMapping[key] = src
-        
     }
 
     // Check for required columns
@@ -835,14 +835,14 @@ getColumns := func(header, customMapping, primaryCountType) {
         propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
     }
 
-    // Add property columns from exiting columns
+    // Add property columns from existing columns.
     propertyColumns := []
-    for key, src in columnMapping {
+    for key in maps.getKeys(columnMapping) {
         spec := propertyColumnSpecs[key]
         if !is_undefined(spec) {
             propertyColumns = append(propertyColumns, spec)
         }
-    } 
+    }
 	
     // Add specs for columns that will be computed from existing ones
     if hasCdr3Nt {

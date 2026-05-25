@@ -23,7 +23,9 @@ self.body(func(inputs) {
 	wf := pt.workflow().mem("8GiB").cpu(4)
 
 	dataFrames := []
-	for key, file in inputFiles.inputs() {
+	inputMap := inputFiles.inputs()
+	for key in maps.getKeys(inputMap) {
+		file := inputMap[key]
 		dataFrames = append(dataFrames, wf.frame(file, {
 			xsvType: xsvType,
 			id: "table_" + key,
@@ -39,7 +41,8 @@ self.body(func(inputs) {
 
 	// Rename original columns to their target IDs for downstream processing.
 	renameExpressions := []
-	for canonical, original in columnsInfo.columnMapping {
+	for canonical in maps.getKeys(columnsInfo.columnMapping) {
+		original := columnsInfo.columnMapping[canonical]
 		renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
 	}
 	df = df.withColumns(renameExpressions...)
