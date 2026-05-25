@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.6.4
+
+### Patch Changes
+
+- e5bbeca: Fix unstable CIDs from non-canonical Tengo map iteration in pure-template-called code.
+  Also migrates `model/` and `ui/` from the legacy `vue-tsc + vite` pipeline to `@milaboratories/ts-builder` (matching `clonotype-browser`, `immune-assay-data`, and other newer blocks). This unblocks fresh installs whose `vue-tsc -b` was failing on two pre-existing SDK-API type mismatches (`SdkPluginV2` plugin shape vs `Plugin<[],[]>`, and `ComputedRef<PlDataTableSettingsV2Base>` vs `Readonly<...>` on `PlAgDataTableV2`). No runtime behavior change.
+- Updated dependencies [e5bbeca]
+  - @platforma-open/milaboratories.import-vdj.workflow@1.15.3
+  - @platforma-open/milaboratories.import-vdj.model@1.10.1
+  - @platforma-open/milaboratories.import-vdj.ui@1.11.2
+
 ## 1.6.3
 
 ### Patch Changes
