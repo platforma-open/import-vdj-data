@@ -35,13 +35,20 @@ self.body(func(inputs) {
 
     df := pt.concat(dataFrames)
 
-    // Rename original columns to canonical IDs
+    // Rename original columns to canonical IDs.
+    // Sorted iteration: array order ends up in polars schema / output bytes.
+    // Skip self-aliases (canonical == original): `col("x").alias("x")` would
+    // create a duplicate column and fail (matches the guard in import-common).
     renameExpressions := []
     for canonical in maps.getKeys(columnsInfo.columnMapping) {
         original := columnsInfo.columnMapping[canonical]
-        renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+        if original != undefined && canonical != original {
+            renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
+        }
     }
-    df = df.withColumns(renameExpressions...)
+    if len(renameExpressions) > 0 {
+        df = df.withColumns(renameExpressions...)
+    }
 
     // For MiXCR/similar formats we might need to remove extra content from gene columns
     geneColumns := ["v-gene", "j-gene", "d-gene", "c-gene"]
