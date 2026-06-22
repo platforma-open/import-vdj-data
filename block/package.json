@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj",
-  "version": "1.6.4",
+  "version": "1.6.5",
   "files": [
     "index.d.ts",
     "index.js"
