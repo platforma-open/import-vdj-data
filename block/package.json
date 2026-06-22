@@ -22,7 +22,7 @@
     "@platforma-sdk/block-tools": "catalog:",
     "shx": "catalog:"
   },
-  "packageManager": "pnpm@9.12.0",
+  "packageManager": "pnpm@9.14.4",
   "block": {
     "components": {
       "workflow": "@platforma-open/milaboratories.import-vdj.workflow/dist/tengo/tpl/main.plj.gz",
