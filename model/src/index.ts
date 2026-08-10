@@ -1,5 +1,6 @@
 import type { InferOutputsType, PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
 import {
+  allPColumnsReady,
   BlockModel,
   createPlDataTableStateV2,
   createPlDataTableV2,
@@ -40,7 +41,7 @@ export type ColumnDescription = {
   description: string;
 };
 
-export const model = BlockModel.create()
+export const platforma = BlockModel.create()
 
   .withArgs<BlockArgs>({
     defaultBlockLabel: "",
@@ -283,7 +284,10 @@ export const model = BlockModel.create()
       return undefined;
     }
 
-    const withLabels = new PColumnCollection().addColumns(pCols).getColumns(() => true) ?? [];
+    const withLabels = new PColumnCollection().addColumns(pCols).getColumns(() => true);
+    if (withLabels === undefined || !allPColumnsReady(withLabels)) {
+      return undefined;
+    }
 
     return createPlDataTableV2(ctx, withLabels, ctx.uiState.tableState);
   })
@@ -296,4 +300,4 @@ export const model = BlockModel.create()
 
   .done(2);
 
-export type BlockOutputs = InferOutputsType<typeof model>;
+export type BlockOutputs = InferOutputsType<typeof platforma>;
