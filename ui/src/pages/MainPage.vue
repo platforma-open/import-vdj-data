@@ -48,6 +48,21 @@ const receptorOptions = [
   { value: "TCRGD", label: "TCR-ɣδ" },
 ];
 
+// Warn when chain filtering left a sample with no clonotypes at all. Cap the
+// listed names so a large dataset can't flood the banner.
+const EMPTY_SAMPLES_SHOWN = 5;
+
+const emptySamplesMessage = computed(() => {
+  const empty = app.model.outputs.emptyChainSamples?.emptySamples ?? [];
+  if (empty.length === 0) return undefined;
+
+  const shown = empty.slice(0, EMPTY_SAMPLES_SHOWN).join(", ");
+  const overflow = empty.length - EMPTY_SAMPLES_SHOWN;
+  const samples = overflow > 0 ? `${shown} and ${overflow} more` : shown;
+
+  return `After receptor chain filtering, no clonotypes found in sample(s) ${samples}`;
+});
+
 // updating defaultBlockLabel
 watchEffect(() => {
   const args = app.model.args as any;
@@ -535,6 +550,11 @@ function onModalUpdate(val: boolean) {
         </PlElementList>
       </template>
     </PlSlideModal>
+
+    <PlAlert v-if="emptySamplesMessage" type="warn" :style="{ width: '100%' }">
+      <template #title>No clonotypes imported</template>
+      {{ emptySamplesMessage }}
+    </PlAlert>
 
     <PlAgDataTableV2
       v-model="app.model.ui.tableState"

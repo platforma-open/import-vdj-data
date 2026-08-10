@@ -1,11 +1,27 @@
-import type { InferOutputsType, PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
+import type {
+  InferOutputsType,
+  PColumnKey,
+  PColumnValue,
+  PlDataTableStateV2,
+  PlRef,
+} from "@platforma-sdk/model";
 import {
-  allPColumnsReady,
   BlockModel,
   createPlDataTableStateV2,
   createPlDataTableV2,
+  isPColumnReady,
   PColumnCollection,
+  TreeNodeAccessor,
 } from "@platforma-sdk/model";
+
+/** Unpartitioned inline-JSON p-column storage; payload is `{ keyLength, data }`. */
+const RT_JSON = "PColumnData/Json";
+
+type JsonColumnData = {
+  keyLength: number;
+  /** Keys are stringified axis tuples, e.g. `'["S1"]'`. */
+  data: Record<string, PColumnValue>;
+};
 
 export type BlockArgs = {
   defaultBlockLabel: string;
@@ -284,12 +300,59 @@ export const platforma = BlockModel.create()
       return undefined;
     }
 
-    const withLabels = new PColumnCollection().addColumns(pCols).getColumns(() => true);
-    if (withLabels === undefined || !allPColumnsReady(withLabels)) {
+    // dontWaitAllData: skip columns whose data is missing instead of collapsing the
+    // whole request to undefined.
+    const withLabels = new PColumnCollection()
+      .addColumns(pCols)
+      .getColumns(() => true, { dontWaitAllData: true });
+    if (withLabels === undefined) {
       return undefined;
     }
 
-    return createPlDataTableV2(ctx, withLabels, ctx.uiState.tableState);
+    return createPlDataTableV2(ctx, withLabels.filter(isPColumnReady), ctx.uiState.tableState);
+  })
+
+  // Samples whose clonotype count is zero once summed over every imported
+  // chain. Normally the result of receptor-chain filtering matching nothing.
+  .output("emptyChainSamples", (ctx) => {
+    const pCols = ctx.outputs?.resolve("stats")?.getPColumns();
+    if (pCols === undefined) {
+      return undefined;
+    }
+
+    const countCols = pCols.filter((c) => c.spec.name === "pl7.app/vdj/stat/clonotypeCount");
+    const [firstCol] = countCols;
+    if (firstCol === undefined) {
+      return undefined;
+    }
+
+    const totals = new Map<string | number, number>();
+    for (const col of countCols) {
+      const data = col.data;
+      if (!(data instanceof TreeNodeAccessor) || data.resourceType.name !== RT_JSON) {
+        return undefined;
+      }
+      const json = data.getDataAsJsonOrUndefined<JsonColumnData>();
+      if (json === undefined) {
+        return undefined;
+      }
+      for (const [keyStr, value] of Object.entries(json.data)) {
+        const [sampleId] = JSON.parse(keyStr) as PColumnKey;
+        if (sampleId === undefined) {
+          continue;
+        }
+        const count = typeof value === "number" ? value : 0;
+        totals.set(sampleId, (totals.get(sampleId) ?? 0) + count);
+      }
+    }
+
+    const labels = ctx.resultPool.findLabelsForColumnAxis(firstCol.spec, 0);
+    const emptySamples = [...totals.entries()]
+      .filter(([, total]) => total === 0)
+      .map(([sampleId]) => labels?.[sampleId] ?? String(sampleId))
+      .sort((a, b) => a.localeCompare(b));
+
+    return { emptySamples, sampleCount: totals.size };
   })
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])
