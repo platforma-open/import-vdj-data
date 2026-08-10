@@ -1,6 +1,7 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.model",
   "version": "1.10.2",
+  "private": true,
   "description": "Block model",
   "type": "module",
   "main": "dist/index.cjs",

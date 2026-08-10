@@ -1,6 +1,7 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.workflow",
   "version": "1.15.4",
+  "private": true,
   "description": "Block Workflow",
   "type": "module",
   "scripts": {

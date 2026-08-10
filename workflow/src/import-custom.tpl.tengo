@@ -169,16 +169,18 @@ self.body(func(inputs) {
     for chain in chains {
         prefixes := chainToLocusMap[chain]
 
+        // Locus matching mirrors import-common: case and position insensitive
         chainDf := undefined
         if chain == "IGLight" {
+            chainColumnUpper := pt.col(chainColumn).strToUpper()
             chainDf = df.filter(
-                pt.col(chainColumn).strSlice(0, 3).eq("IGK").or(pt.col(chainColumn).strSlice(0, 3).eq("IGL"))
+                chainColumnUpper.strContains("IGK", { literal: true }).or(chainColumnUpper.strContains("IGL", { literal: true }))
             )
         } else {
             filterExpr := undefined
             for i := 0; i < len(prefixes); i++ {
                 prefix := prefixes[i]
-                expr := pt.col(chainColumn).strSlice(0, len(prefix)).eq(prefix)
+                expr := pt.col(chainColumn).strToUpper().strContains(prefix, { literal: true })
                 if i == 0 {
                     filterExpr = expr
                 } else {

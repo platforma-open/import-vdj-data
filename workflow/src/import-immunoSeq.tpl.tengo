@@ -78,13 +78,15 @@ self.body(func(inputs) {
 	for chain in chains {
 		prefix := chainToLocusMap[chain]
 
+		// Locus matching mirrors import-common: case and position insensitive
 		chainDf := undefined
 		if chain == "IGLight" {
+			vGeneUpper := pt.col("v-gene").strToUpper()
 			chainDf = df.filter(
-				pt.col("v-gene").strSlice(0, 3).eq("IGK").or(pt.col("v-gene").strSlice(0, 3).eq("IGL"))
+				vGeneUpper.strContains("IGK", { literal: true }).or(vGeneUpper.strContains("IGL", { literal: true }))
 			)
 		} else {
-			chainDf = df.filter(pt.col("v-gene").strSlice(0, len(prefix)).eq(prefix))
+			chainDf = df.filter(pt.col("v-gene").strToUpper().strContains(prefix, { literal: true }))
 		}
 
 		// Calculate "is-productive" column based on CDR3 AA sequence presence.
