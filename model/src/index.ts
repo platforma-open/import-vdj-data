@@ -1,4 +1,10 @@
-import type { InferOutputsType, PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
+import type {
+  InferOutputsType,
+  PColumn,
+  PColumnDataUniversal,
+  PlDataTableStateV2,
+  PlRef,
+} from "@platforma-sdk/model";
 import {
   BlockModel,
   createPlDataTableStateV2,
@@ -40,7 +46,9 @@ export type ColumnDescription = {
   description: string;
 };
 
-export const model = BlockModel.create()
+// Named `platforma` because the structurer-generated block facade
+// (block/src/index.ts) imports that name. Every V3 block uses it too.
+export const platforma = BlockModel.create()
 
   .withArgs<BlockArgs>({
     defaultBlockLabel: "",
@@ -283,7 +291,14 @@ export const model = BlockModel.create()
       return undefined;
     }
 
-    const withLabels = new PColumnCollection().addColumns(pCols).getColumns(() => true) ?? [];
+    // SDK 1.81: getColumns() is typed PColumn<PColumnDataUniversal | undefined>[].
+    // Without `dontWaitAllData` it returns undefined for the whole request when any
+    // column's data is incomplete, so a returned array already has data everywhere —
+    // the filter narrows the type and is a runtime no-op. Behaviour is unchanged from
+    // the previous `?? []`.
+    const withLabels = (
+      new PColumnCollection().addColumns(pCols).getColumns(() => true) ?? []
+    ).filter((c): c is PColumn<PColumnDataUniversal> => c.data !== undefined);
 
     return createPlDataTableV2(ctx, withLabels, ctx.uiState.tableState);
   })
@@ -296,4 +311,4 @@ export const model = BlockModel.create()
 
   .done(2);
 
-export type BlockOutputs = InferOutputsType<typeof model>;
+export type BlockOutputs = InferOutputsType<typeof platforma>;
