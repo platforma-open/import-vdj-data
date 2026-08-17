@@ -1,0 +1,100 @@
+// Locate FR/CDR region boundaries in amino-acid antibody variable domains.
+//
+// Input:  a per-record TSV carrying the key column plus one `<chain>_sequence` column per
+//         mapped chain (`A` heavy, `B` light), and the numbering scheme the scientist chose.
+// Output: `regions` — a TSV with seven `<chain>_<region>_aa` columns per chain plus one
+//         `<chain>_regionAnnotationStatus`.
+//
+// Three steps: build a FASTA, number it with ANARCI, project the numbering onto region
+// ranges. ANARCI is the shared, already-published artifact — reused, not introduced here.
+// The convention is passed through as `--scheme`, which is the whole reason ANARCI is the
+// instrument rather than repseqio: repseqio's boundaries are whatever its reference library
+// defines, with nothing to ask for.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+
+anarciSw := assets.importSoftware("@platforma-open/milaboratories.software-anarci:main")
+fastaSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.region-annotation:fasta")
+regionsSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.region-annotation:main")
+
+// One day in ms. Region annotation of a given set of sequences under a given scheme is
+// deterministic, so the result is worth holding on to.
+CACHE_MILLIS := 24 * 60 * 60 * 1000
+
+self.defineOutputs("regions")
+
+self.body(func(inputs) {
+	inputTsv := inputs.inputTsv
+	keyColumn := inputs.keyColumn
+	scheme := inputs.scheme
+
+	ll.assert(inputTsv != undefined, "annotate-regions: inputTsv is required")
+	ll.assert(keyColumn != undefined && keyColumn != "", "annotate-regions: keyColumn is required")
+	ll.assert(
+		scheme == "imgt" || scheme == "kabat" || scheme == "chothia",
+		"annotate-regions: unsupported numbering scheme %v (expected imgt, kabat or chothia)",
+		scheme
+	)
+
+	fastaCmd := exec.builder().
+		software(fastaSw).
+		cpu(1).
+		mem("4GiB").
+		addFile("input.tsv", inputTsv).
+		arg("--input_tsv").arg("input.tsv").
+		arg("--key_column").arg(keyColumn).
+		arg("--output_fasta").arg("input.fasta").
+		saveFile("input.fasta").
+		printErrStreamToStdout().
+		cache(CACHE_MILLIS).
+		run()
+
+	// ANARCI decides for itself whether each sequence is H or KL and writes one CSV per
+	// bucket it found. Both are pre-created with just an `Id` header so the exec can always
+	// save both — otherwise a set whose sequences all land in one bucket, or which ANARCI
+	// cannot number at all, leaves saveFile looking for a file that was never written.
+	//
+	// Both buckets are always read, whichever chains were mapped: the chain a column was
+	// assigned to is *declared*, ANARCI's bucket is *inferred*, and the two can disagree.
+	// Reconciling them is out of scope, so the numbering step resolves each record by its
+	// full `key|chain` id across both buckets rather than assuming they agree.
+	anarciCmd := exec.builder().
+		software(anarciSw).
+		addFile("input.fasta", fastaCmd.getFile("input.fasta")).
+		arg("-i").arg("input.fasta").
+		arg("--scheme").arg(scheme).
+		arg("--ncpu").argWithVar("{system.cpu}").
+		arg("-o").arg("anarci.csv").arg("--csv").
+		writeFile("anarci.csv_H.csv", "Id\n").
+		writeFile("anarci.csv_KL.csv", "Id\n").
+		saveFile("anarci.csv_H.csv").
+		saveFile("anarci.csv_KL.csv").
+		printErrStreamToStdout().
+		cache(CACHE_MILLIS).
+		run()
+
+	regionsCmd := exec.builder().
+		software(regionsSw).
+		cpu(1).
+		mem("4GiB").
+		addFile("input.tsv", inputTsv).
+		addFile("anarci.csv_H.csv", anarciCmd.getFile("anarci.csv_H.csv")).
+		addFile("anarci.csv_KL.csv", anarciCmd.getFile("anarci.csv_KL.csv")).
+		arg("--input_tsv").arg("input.tsv").
+		arg("--key_column").arg(keyColumn).
+		arg("--scheme").arg(scheme).
+		arg("--h_csv").arg("anarci.csv_H.csv").
+		arg("--kl_csv").arg("anarci.csv_KL.csv").
+		arg("--out_tsv").arg("regions.tsv").
+		saveFile("regions.tsv").
+		printErrStreamToStdout().
+		cache(CACHE_MILLIS).
+		run()
+
+	return {
+		regions: regionsCmd.getFile("regions.tsv")
+	}
+})

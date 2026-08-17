@@ -1,6 +1,7 @@
 packages:
   - block
   - model
+  - software/region-annotation
   - test
   - ui
   - workflow
@@ -19,6 +20,12 @@ catalog:
   # Must match the version @platforma-sdk/model depends on, otherwise the model's
   # inferred type references a non-direct copy and the build fails TS2742.
   "@milaboratories/helpers": 1.14.5
+
+  # Region annotation. ANARCI is a shared, already-published artifact — reused rather
+  # than introduced here, per the spec's requirement that the instrument already exist
+  # in the workspace. Versions follow blocks/redefine-clonotypes, its other consumer.
+  "@platforma-open/milaboratories.runenv-python-3": ^1.1.16
+  "@platforma-open/milaboratories.software-anarci": ^0.0.3
 
   "vue": 3.5.24
 

@@ -10,6 +10,8 @@
     "check": "pl-tengo check"
   },
   "dependencies": {
+    "@platforma-open/milaboratories.import-vdj.region-annotation": "workspace:*",
+    "@platforma-open/milaboratories.software-anarci": "catalog:",
     "@platforma-sdk/workflow-tengo": "catalog:"
   },
   "devDependencies": {
