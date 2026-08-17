@@ -20,6 +20,11 @@ CHAIN_LABELS = {"A": "heavy", "B": "light"}
 # ANARCI's own buckets. It writes `<out>_H.csv` and `<out>_KL.csv`.
 ANARCI_BUCKETS = ["H", "KL"]
 
+# The bucket a declared chain is expected to land in, used *only* to count disagreements —
+# never to choose a range table, and never to stop a run. ANARCI merges kappa and lambda
+# into one KL bucket, and `B` is light regardless of which, so the pairing is total.
+EXPECTED_BUCKET = {"A": "H", "B": "KL"}
+
 
 def sequence_column(chain: str) -> str:
     """Input TSV column holding the amino-acid variable domain of `chain`."""

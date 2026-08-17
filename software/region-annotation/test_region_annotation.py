@@ -98,8 +98,10 @@ def main():
     print("  fasta: chain is in the id, unsupplied chains skipped, blank key dropped")
 
     out_tsv = os.path.join(work, "out.tsv")
+    stats_tsv = os.path.join(work, "stats.tsv")
     print(run(os.path.join(SRC, "main.py"), "--input_tsv", in_tsv, "--key_column", "variantKey",
-              "--scheme", "kabat", "--h_csv", h_csv, "--kl_csv", kl_csv, "--out_tsv", out_tsv))
+              "--scheme", "kabat", "--h_csv", h_csv, "--kl_csv", kl_csv,
+              "--out_tsv", out_tsv, "--out_stats", stats_tsv))
 
     rows = list(csv.DictReader(open(out_tsv), delimiter="\t"))
     by_key = {r["variantKey"]: r for r in rows}
@@ -142,6 +144,22 @@ def main():
         for chain in ("A", "B"):
             assert row[f"{chain}_regionAnnotationStatus"], f"{key} {chain}: empty status"
     print("  status is never empty")
+
+    stats = {r["chain"]: r for r in csv.DictReader(open(stats_tsv), delimiter="\t")}
+    assert list(stats) == ["A", "B"], list(stats)
+    # A: K1 K2 K5 annotated, K3 K4 failed, none unsupplied.
+    assert stats["A"] == {"chain": "A", "annotated": "3", "notApplicable": "0",
+                          "failed": "2", "chainDisagreed": "1"}, stats["A"]
+    # B: only K1 supplied and annotated; K2..K5 unsupplied. K1|B is in KL, which is where a
+    # declared B belongs, so nothing disagrees.
+    assert stats["B"] == {"chain": "B", "annotated": "1", "notApplicable": "4",
+                          "failed": "0", "chainDisagreed": "0"}, stats["B"]
+    print("  stats: per-chain counts correct; K5 is the one chainDisagreed, and it is"
+          " counted without changing its status or its values")
+
+    # The count must not leak into the dataset — K5 is a normal Annotated record.
+    assert by_key["K5"]["A_regionAnnotationStatus"] == "Annotated"
+    print("  stats: disagreement is reported, not acted on")
 
     # A single-chain set, with the other bucket left header-only as the workflow creates it.
     single_tsv = os.path.join(work, "single.tsv")

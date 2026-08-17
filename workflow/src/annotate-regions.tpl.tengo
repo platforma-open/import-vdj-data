@@ -4,6 +4,12 @@
 //         mapped chain (`A` heavy, `B` light), and the numbering scheme the scientist chose.
 // Output: `regions` — a TSV with seven `<chain>_<region>_aa` columns per chain plus one
 //         `<chain>_regionAnnotationStatus`.
+//         `stats`   — one row per chain: annotated / notApplicable / failed counts, plus
+//         `chainDisagreed`, the number of annotated records ANARCI numbered as the *other*
+//         chain. Nothing acts on that number; it exists because the alternative is that
+//         mapping the sequence columns to the wrong slots imports cleanly with every chain
+//         label wrong, and because the threshold at which such disagreement should stop a
+//         run is deferred precisely for want of a measured rate.
 //
 // Three steps: build a FASTA, number it with ANARCI, project the numbering onto region
 // ranges. ANARCI is the shared, already-published artifact — reused, not introduced here.
@@ -24,7 +30,7 @@ regionsSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.re
 // deterministic, so the result is worth holding on to.
 CACHE_MILLIS := 24 * 60 * 60 * 1000
 
-self.defineOutputs("regions")
+self.defineOutputs("regions", "stats")
 
 self.body(func(inputs) {
 	inputTsv := inputs.inputTsv
@@ -89,12 +95,16 @@ self.body(func(inputs) {
 		arg("--h_csv").arg("anarci.csv_H.csv").
 		arg("--kl_csv").arg("anarci.csv_KL.csv").
 		arg("--out_tsv").arg("regions.tsv").
+		arg("--out_stats").arg("region-stats.tsv").
 		saveFile("regions.tsv").
+		saveFileContent("region-stats.tsv").
 		printErrStreamToStdout().
 		cache(CACHE_MILLIS).
 		run()
 
 	return {
-		regions: regionsCmd.getFile("regions.tsv")
+		regions: regionsCmd.getFile("regions.tsv"),
+		// Content, not a file handle: a handful of rows the model reads inline.
+		stats: regionsCmd.getFileContent("region-stats.tsv")
 	}
 })
