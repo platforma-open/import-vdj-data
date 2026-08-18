@@ -364,3 +364,51 @@ blockTest(
     expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
   },
 );
+
+blockTest(
+  "imports a file through the direct door, minting the sample itself",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    // No Samples & Data at all. The block takes the file, mints pl7.app/sampleId for it and
+    // labels it with the filename stem, so the emitted shape is the same as through the pool.
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-paired-set.tsv");
+
+    await project.setBlockArgs(blockId, {
+      defaultBlockLabel: "direct",
+      customBlockLabel: "",
+      format: "custom",
+      chains: ["IGHeavy", "IGLight"],
+      fileSource: {
+        handle,
+        sampleId: "SDIRECT000000000000000001",
+        label: "bare-paired-set",
+        extension: "tsv",
+      },
+      bareSet: {
+        identity: "mAb ID",
+        sequences: { A: "VH", B: "VL" },
+        scheme: SCHEME,
+      },
+    });
+
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const wrapped = state.outputs?.importedColumns as
+      | { value?: { name: string; axes: { name: string }[] }[] }
+      | undefined;
+    const columns = wrapped?.value ?? [];
+    expect(columns.length).toBeGreaterThan(0);
+
+    // Indistinguishable from the pool door: same axes, same key, same columns.
+    for (const c of columns) {
+      expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/sampleId", "pl7.app/variantKey"]);
+    }
+    expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
+    expect(columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toHaveLength(2);
+  },
+);

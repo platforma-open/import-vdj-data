@@ -1,4 +1,5 @@
 import type {
+  ImportFileHandle,
   InferOutputsType,
   PColumn,
   PColumnDataUniversal,
@@ -41,6 +42,28 @@ export type BlockArgs = {
    * project saved before this needs a migration.
    */
   bareSet?: BareSetMapping;
+  /**
+   * The second door: a file the scientist points the block at directly, instead of selecting a
+   * dataset somebody already loaded. Exactly one of `datasetRef` and `fileSource` is set.
+   *
+   * The pool door stays because replacing it would break projects that already import custom
+   * sets, and would cost the scientist whose table arrived alongside other data or who wants
+   * the sample metadata samples-and-data manages.
+   */
+  fileSource?: FileSource;
+};
+
+export type FileSource = {
+  handle: ImportFileHandle;
+  /**
+   * Minted in the UI at the moment the file is picked, not derived from the handle, so the
+   * sample keeps its identity across runs even if the same file is re-selected.
+   */
+  sampleId: string;
+  /** The filename stem — exactly what samples-and-data would have labelled the sample. */
+  label: string;
+  /** Read from the file's own first line, because the declared extension is not trusted. */
+  extension: "csv" | "tsv";
 };
 
 export type BareSetChain = "A" | "B";
@@ -133,8 +156,10 @@ export const platforma = BlockModel.create()
   })
 
   .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping, primaryCountType } = ctx.args;
-    if (datasetRef === undefined) return false;
+    const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = ctx.args;
+    // Exactly one door. Both set is a UI bug rather than a choice, and neither means nothing
+    // has been picked yet.
+    if ((datasetRef === undefined) === (fileSource === undefined)) return false;
     if (format === undefined) return false;
     if (!Array.isArray(chains) || chains.length === 0) return false;
 
@@ -213,6 +238,31 @@ export const platforma = BlockModel.create()
    * mirror is what the format-validity flags do, and it is a hairpin — an output written back
    * into state that a derivation then reads. It survives on one client and races on two.
    */
+  /**
+   * Drives the upload for a directly-loaded file.
+   *
+   * `getImportProgress()` is what *starts* the transfer — retrieving the progress is the side
+   * effect. `isActive` forces the lambda to run even when nobody is looking at the block, and
+   * without it the upload never begins, prerun never resolves, and nothing errors anywhere.
+   */
+  .output(
+    "fileImports",
+    (ctx) =>
+      ctx.outputs
+        ?.resolve({ field: "fileImports", allowPermanentAbsence: true })
+        ?.getImportProgress(),
+    { isActive: true },
+  )
+
+  .output(
+    "prerunFileImports",
+    (ctx) =>
+      ctx.prerun
+        ?.resolve({ field: "fileImports", allowPermanentAbsence: true })
+        ?.getImportProgress(),
+    { isActive: true },
+  )
+
   .output("identityCollisions", (ctx) => {
     const raw = ctx.prerun
       ?.resolve({ field: "identityCollisions", allowPermanentAbsence: true })

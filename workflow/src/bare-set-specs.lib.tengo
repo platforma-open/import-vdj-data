@@ -130,6 +130,30 @@ keyAxis := func(blockId) {
 	}
 }
 
+/**
+ * The sample axis the direct door mints. [[import-mints-the-sample]].
+ *
+ * One sample per file, labelled with the filename stem — exactly what samples-and-data
+ * produces, which is what makes the two doors agree rather than merely coexist.
+ *
+ * Note the blockId in the domain: this is a *different axis instance* from the one
+ * samples-and-data mints, so a directly-loaded set will not join against sample metadata
+ * managed there. That costs nothing for a bare set, which carries no metadata, and it is the
+ * price of not depending on another block to exist.
+ */
+sampleAxis := func(blockId) {
+	return {
+		type: "String",
+		name: "pl7.app/sampleId",
+		domain: {
+			"pl7.app/blockId": blockId
+		},
+		annotations: {
+			"pl7.app/label": "Sample"
+		}
+	}
+}
+
 // --- the columns ---------------------------------------------------------------------------
 
 /**
@@ -488,6 +512,7 @@ export {
 	statusColumn: statusColumn,
 
 	keyAxis: keyAxis,
+	sampleAxis: sampleAxis,
 	mainSequenceColumn: mainSequenceColumn,
 	regionColumnSpec: regionColumnSpec,
 	statusColumnSpec: statusColumnSpec,

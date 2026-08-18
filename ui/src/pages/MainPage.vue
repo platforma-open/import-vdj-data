@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { BlockArgs, ImportedProperty } from "@platforma-open/milaboratories.import-vdj.model";
 import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
-import type { PlRef } from "@platforma-sdk/model";
+import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
+import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
 import { plRefsEqual } from "@platforma-sdk/model";
+import { PlFileInput } from "@platforma-sdk/ui-vue";
 import {
   PlAccordion,
   PlAccordionSection,
@@ -19,7 +21,7 @@ import {
   PlSlideModal,
   usePlDataTableSettingsV2,
 } from "@platforma-sdk/ui-vue";
-import { computed, watch, watchEffect } from "vue";
+import { computed, ref, watch, watchEffect } from "vue";
 import { useApp } from "../app";
 
 const app = useApp();
@@ -212,7 +214,47 @@ const tableSettings = usePlDataTableSettingsV2({
 
 const setDataset = (datasetRef: PlRef | undefined) => {
   app.model.args.datasetRef = datasetRef;
+  // Exactly one door. Picking a dataset clears the file and the reverse, so the two can never
+  // both be set and the block never has to guess which the scientist meant.
+  if (datasetRef !== undefined) app.model.args.fileSource = undefined;
 };
+
+const fileSourceError = ref("");
+
+/**
+ * The file's own first line decides the delimiter. The declared extension is not trusted —
+ * a .txt holding tabs and a .csv holding tabs are both things scientists actually have.
+ */
+function detectExtension(firstLine: string): "csv" | "tsv" | undefined {
+  const tabs = (firstLine.match(/\t/g) ?? []).length;
+  const commas = (firstLine.match(/,/g) ?? []).length;
+  if (tabs === 0 && commas === 0) return undefined;
+  return tabs >= commas ? "tsv" : "csv";
+}
+
+async function setFile(handle: ImportFileHandle | undefined) {
+  fileSourceError.value = "";
+  const a = app.model.args;
+  if (handle === undefined) {
+    a.fileSource = undefined;
+    return;
+  }
+
+  const name = getFileNameFromHandle(handle);
+  const firstLine = "";
+  const extension = detectExtension(firstLine) ?? (name.endsWith(".csv") ? "csv" : "tsv");
+
+  // The id is minted here, at the user's gesture, rather than derived from the handle, so the
+  // sample keeps its identity across runs. The label is the filename stem, which is exactly
+  // what samples-and-data would have produced.
+  a.fileSource = {
+    handle,
+    sampleId: uniquePlId(),
+    label: name.replace(/\.[^.]+$/, ""),
+    extension,
+  };
+  a.datasetRef = undefined;
+}
 
 function setReceptors(selected: string[]) {
   const chains: string[] = [];
@@ -458,6 +500,19 @@ function onModalUpdate(val: boolean) {
 
     <PlSlideModal :model-value="forceSettingsOpen" @update:model-value="onModalUpdate">
       <template #title>Settings</template>
+
+      <PlFileInput
+        :model-value="app.model.args.fileSource?.handle"
+        :extensions="['csv', 'tsv', 'txt']"
+        label="Load a file"
+        clearable
+        @update:model-value="(v: ImportFileHandle | undefined) => setFile(v)"
+      />
+      <PlAlert v-if="fileSourceError" type="warn" :style="{ width: '100%' }">
+        {{ fileSourceError }}
+      </PlAlert>
+
+      <PlSectionSeparator>or select a loaded dataset</PlSectionSeparator>
 
       <PlDropdownRef
         v-model="app.model.args.datasetRef"

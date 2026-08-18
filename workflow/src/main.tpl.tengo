@@ -7,6 +7,11 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 formats := import(":formats")
 specs := import(":bare-set-specs")
+file := import("@platforma-sdk/workflow-tengo:file")
+pColumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
+smart := import("@platforma-sdk/workflow-tengo:smart")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+json := import("json")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
 processBulkTpl := assets.importTemplate(":process-bulk")
@@ -18,7 +23,6 @@ wf.setPreRun(assets.importTemplate(":prerun"))
 wf.body(func(args) {
 	
 	format := args.format
-	dataset := wf.resolve(args.datasetRef)
 	chains := args.chains
 	blockId := wf.blockId().getDataAsJson()
 
@@ -36,6 +40,7 @@ wf.body(func(args) {
 	// keyed on pl7.app/vdj/clonotypeKey with chain in the axis domain.
 	if args.bareSet != undefined {
 		bare := args.bareSet
+		fileSource := args.fileSource
 
 		mappedChains := []
 		for chain in specs.CHAINS {
@@ -46,9 +51,48 @@ wf.body(func(args) {
 		}
 		ll.assert(len(mappedChains) > 0, "no sequence column mapped to a chain")
 
+		// Two doors, one emitted shape. From the result pool the dataset is resolved as usual;
+		// on the direct door the block builds the same thing itself — a File column on
+		// pl7.app/sampleId with one entry — so everything downstream of here is identical and
+		// nothing can tell which door the file came through.
+		datasetSpec := undefined
+		datasetData := undefined
+		fileImports := {}
+
+		if fileSource != undefined {
+			imported := file.importFile(fileSource.handle)
+			fileImports["file"] = imported
+
+			builder := pColumn.resourceMapBuilder(1)
+			builder.add([fileSource.sampleId], imported.file)
+			datasetData = builder.build()
+
+			datasetSpec = {
+				kind: "PColumn",
+				name: "pl7.app/sequencing/data",
+				valueType: "File",
+				domain: {
+					"pl7.app/fileExtension": fileSource.extension,
+					"pl7.app/block": blockId
+				},
+				annotations: {
+					"pl7.app/label": "Imported file",
+					"pl7.app/hideDataFromUi": "true"
+				},
+				axesSpec: [specs.sampleAxis(blockId)]
+			}
+		} else {
+			// Resolved only on this door: on the direct one there is no ref to resolve, and
+			// wf.resolve asserts on undefined rather than returning it.
+			poolDataset := wf.resolve(args.datasetRef)
+			datasetSpec = poolDataset.spec
+			datasetData = poolDataset.data
+		}
+
 		bareResult := render.createEphemeral(processBareSetTpl, {
 			blockId: blockId,
-			dataset: dataset,
+			datasetSpec: datasetSpec,
+			datasetData: datasetData,
 			chains: mappedChains,
 			scheme: bare.scheme,
 			mapping: {
@@ -58,17 +102,51 @@ wf.body(func(args) {
 			properties: bare.properties == undefined ? [] : bare.properties
 		})
 
-		return {
-			outputs: {
-				result: bareResult.output("result"),
-				stats: bareResult.output("stats")
-			},
-			exports: {
-				result: bareResult.output("result"),
-				stats: bareResult.output("stats")
+		bareOutputs := {
+			result: bareResult.output("result"),
+			stats: bareResult.output("stats")
+		}
+		bareExports := {
+			result: bareResult.output("result"),
+			stats: bareResult.output("stats")
+		}
+
+		if fileSource != undefined {
+			// The sample would otherwise render as an opaque id in every table downstream: on
+			// the pool door samples-and-data emits this column, and on the direct door nobody
+			// else will.
+			labelData := {}
+			labelData[string(json.encode([fileSource.sampleId]))] = fileSource.label
+			bareExports["sampleLabel"] = {
+				spec: {
+					kind: "PColumn",
+					name: "pl7.app/label",
+					valueType: "String",
+					annotations: {
+						"pl7.app/label": "Sample Name",
+						"pl7.app/isLabel": "true"
+					},
+					axesSpec: [specs.sampleAxis(blockId)]
+				},
+				data: smart.createValueResource(
+					pConstants.RTYPE_P_COLUMN_DATA_JSON,
+					json.encode({ keyLength: 1, data: labelData })
+				)
 			}
+
+			// getImportProgress on these is what actually starts the upload; keeping the
+			// resource here also stops the block reporting Done while bytes are still moving.
+			bareOutputs["fileImports"] = maps.mapValues(fileImports, func(im) { return im.handle })
+			bareOutputs["uploadedFiles"] = maps.mapValues(fileImports, func(im) { return im.file })
+		}
+
+		return {
+			outputs: bareOutputs,
+			exports: bareExports
 		}
 	}
+
+	dataset := wf.resolve(args.datasetRef)
 
 	columnsInfo := render.create(inferColumnsTpl, {
 		format: format,

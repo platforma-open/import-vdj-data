@@ -23,11 +23,11 @@ importTpl := assets.importTemplate(":import-bare-set")
 annotateTpl := assets.importTemplate(":annotate-regions")
 
 self.awaitState("InputsLocked")
-self.awaitState("dataset", "ResourceReady")
+self.awaitState("datasetData", "ResourceReady")
 
 self.body(func(inputs) {
-	datasetSpec := inputs.dataset.spec
-	dataset := inputs.dataset.data
+	datasetSpec := inputs.datasetSpec
+	dataset := inputs.datasetData
 	blockId := inputs.blockId
 	chains := inputs.chains
 	scheme := inputs.scheme
