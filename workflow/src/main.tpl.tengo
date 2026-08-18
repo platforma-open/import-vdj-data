@@ -31,6 +31,18 @@ wf.body(func(args) {
 		chains = ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta", "TCRGamma"]
 	}
 
+	// Neither door chosen: emit nothing rather than assert. A half-configured block used to
+	// reach wf.resolve with an undefined ref and fail there, and because its exports are in the
+	// result pool the failure was not contained — a downstream block scanning the pool inherited
+	// it and reported an error naming this template, which reads as a bug in a block the
+	// scientist may not even have been touching. Prerun already returns empty in this state.
+	if args.datasetRef == undefined && args.fileSource == undefined {
+		return {
+			outputs: {},
+			exports: {}
+		}
+	}
+
 	// A bare paired set takes its own path. The scientist still chooses "Custom" — the
 	// annotated-versus-bare distinction is something the block discovers from the mapping
 	// rather than asks for up front — so the switch is the presence of a chain-slotted
