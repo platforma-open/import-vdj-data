@@ -22,5 +22,10 @@ clash are shown. Rows that repeat an identity while differing elsewhere would me
 record, so the import refuses them; rows identical in every mapped cell state the same record
 twice and collapse to one.
 
+Non-sequence columns are offered for import rather than dropped. Each one the scientist accepts
+becomes a record property, named from the header with special characters replaced and labelled
+with the header exactly as the file wrote it. Two headers that would become the same column are
+refused rather than silently merged.
+
 The block also reports the columns it emitted, so a successful import shows what it produced
 rather than an empty table.

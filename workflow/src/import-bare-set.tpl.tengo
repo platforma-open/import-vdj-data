@@ -35,6 +35,8 @@ self.body(func(inputs) {
 	inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
 	mapping := inputs.mapping
 	chains := inputs.chains
+	properties := inputs.properties
+	if properties == undefined { properties = [] }
 	xsvType := inputs.xsvType
 
 	ll.assert(mapping != undefined, "import-bare-set: mapping is required")
@@ -75,6 +77,11 @@ self.body(func(inputs) {
 	for chain in chains {
 		addRename(mapping.sequences[chain], specs.sequenceColumn(chain))
 	}
+	// Non-sequence columns the scientist accepted come through untouched — nothing converts
+	// between types and nothing re-reads the values.
+	for property in properties {
+		addRename(property.header, specs.propertyColumn(specs.sanitize(property.header)))
+	}
 	if len(renames) > 0 {
 		df = df.withColumns(renames...)
 	}
@@ -105,6 +112,9 @@ self.body(func(inputs) {
 	keep := [specs.keyColumn, specs.labelColumn, specs.abundanceColumn]
 	for chain in chains {
 		keep = append(keep, specs.sequenceColumn(chain))
+	}
+	for property in properties {
+		keep = append(keep, specs.propertyColumn(specs.sanitize(property.header)))
 	}
 	df = df.select(keep...).unique({ subset: specs.keyColumn, keep: "first", maintainOrder: true })
 

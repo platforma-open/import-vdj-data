@@ -215,14 +215,14 @@ Test_abundance_isTheBlocksOwnUmiCountSpec := func() {
 // --- assembly ---------------------------------------------------------------------------------
 
 Test_allColumns_pairedSetEmitsTwentyColumns := func() {
-	columns := specs.allColumns(["A", "B"], "imgt")
+	columns := specs.allColumns(["A", "B"], "imgt", [])
 
 	// label + abundance + 2 main sequences + 14 regions + 2 statuses
 	test.isEqual(20, len(columns), "paired set column count")
 }
 
 Test_allColumns_singleChainEmitsHalfTheChainColumns := func() {
-	columns := specs.allColumns(["A"], "imgt")
+	columns := specs.allColumns(["A"], "imgt", [])
 
 	// label + abundance + 1 main sequence + 7 regions + 1 status
 	test.isEqual(11, len(columns), "single chain column count")
@@ -233,7 +233,7 @@ Test_allColumns_singleChainEmitsHalfTheChainColumns := func() {
 // sampleCount is never emitted: a count of how often a record repeats must not be presented
 // as an abundance, and the synthetic column's cross-sample aggregates are suppressed too.
 Test_allColumns_omitsSampleCountAndAggregates := func() {
-	for c in specs.allColumns(["A", "B"], "imgt") {
+	for c in specs.allColumns(["A", "B"], "imgt", []) {
 		test.isTrue(c.spec.name != "pl7.app/vdj/sampleCount", "sampleCount must not be emitted")
 		test.isTrue(
 			c.spec.name != "pl7.app/vdj/uniqueMoleculeCountTotal",
@@ -250,7 +250,7 @@ Test_allColumns_omitsSampleCountAndAggregates := func() {
 Test_allColumns_hasExactlyOneAnchor := func() {
 	anchors := 0
 	primaries := 0
-	for c in specs.allColumns(["A", "B"], "imgt") {
+	for c in specs.allColumns(["A", "B"], "imgt", []) {
 		if c.spec.annotations["pl7.app/isAnchor"] == "true" {
 			anchors = anchors + 1
 		}
@@ -266,8 +266,8 @@ Test_allColumns_hasExactlyOneAnchor := func() {
 // Pure templates downstream dedup on their inputs, so equal inputs must give byte-equal
 // output. Map iteration anywhere in assembly would break this silently.
 Test_allColumns_isCanonical := func() {
-	first := ids(specs.allColumns(["A", "B"], "kabat"))
-	second := ids(specs.allColumns(["A", "B"], "kabat"))
+	first := ids(specs.allColumns(["A", "B"], "kabat", []))
+	second := ids(specs.allColumns(["A", "B"], "kabat", []))
 
 	test.isEqual(first, second, "column order must be stable across calls")
 }
@@ -275,8 +275,78 @@ Test_allColumns_isCanonical := func() {
 // Every emitted column must be addressable on its own: no two may share a source column.
 Test_allColumns_sourceColumnsAreUnique := func() {
 	seen := {}
-	for c in specs.allColumns(["A", "B"], "imgt") {
+	for c in specs.allColumns(["A", "B"], "imgt", []) {
 		test.isTrue(seen[c.column] == undefined, "duplicate source column " + c.column)
 		seen[c.column] = true
 	}
+}
+
+
+// --- imported property columns ----------------------------------------------------------------
+
+// The name carries the header sanitized; the label carries it exactly as the file wrote it.
+// A raw header in a name would put spaces and punctuation into an identifier every downstream
+// query matches on.
+Test_importedProperty_sanitizesTheNameAndKeepsTheLabelRaw := func() {
+	col := specs.importedPropertyColumn({ header: "Target (nM)", valueType: "Double" }, 0)
+
+	test.isEqual("pl7.app/vdj/importedProperty/Target_nM_", col.spec.name, "sanitized name")
+	test.isEqual("Target (nM)", col.spec.annotations["pl7.app/label"], "label is the raw header")
+	test.isEqual("Double", col.spec.valueType, "the accepted type is emitted, not narrowed")
+	test.isEqual(0, len(col.spec.domain), "no domain key")
+}
+
+// Visible by default: the scientist turns off what they do not want to see.
+Test_importedProperty_isVisibleAndSitsBelowTheIdentifier := func() {
+	col := specs.importedPropertyColumn({ header: "Clone", valueType: "String" }, 0)
+
+	test.isEqual("default", col.spec.annotations["pl7.app/table/visibility"], "visible by default")
+	// Below the label column (109000) and the key axis (110000), above the regions.
+	test.isEqual("108000", col.spec.annotations["pl7.app/table/orderPriority"], "just under the identifier")
+}
+
+// Their specs would otherwise be identical and dedupe into one, losing a column the scientist
+// explicitly chose to import.
+Test_importedProperty_headersThatSanitizeAlikeCollide := func() {
+	collisions := specs.propertyCollisions([
+		{ header: "Target nM", valueType: "Double" },
+		{ header: "Target-nM", valueType: "Double" }
+	])
+
+	test.isEqual(1, len(collisions), "one colliding token")
+	test.isEqual(["Target nM", "Target-nM"], collisions["Target_nM"], "both headers named")
+}
+
+// The contract atom cites `Target (nM)` and `Target-nM` as a colliding pair. Under the
+// sanitizer it names, they are NOT: a trailing `)` leaves a trailing `_`, so the tokens are
+// `Target_nM_` and `Target_nM`. The mechanism is right and the example is wrong; pinned here
+// so the next reader does not "fix" the code to match the prose.
+Test_importedProperty_theAtomsCitedPairDoesNotActuallyCollide := func() {
+	collisions := specs.propertyCollisions([
+		{ header: "Target (nM)", valueType: "Double" },
+		{ header: "Target-nM", valueType: "Double" }
+	])
+
+	test.isEqual(0, len(collisions), "trailing punctuation leaves a trailing underscore")
+}
+
+Test_importedProperty_distinctHeadersDoNotCollide := func() {
+	collisions := specs.propertyCollisions([
+		{ header: "Target", valueType: "String" },
+		{ header: "Assay", valueType: "String" }
+	])
+
+	test.isEqual(0, len(collisions), "no collisions")
+}
+
+Test_allColumns_includesAcceptedProperties := func() {
+	base := specs.allColumns(["A", "B"], "imgt", [])
+	withProps := specs.allColumns(["A", "B"], "imgt", [
+		{ header: "Target", valueType: "Double" },
+		{ header: "Assay", valueType: "String" }
+	])
+
+	test.isEqual(len(base) + 2, len(withProps), "two extra columns")
+	test.isTrue(byId(withProps, "imported-property-Target") != undefined, "Target emitted")
+	test.isTrue(byId(withProps, "imported-property-Assay") != undefined, "Assay emitted")
 }

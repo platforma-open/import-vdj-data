@@ -14,6 +14,7 @@
 
 maps := import("@platforma-sdk/workflow-tengo:maps")
 ll := import("@platforma-sdk/workflow-tengo:ll")
+strings := import("@platforma-sdk/workflow-tengo:strings")
 
 // Declared chains, in emission order. `A` heavy, `B` light — the vocabulary of
 // `pl7.app/vdj/scClonotypeChain`, which `sequence-properties` already reads.
@@ -56,6 +57,8 @@ SCHEMES := ["imgt", "kabat", "chothia"]
 keyColumn := "variantKey"
 labelColumn := "recordLabel"
 abundanceColumn := "umi-count"
+propertyColumn := func(token) { return "prop_" + token }
+sanitize := func(header) { return strings.substituteSpecialCharacters(header) }
 
 sequenceColumn := func(chain) { return chain + "_sequence" }
 regionColumn := func(chain, region) { return chain + "_" + region + "_aa" }
@@ -331,6 +334,81 @@ labelColumnSpec := func() {
 	}
 }
 
+/**
+ * A non-sequence column the scientist chose to bring in. [[bare-set-imported-property-column]].
+ *
+ * The name carries the header sanitized, the label carries it exactly as the file wrote it.
+ * That split is both workspace precedents' shape rather than a choice made here: a raw header
+ * in a column name would put spaces, slashes and unicode into an identifier every downstream
+ * query matches on.
+ *
+ * `valueType` is whatever was accepted at mapping and is not narrowed. Nothing converts
+ * between types and nothing re-reads the values.
+ *
+ * No domain key: the column is a property of the record, distinguished from every other by its
+ * name alone. Which is exactly why two headers that sanitize alike must be refused rather than
+ * disambiguated — see `propertyCollisions`.
+ *
+ * Ordered immediately below the record's own identifier, because a column the scientist asked
+ * for is context for reading the record rather than an afterthought to the annotation.
+ */
+importedPropertyColumn := func(property, index) {
+	ll.assert(
+		property.header != undefined && property.header != "",
+		"bare-set-specs: an imported property needs a header"
+	)
+	valueType := property.valueType
+	ll.assert(
+		valueType == "Int" || valueType == "Double" || valueType == "String",
+		"bare-set-specs: imported property %v has unsupported valueType %v", property.header, valueType
+	)
+
+	token := sanitize(property.header)
+
+	return {
+		id: "imported-property-" + token,
+		column: propertyColumn(token),
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/importedProperty/" + token,
+			valueType: valueType,
+			domain: {},
+			annotations: a(string(108000 - index * 10), "default", {
+				"pl7.app/label": property.header
+			})
+		}
+	}
+}
+
+/**
+ * Headers that sanitize to the same token, grouped by that token.
+ *
+ * Their specs would be identical — same name, same axes, empty domain — so they would dedupe
+ * into one column and silently lose a column the scientist chose to import. `Target (nM)` and
+ * `Target-nM` are such a pair. The mapping is refused rather than disambiguated: a generated
+ * suffix keeps the run going and leaves two columns whose names match nothing in the file.
+ */
+propertyCollisions := func(properties) {
+	byToken := {}
+	for property in properties {
+		token := sanitize(property.header)
+		existing := byToken[token]
+		if existing == undefined {
+			byToken[token] = [property.header]
+		} else {
+			byToken[token] = append(existing, property.header)
+		}
+	}
+
+	collisions := {}
+	for token in maps.getKeys(byToken) {
+		if len(byToken[token]) > 1 {
+			collisions[token] = byToken[token]
+		}
+	}
+	return collisions
+}
+
 // --- assembly -----------------------------------------------------------------------------
 
 /**
@@ -340,11 +418,14 @@ labelColumnSpec := func() {
  * Iteration is over arrays throughout, so the assembled list is byte-identical for equal
  * inputs and the pure templates downstream dedup.
  */
-allColumns := func(chains, scheme) {
+allColumns := func(chains, scheme, properties) {
 	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
 	validateScheme(scheme)
 
 	columns := [labelColumnSpec(), abundanceColumnSpec()]
+	for i, property in properties {
+		columns = append(columns, importedPropertyColumn(property, i))
+	}
 
 	for chain in chains {
 		columns = append(columns, mainSequenceColumn(chain))
@@ -367,11 +448,14 @@ allColumns := func(chains, scheme) {
  * about which file each column is read from — the split lives here so the process template
  * does not have to infer it from column names.
  */
-columnsBySource := func(chains, scheme) {
+columnsBySource := func(chains, scheme, properties) {
 	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
 	validateScheme(scheme)
 
 	records := [labelColumnSpec(), abundanceColumnSpec()]
+	for i, property in properties {
+		records = append(records, importedPropertyColumn(property, i))
+	}
 	for chain in chains {
 		records = append(records, mainSequenceColumn(chain))
 	}
@@ -409,6 +493,10 @@ export {
 	statusColumnSpec: statusColumnSpec,
 	abundanceColumnSpec: abundanceColumnSpec,
 	labelColumnSpec: labelColumnSpec,
+	propertyColumn: propertyColumn,
+	sanitize: sanitize,
+	importedPropertyColumn: importedPropertyColumn,
+	propertyCollisions: propertyCollisions,
 	allColumns: allColumns,
 	columnsBySource: columnsBySource
 }

@@ -54,7 +54,8 @@ wf.body(func(args) {
 			mapping: {
 				identity: bare.identity,
 				sequences: bare.sequences
-			}
+			},
+			properties: bare.properties == undefined ? [] : bare.properties
 		})
 
 		return {

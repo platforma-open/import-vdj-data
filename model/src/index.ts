@@ -59,7 +59,43 @@ export type BareSetMapping = {
   sequences: Partial<Record<BareSetChain, string>>;
   /** The numbering convention ANARCI is asked for, and the one recorded on every region. */
   scheme: "imgt" | "kabat" | "chothia";
+  /**
+   * Non-sequence columns the scientist accepted as record properties. Offered rather than
+   * discarded: a column holding anything the canonical vocabulary never anticipated has no slot
+   * to be given, however ordinary the value is.
+   *
+   * The type is the one accepted at mapping and is emitted unchanged — nothing converts between
+   * types and nothing re-reads the values.
+   */
+  properties?: ImportedProperty[];
 };
+
+export type ImportedProperty = {
+  /** The source header, exactly as the file wrote it. It becomes the column's label. */
+  header: string;
+  valueType: "Int" | "Double" | "String";
+};
+
+/**
+ * The SDK's `substituteSpecialCharacters` class, mirrored so the model can refuse a collision
+ * without a round trip to the workflow. Kept in step with
+ * `sdk/workflow-tengo/src/strings.lib.tengo:4`.
+ */
+const SPECIAL_CHARACTERS = /[-_,.:; +()!<>[\]}{"\\/:$%^#@*&]+/g;
+
+export function sanitizeHeader(header: string): string {
+  return header.replace(SPECIAL_CHARACTERS, "_");
+}
+
+/** Headers that sanitize to the same token, grouped by that token. */
+export function propertyCollisions(properties: ImportedProperty[]): Record<string, string[]> {
+  const byToken: Record<string, string[]> = {};
+  for (const p of properties) {
+    const token = sanitizeHeader(p.header);
+    (byToken[token] ??= []).push(p.header);
+  }
+  return Object.fromEntries(Object.entries(byToken).filter(([, hs]) => hs.length > 1));
+}
 
 export type UiState = {
   tableState: PlDataTableStateV2;
@@ -113,6 +149,13 @@ export const platforma = BlockModel.create()
         const hasChainSequence = !!bare.sequences?.A || !!bare.sequences?.B;
         const hasScheme = !!bare.scheme;
         if (!hasIdentity || !hasChainSequence || !hasScheme) return false;
+
+        // Two headers that sanitize alike would produce identical specs and dedupe into one
+        // column, losing a column the scientist explicitly chose. Refused rather than
+        // disambiguated: a generated suffix would leave names matching nothing in their file.
+        if (Object.keys(propertyCollisions(bare.properties ?? [])).length > 0) {
+          return false;
+        }
 
         // The identity must be unique before the run starts, so that a repeated name cannot
         // silently merge two antibodies into one record. `undefined` means prerun has not

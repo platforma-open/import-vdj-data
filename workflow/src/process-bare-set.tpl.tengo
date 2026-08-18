@@ -32,13 +32,15 @@ self.body(func(inputs) {
 	chains := inputs.chains
 	scheme := inputs.scheme
 	mapping := inputs.mapping
+	properties := inputs.properties
+	if properties == undefined { properties = [] }
 
 	ll.assert(len(chains) > 0, "process-bare-set: at least one chain must be mapped")
 
 	keyAxis := specs.keyAxis(blockId)
 	// Both TSVs are keyed on the same axis and land in the same frame; the split is only
 	// about which file each column is read from.
-	bySource := specs.columnsBySource(chains, scheme)
+	bySource := specs.columnsBySource(chains, scheme, properties)
 
 	trace := pSpec.makeTrace(datasetSpec, {
 		type: "milaboratories.importVDJ",
@@ -99,6 +101,7 @@ self.body(func(inputs) {
 
 			extra: {
 				mapping: mapping,
+				properties: properties,
 				chains: chains,
 				scheme: scheme,
 				xsvType: processUtils.applyXsvType({ xsvType: "tsv" }, datasetSpec).xsvType

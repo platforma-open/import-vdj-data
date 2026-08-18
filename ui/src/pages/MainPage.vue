@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { BlockArgs } from "@platforma-open/milaboratories.import-vdj.model";
+import type { BlockArgs, ImportedProperty } from "@platforma-open/milaboratories.import-vdj.model";
+import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { PlRef } from "@platforma-sdk/model";
 import { plRefsEqual } from "@platforma-sdk/model";
 import {
@@ -125,6 +126,58 @@ const isBareSet = computed(() => app.model.args.bareSet !== undefined);
 const identityCollisions = computed<string[]>(
   () => (app.model.outputs.identityCollisions as string[] | undefined) ?? [],
 );
+
+const propertyTypeOptions = [
+  { label: "Text", value: "String" },
+  { label: "Whole number", value: "Int" },
+  { label: "Decimal", value: "Double" },
+];
+
+/** Headers not taken by a sequence or the identity — offered as record properties rather than
+ *  dropped, which is what the block used to do with them. */
+const propertyCandidates = computed(() => {
+  const bare = app.model.args.bareSet;
+  const taken = new Set(
+    [bare?.identity, bare?.sequences?.A, bare?.sequences?.B].filter(Boolean) as string[],
+  );
+  return (app.model.outputs.headerColumns ?? []).filter((h) => !taken.has(h));
+});
+
+const acceptedProperties = computed<string[]>({
+  get: () => (app.model.args.bareSet?.properties ?? []).map((p) => p.header),
+  set: (headers) => {
+    const a = app.model.args;
+    if (!a.bareSet) return;
+    const existing = new Map((a.bareSet.properties ?? []).map((p) => [p.header, p]));
+    // Text unless the scientist says otherwise: nothing re-reads the values, so a wrong guess
+    // here would be emitted as-is.
+    a.bareSet = {
+      ...a.bareSet,
+      properties: headers.map(
+        (h): ImportedProperty => existing.get(h) ?? { header: h, valueType: "String" },
+      ),
+    };
+  },
+});
+
+function setPropertyType(header: string, valueType: string | undefined) {
+  const a = app.model.args;
+  if (!a.bareSet || !valueType) return;
+  a.bareSet = {
+    ...a.bareSet,
+    properties: (a.bareSet.properties ?? []).map((p) =>
+      p.header === header ? { ...p, valueType: valueType as ImportedProperty["valueType"] } : p,
+    ),
+  };
+}
+
+const propertyCollisionMessage = computed(() => {
+  const collisions = propertyCollisions(app.model.args.bareSet?.properties ?? []);
+  const groups = Object.values(collisions);
+  if (groups.length === 0) return "";
+  const pairs = groups.map((hs) => hs.join(" / ")).join("; ");
+  return `These headers would become the same column: ${pairs}. Rename one in the file — importing both is not possible, and dropping one silently would lose a column you asked for.`;
+});
 
 const identityCollisionMessage = computed(() => {
   const values = identityCollisions.value;
@@ -498,6 +551,29 @@ function onModalUpdate(val: boolean) {
             @update:model-value="(v: string | undefined) => setBareScheme(v)"
           />
         </div>
+
+        <template v-if="isBareSet">
+          <PlSectionSeparator>Other columns</PlSectionSeparator>
+          <PlAlert v-if="propertyCollisionMessage" type="warn" :style="{ width: '100%' }">
+            <template #title>Two headers would become one column</template>
+            {{ propertyCollisionMessage }}
+          </PlAlert>
+          <div class="field-col">
+            <PlDropdownMulti
+              v-model="acceptedProperties"
+              :options="propertyCandidates.map((h) => ({ label: h, value: h }))"
+              label="Import as record properties"
+            />
+            <PlDropdown
+              v-for="p in app.model.args.bareSet?.properties ?? []"
+              :key="p.header"
+              :model-value="p.valueType"
+              :options="propertyTypeOptions"
+              :label="p.header"
+              @update:model-value="(v: string | undefined) => setPropertyType(p.header, v)"
+            />
+          </div>
+        </template>
 
         <template v-if="!isBareSet">
           <PlSectionSeparator>Required columns</PlSectionSeparator>

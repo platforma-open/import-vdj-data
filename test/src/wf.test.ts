@@ -83,6 +83,8 @@ blockTest(
         identity: "mAb ID",
         sequences: { A: "VH", B: "VL" },
         scheme: SCHEME,
+        // A column the canonical vocabulary never anticipated — offered, not dropped.
+        properties: [{ header: "Affinity (nM)", valueType: "Double" }],
       },
     });
 
@@ -185,6 +187,15 @@ blockTest(
 
     // The scientist's own identifier is the label; nothing shows a minted C-XXXXX form.
     expect(columns.find((c) => c.name === "pl7.app/label")).toBeDefined();
+
+    // A non-sequence column the scientist accepted: name sanitized, label the raw header, type
+    // as accepted, no domain key.
+    const affinity = columns.find((c) => c.name.startsWith("pl7.app/vdj/importedProperty/"));
+    expect(affinity).toBeDefined();
+    expect(affinity!.name).toBe("pl7.app/vdj/importedProperty/Affinity_nM_");
+    expect(affinity!.annotations["pl7.app/label"]).toBe("Affinity (nM)");
+    expect(affinity!.valueType).toBe("Double");
+    expect(Object.keys(affinity!.domain)).toHaveLength(0);
   },
 );
 
