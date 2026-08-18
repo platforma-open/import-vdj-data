@@ -119,6 +119,21 @@ function setBareScheme(value: string | undefined) {
 
 const isBareSet = computed(() => app.model.args.bareSet !== undefined);
 
+/** Identity values the file repeats on rows that are not identical. The run cannot start
+ *  while any exist: the record key is the identity's hash, so a repeat would merge two
+ *  different records into one. */
+const identityCollisions = computed<string[]>(
+  () => (app.model.outputs.identityCollisions as string[] | undefined) ?? [],
+);
+
+const identityCollisionMessage = computed(() => {
+  const values = identityCollisions.value;
+  if (values.length === 0) return "";
+  const shown = values.slice(0, 10).join(", ");
+  const rest = values.length > 10 ? ` and ${values.length - 10} more` : "";
+  return `These values of "${app.model.args.bareSet?.identity}" appear on rows that are not identical: ${shown}${rest}. Each record needs its own identifier — two rows sharing one would become a single record. Fix them in the file, or choose a different identity column.`;
+});
+
 const countTypeOptions = [
   { label: "Reads", value: "read" },
   { label: "UMIs", value: "umi" },
@@ -448,6 +463,10 @@ function onModalUpdate(val: boolean) {
 
       <template v-if="app.model.args.format === 'custom'">
         <PlSectionSeparator>Bare sequences</PlSectionSeparator>
+        <PlAlert v-if="identityCollisionMessage" type="warn" :style="{ width: '100%' }">
+          <template #title>Record identity is not unique</template>
+          {{ identityCollisionMessage }}
+        </PlAlert>
         <div class="field-col">
           <PlDropdown
             :model-value="bareField('identity')"

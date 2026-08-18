@@ -94,13 +94,18 @@ self.body(func(inputs) {
 	df = df.withColumns(pt.lit(1).cast("Int32").alias(specs.abundanceColumn))
 
 	// A row identical in every mapped cell states the same record twice and collapses to one.
-	// A row sharing only its identity is a failure the model refuses before the run starts,
-	// so by the time this executes the remaining duplicates are whole-row repeats.
+	// A row sharing only its identity is refused before the run starts, so by the time this
+	// executes the only duplicates left are whole-row repeats and collapsing on the key is safe.
+	//
+	// keep and maintainOrder are pinned, not left to default. The default keep is
+	// order-dependent, which makes the polars plan non-reproducible; a processColumn body is
+	// re-rendered per declared output, so the two renders then disagree and the run dies with a
+	// CIDConflictError naming a field of the shared upstream node rather than this line.
 	keep := [specs.keyColumn, specs.labelColumn, specs.abundanceColumn]
 	for chain in chains {
 		keep = append(keep, specs.sequenceColumn(chain))
 	}
-	df = df.select(keep...)
+	df = df.select(keep...).unique({ subset: specs.keyColumn, keep: "first", maintainOrder: true })
 
 	df.save("records.tsv")
 	wf = wf.run()

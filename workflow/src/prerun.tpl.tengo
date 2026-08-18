@@ -9,6 +9,8 @@ assets := import("@platforma-sdk/workflow-tengo:assets")
 file := import("@platforma-sdk/workflow-tengo:file")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
+collisionsTpl := assets.importTemplate(":bare-set-collisions")
+specs := import(":bare-set-specs")
 
 wf.body(func(args) {
 
@@ -16,6 +18,38 @@ wf.body(func(args) {
 		return {
 			outputs: {},
 			exports: {}
+		}
+	}
+
+	// A bare set is gated on its identity column being unique, and that must be known before
+	// the run starts rather than reported after it. The check reads the whole file, which is
+	// what prerun is for.
+	if args.bareSet != undefined {
+		bare := args.bareSet
+		mappedChains := []
+		for chain in specs.CHAINS {
+			source := bare.sequences[chain]
+			if source != undefined && source != "" {
+				mappedChains = append(mappedChains, chain)
+			}
+		}
+
+		if bare.identity != "" && len(mappedChains) > 0 {
+			collisions := render.create(collisionsTpl, {
+				dataset: wf.resolve(args.datasetRef),
+				mapping: {
+					identity: bare.identity,
+					sequences: bare.sequences
+				},
+				chains: mappedChains
+			}).output("collisions")
+
+			return {
+				outputs: {
+					identityCollisions: collisions
+				},
+				exports: {}
+			}
 		}
 	}
 

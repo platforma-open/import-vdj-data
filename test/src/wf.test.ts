@@ -183,3 +183,88 @@ blockTest(
     expect(columns.find((c) => c.name === "pl7.app/label")).toBeDefined();
   },
 );
+
+blockTest(
+  "refuses to start when the identity column repeats on rows that differ",
+  { timeout: 400000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    // AB-001 appears twice with different light chains — a genuine conflict, because the key is
+    // the identity's hash and the two would merge. AB-002 also appears twice but the rows are
+    // identical, which states the same record twice and is not a conflict.
+    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+    const sampleId = uniquePlId();
+    const datasetId = uniquePlId();
+    const fileHandle = await helpers.getLocalFileHandle(
+      "./assets/bare-paired-set-duplicate-id.tsv",
+    );
+
+    await project.mutateBlockStorage(sndBlockId, {
+      operation: "update-block-data",
+      value: {
+        suggestedImport: false,
+        h5adFilesToPreprocess: [],
+        seuratFilesToPreprocess: [],
+        metadata: [],
+        sampleIds: [sampleId],
+        sampleLabelColumnLabel: "Sample Name",
+        sampleLabels: { [sampleId]: "duplicate-id" },
+        datasets: [
+          {
+            id: datasetId,
+            label: "Duplicate identity",
+            content: { type: "Xsv", xsvType: "tsv", data: { [sampleId]: fileHandle } },
+          },
+        ],
+      },
+    });
+    await project.runBlock(sndBlockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const rawOptions = beforePick.outputs?.datasetOptions as
+      | { value?: { ref: unknown }[] }
+      | { ref: unknown }[]
+      | undefined;
+    const datasetOptions = (Array.isArray(rawOptions) ? rawOptions : (rawOptions?.value ?? [])) as {
+      ref: unknown;
+    }[];
+    expect(datasetOptions.length).toBeGreaterThan(0);
+
+    await project.setBlockArgs(blockId, {
+      defaultBlockLabel: "duplicate-id",
+      customBlockLabel: "",
+      datasetRef: datasetOptions[0].ref,
+      format: "custom",
+      chains: ["IGHeavy", "IGLight"],
+      bareSet: { identity: "mAb ID", sequences: { A: "VH", B: "VL" }, scheme: SCHEME },
+    });
+
+    const state = (await awaitStableState(project.getBlockState(blockId), 300000)) as {
+      outputs?: Record<string, unknown>;
+      inputsValid?: boolean;
+      canRun?: boolean;
+    };
+
+    const wrapped = state.outputs?.identityCollisions as
+      | { value?: string[] }
+      | string[]
+      | undefined;
+    const collisions = (Array.isArray(wrapped) ? wrapped : (wrapped?.value ?? [])) as string[];
+
+    // The differing pair is reported, so the scientist is told which value to fix.
+    expect(collisions).toContain("AB-001");
+    // The identical pair is not: repeating a record verbatim discards nothing.
+    expect(collisions).not.toContain("AB-002");
+
+    // GAP, verified here rather than assumed: `argsValid` disables Run in the interface, but
+    // the platform does not enforce it — `project.runBlock` resolves happily on an invalid
+    // block. So "the run does not start" holds for a scientist clicking Run and not for an API
+    // caller, and a colliding set driven through the API would still import and merge records.
+    // Closing that needs a workflow-side refusal, which is data-dependent and therefore a
+    // separate awaiting template.
+    await expect(project.runBlock(blockId)).resolves.toBeUndefined();
+  },
+);

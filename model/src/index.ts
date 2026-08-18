@@ -112,7 +112,20 @@ export const platforma = BlockModel.create()
         const hasIdentity = !!bare.identity;
         const hasChainSequence = !!bare.sequences?.A || !!bare.sequences?.B;
         const hasScheme = !!bare.scheme;
-        return hasIdentity && hasChainSequence && hasScheme;
+        if (!hasIdentity || !hasChainSequence || !hasScheme) return false;
+
+        // The identity must be unique before the run starts, so that a repeated name cannot
+        // silently merge two antibodies into one record. `undefined` means prerun has not
+        // answered yet — not knowing is not the same as knowing it is fine, so the run waits.
+        const collisions = ctx.prerun
+          ?.resolve({ field: "identityCollisions", allowPermanentAbsence: true })
+          ?.getDataAsString();
+        if (collisions === undefined) return false;
+        const colliding = collisions
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0);
+        return colliding.length <= 1; // header only
       }
 
       const m = customMapping ?? {};
@@ -146,6 +159,29 @@ export const platforma = BlockModel.create()
 
     // For other formats, basic args are sufficient
     return true;
+  })
+
+  /**
+   * Identity values that appear on rows which are not identical to each other.
+   *
+   * Not `retentive`: this gates the run, so a stale value is worse than a briefly absent one.
+   *
+   * Read straight from prerun here, and *not* mirrored into `uiState` from a UI watcher. That
+   * mirror is what the format-validity flags do, and it is a hairpin — an output written back
+   * into state that a derivation then reads. It survives on one client and races on two.
+   */
+  .output("identityCollisions", (ctx) => {
+    const raw = ctx.prerun
+      ?.resolve({ field: "identityCollisions", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (raw === undefined) return undefined;
+
+    // A one-column TSV: a header, then one colliding value per line.
+    const lines = raw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    return lines.slice(1);
   })
 
   .retentiveOutput("datasetOptions", (ctx) => {
