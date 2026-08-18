@@ -2,6 +2,7 @@ packages:
   - block
   - model
   - software/region-annotation
+  - software/xlsx-to-csv
   - test
   - ui
   - workflow

@@ -241,8 +241,14 @@ async function setFile(handle: ImportFileHandle | undefined) {
   }
 
   const name = getFileNameFromHandle(handle);
-  const firstLine = "";
-  const extension = detectExtension(firstLine) ?? (name.endsWith(".csv") ? "csv" : "tsv");
+  // A workbook is identified by its name — there is no first line to read, and the workflow
+  // converts it to csv before anything else looks at it. For text files the delimiter is
+  // decided from the content workflow-side, so the name only has to distinguish the two kinds.
+  const extension: "csv" | "tsv" | "xlsx" = name.toLowerCase().endsWith(".xlsx")
+    ? "xlsx"
+    : name.toLowerCase().endsWith(".csv")
+      ? "csv"
+      : "tsv";
 
   // The id is minted here, at the user's gesture, rather than derived from the handle, so the
   // sample keeps its identity across runs. The label is the filename stem, which is exactly
@@ -503,7 +509,7 @@ function onModalUpdate(val: boolean) {
 
       <PlFileInput
         :model-value="app.model.args.fileSource?.handle"
-        :extensions="['csv', 'tsv', 'txt']"
+        :extensions="['csv', 'tsv', 'txt', 'xlsx']"
         label="Load a file"
         clearable
         @update:model-value="(v: ImportFileHandle | undefined) => setFile(v)"

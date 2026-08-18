@@ -473,3 +473,51 @@ blockTest(
     expect(cols.length).toBeGreaterThan(0);
   },
 );
+
+blockTest(
+  "imports a workbook, converted before anything reads it",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    // The same panel as an .xlsx, with a title line above the header — which is what workbooks
+    // actually look like, and what the converter's header-row heuristic is for. Nothing
+    // downstream of the conversion knows the file was ever a workbook.
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-paired-set.xlsx");
+
+    await project.setBlockArgs(blockId, {
+      defaultBlockLabel: "workbook",
+      customBlockLabel: "",
+      format: "custom",
+      chains: ["IGHeavy", "IGLight"],
+      fileSource: {
+        handle,
+        sampleId: "SXLSX00000000000000000001",
+        label: "bare-paired-set",
+        extension: "xlsx",
+      },
+      bareSet: {
+        identity: "mAb ID",
+        sequences: { A: "VH", B: "VL" },
+        scheme: SCHEME,
+      },
+    });
+
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const wrapped = state.outputs?.importedColumns as
+      | { value?: { name: string; domain: Record<string, string> }[] }
+      | undefined;
+    const columns = wrapped?.value ?? [];
+
+    // Same emitted shape as the tsv of the same panel: the title row was skipped, the real
+    // header was used, and the mapping resolved against it.
+    expect(columns.length).toBeGreaterThan(0);
+    expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
+    expect(columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toHaveLength(2);
+    expect(columns.find((c) => c.name.startsWith("pl7.app/vdj/importedProperty/"))).toBeUndefined();
+  },
+);

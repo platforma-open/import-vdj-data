@@ -13,6 +13,7 @@ inferColumnsTpl := assets.importTemplate(":infer-columns")
 splitHeaderTpl := assets.importTemplate(":split-header")
 txt := import("@platforma-sdk/workflow-tengo:txt")
 collisionsTpl := assets.importTemplate(":bare-set-collisions")
+workbook := import(":workbook")
 specs := import(":bare-set-specs")
 
 wf.body(func(args) {
@@ -21,16 +22,17 @@ wf.body(func(args) {
 	// answered before the run, exactly as they are for a dataset from the pool.
 	if args.fileSource != undefined {
 		imported := file.importFile(args.fileSource.handle)
+		readable := workbook.toXsv(imported.file, args.fileSource.extension)
 
 		builder := pColumn.resourceMapBuilder(1)
-		builder.add([args.fileSource.sampleId], imported.file)
+		builder.add([args.fileSource.sampleId], readable.file)
 
 		// The mapping dropdowns need the file's headers, and on this door nothing upstream
 		// supplies them. The separator comes from what the UI read out of the file's own first
 		// line rather than from the filename, which may not match the content.
-		separator := args.fileSource.extension == "csv" ? "," : "\t"
+		separator := readable.extension == "csv" ? "," : "\t"
 		header := render.create(splitHeaderTpl, {
-			header: txt.head(imported.file, { lines: 1 }),
+			header: txt.head(readable.file, { lines: 1 }),
 			separator: separator
 		}).output("result")
 
@@ -54,7 +56,7 @@ wf.body(func(args) {
 				outputs.identityCollisions = render.create(collisionsTpl, {
 					dataset: {
 						spec: {
-							domain: { "pl7.app/fileExtension": args.fileSource.extension }
+							domain: { "pl7.app/fileExtension": readable.extension }
 						},
 						data: builder.build()
 					},

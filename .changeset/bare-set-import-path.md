@@ -22,6 +22,10 @@ clash are shown. Rows that repeat an identity while differing elsewhere would me
 record, so the import refuses them; rows identical in every mapped cell state the same record
 twice and collapse to one.
 
+The direct door accepts csv, tsv and xlsx. A workbook's first worksheet is converted to csv
+before anything reads it, so the header list, the identity check and the import all see the same
+converted file and the pipeline never handles a workbook.
+
 Non-sequence columns are offered for import rather than dropped. Each one the scientist accepts
 becomes a record property, named from the header with special characters replaced and labelled
 with the header exactly as the file wrote it. Two headers that would become the same column are

@@ -12,6 +12,7 @@ pColumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
 smart := import("@platforma-sdk/workflow-tengo:smart")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 json := import("json")
+workbook := import(":workbook")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
 processBulkTpl := assets.importTemplate(":process-bulk")
@@ -63,8 +64,11 @@ wf.body(func(args) {
 			imported := file.importFile(fileSource.handle)
 			fileImports["file"] = imported
 
+			// A workbook becomes csv here, so nothing downstream needs to know it was ever one.
+			readable := workbook.toXsv(imported.file, fileSource.extension)
+
 			builder := pColumn.resourceMapBuilder(1)
-			builder.add([fileSource.sampleId], imported.file)
+			builder.add([fileSource.sampleId], readable.file)
 			datasetData = builder.build()
 
 			datasetSpec = {
@@ -72,7 +76,7 @@ wf.body(func(args) {
 				name: "pl7.app/sequencing/data",
 				valueType: "File",
 				domain: {
-					"pl7.app/fileExtension": fileSource.extension,
+					"pl7.app/fileExtension": readable.extension,
 					"pl7.app/block": blockId
 				},
 				annotations: {

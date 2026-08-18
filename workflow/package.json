@@ -13,7 +13,8 @@
   "dependencies": {
     "@platforma-open/milaboratories.import-vdj.region-annotation": "workspace:*",
     "@platforma-open/milaboratories.software-anarci": "catalog:",
-    "@platforma-sdk/workflow-tengo": "catalog:"
+    "@platforma-sdk/workflow-tengo": "catalog:",
+    "@platforma-open/milaboratories.import-vdj.xlsx-to-csv": "workspace:*"
   },
   "devDependencies": {
     "@platforma-sdk/tengo-builder": "catalog:",

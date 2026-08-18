@@ -62,8 +62,11 @@ export type FileSource = {
   sampleId: string;
   /** The filename stem — exactly what samples-and-data would have labelled the sample. */
   label: string;
-  /** Read from the file's own first line, because the declared extension is not trusted. */
-  extension: "csv" | "tsv";
+  /**
+   * What kind of file this is. `xlsx` is converted to csv by the workflow before anything
+   * reads it, so the pipeline only ever sees csv or tsv.
+   */
+  extension: "csv" | "tsv" | "xlsx";
 };
 
 export type BareSetChain = "A" | "B";
