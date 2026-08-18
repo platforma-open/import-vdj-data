@@ -18,7 +18,7 @@
     "@milaboratories/ts-builder": "catalog:",
     "@milaboratories/ts-configs": "catalog:",
     "@platforma-open/milaboratories.samples-and-data": "catalog:",
-    "@platforma-open/milaboratories.sequence-properties": "catalog:",
+    "@platforma-open/milaboratories.sequence-properties": "link:../../sequence-properties/block",
     "@platforma-sdk/test": "catalog:",
     "vitest": "catalog:"
   },

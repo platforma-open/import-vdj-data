@@ -414,17 +414,9 @@ blockTest(
   },
 );
 
-// SKIPPED, and the reason is a finding rather than a flake — see the plan's Phase 5 section.
-// The set is offered and the modality is detected correctly, then the run panics with
-// "antibody/TCR mode detected but no amino-acid VDJ sequence columns found". The consumer's
-// bundle query does not match property columns that carry the sample axis, and every working
-// producer — including this block's own per-chain path — emits them on the record axis alone,
-// via a second processColumn pass that aggregates pl7.app/sampleId away.
-//
-// bare-set-key-axis mandates the opposite: every emitted property column on
-// [pl7.app/sampleId, pl7.app/variantKey]. Either that contract or the consumers must move, and
-// that is a spec decision rather than an implementation one. Re-enable when it is settled.
-blockTest.skip(
+// Runs against the LOCAL sequence-properties checkout, linked in test/package.json, because
+// the fix it needs is unreleased. Point the dep back at a published version once it ships.
+blockTest(
   "a bare set reaches and runs Sequence Properties",
   { timeout: 900000 },
   async ({ rawPrj: project, helpers, expect }) => {
