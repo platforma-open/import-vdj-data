@@ -113,6 +113,27 @@ export function sanitizeHeader(header: string): string {
   return header.replace(SPECIAL_CHARACTERS, "_");
 }
 
+/**
+ * Whether a bare-set mapping is complete enough to run.
+ *
+ * The identity-uniqueness refusal is NOT here, and that is a constraint rather than a choice:
+ * reading `ctx.prerun` from the `inputsValid` callback throws ("Error in block model
+ * inputsValid") — it does not get the prerun accessor that output lambdas do — and touching it
+ * left Run permanently disabled on a set with no collisions at all. The verdict is surfaced by
+ * the `identityCollisions` output instead, and the refusal that actually protects the data has
+ * to live in the workflow. Until it does, a colliding set can be run and will merge records.
+ */
+export function bareSetValid(bare: BareSetMapping | undefined): boolean {
+  if (bare === undefined) return false;
+  if (!bare.identity) return false;
+  if (!bare.sequences?.A && !bare.sequences?.B) return false;
+  if (!bare.scheme) return false;
+  // Two headers that sanitize alike would produce identical specs and dedupe into one column,
+  // losing a column the scientist explicitly chose. Refused rather than disambiguated: a
+  // generated suffix would leave names matching nothing in their file.
+  return Object.keys(propertyCollisions(bare.properties ?? [])).length === 0;
+}
+
 /** Headers that sanitize to the same token, grouped by that token. */
 export function propertyCollisions(properties: ImportedProperty[]): Record<string, string[]> {
   const byToken: Record<string, string[]> = {};
@@ -170,6 +191,13 @@ export const platforma = BlockModel.create()
     // Exactly one door. Both set is a UI bug rather than a choice, and neither means nothing
     // has been picked yet.
     if ((datasetRef === undefined) === (fileSource === undefined)) return false;
+
+    // The direct door serves the custom format and no other, so the door decides which
+    // validation applies. Making the interface set `format` instead was worse than redundant:
+    // the value outlived the door, so switching back to a dataset left the whole per-format
+    // mapping unfurled under a format nobody had chosen.
+    if (fileSource !== undefined) return bareSetValid(ctx.args.bareSet);
+
     if (format === undefined) return false;
     if (!Array.isArray(chains) || chains.length === 0) return false;
 
@@ -180,26 +208,8 @@ export const platforma = BlockModel.create()
       // identity column, because the key is the identity's hash and the label is its value.
       const bare = ctx.args.bareSet;
       if (bare !== undefined) {
-        const hasIdentity = !!bare.identity;
-        const hasChainSequence = !!bare.sequences?.A || !!bare.sequences?.B;
-        const hasScheme = !!bare.scheme;
-        if (!hasIdentity || !hasChainSequence || !hasScheme) return false;
+        if (!bareSetValid(bare)) return false;
 
-        // Two headers that sanitize alike would produce identical specs and dedupe into one
-        // column, losing a column the scientist explicitly chose. Refused rather than
-        // disambiguated: a generated suffix would leave names matching nothing in their file.
-        if (Object.keys(propertyCollisions(bare.properties ?? [])).length > 0) {
-          return false;
-        }
-
-        // The identity-uniqueness refusal is NOT gated here, and that is a constraint rather
-        // than a choice: reading ctx.prerun from inputsValid throws ("Error in block model
-        // inputsValid"), so the callback does not get the prerun accessor that output lambdas
-        // do. Touching it left Run permanently disabled on a set with no collisions at all.
-        //
-        // So the verdict is surfaced to the scientist by the identityCollisions output and the
-        // alert above it, and the refusal that actually protects the data has to live in the
-        // workflow. Until it does, a colliding set can be run and will merge records.
         return true;
       }
 

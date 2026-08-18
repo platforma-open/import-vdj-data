@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { BlockArgs, ImportedProperty } from "@platforma-open/milaboratories.import-vdj.model";
-import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
+import { bareSetValid, propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
 import { plRefsEqual } from "@platforma-sdk/model";
@@ -232,11 +232,15 @@ const loadFromFile = computed({
     const a = app.model.args;
     if (on) {
       a.datasetRef = undefined;
-      // The direct door serves the custom format and no other.
-      a.format = "custom";
     } else {
       a.fileSource = undefined;
       a.bareSet = undefined;
+      // The two doors are independent, so the dataset door opens on a clean format choice
+      // rather than inheriting one. Without this a block that had been on the file door shows
+      // the whole per-format mapping unfurled under a format nobody picked — including any
+      // block carrying a "custom" left by an earlier build. customMapping is deliberately kept:
+      // re-picking a format brings the scientist's own mapping back with it.
+      a.format = undefined;
     }
     fileSourceError.value = "";
   },
@@ -281,11 +285,6 @@ async function setFile(handle: ImportFileHandle | undefined) {
     extension,
   };
   a.datasetRef = undefined;
-  // The direct door serves the custom format and no other, so picking a file settles the
-  // format too. Leaving it unset left the scientist looking at a file they had loaded, no
-  // mapping controls — those are gated on the format — and a disabled Run with nothing
-  // indicating what was missing.
-  a.format = "custom";
 }
 
 function setReceptors(selected: string[]) {
@@ -385,8 +384,7 @@ function setMapping(key: string, value: string | undefined) {
 }
 
 const mappingComplete = computed(() => {
-  const bare = app.model.args.bareSet;
-  if (bare) return !!bare.identity && (!!bare.sequences?.A || !!bare.sequences?.B) && !!bare.scheme;
+  if (loadFromFile.value) return bareSetValid(app.model.args.bareSet);
 
   const a = app.model.args as {
     customMapping?: Record<string, string | undefined>;
@@ -493,13 +491,17 @@ watch(
   { immediate: true, deep: true },
 );
 
+function mappingIncomplete(): boolean {
+  if (loadFromFile.value) return !mappingComplete.value;
+  return app.model.args.format === "custom" && !mappingComplete.value;
+}
+
 const forceSettingsOpen = computed(() => {
-  const mustStayOpen = app.model.args.format === "custom" && !mappingComplete.value;
-  return app.model.ui.settingsOpen || mustStayOpen;
+  return app.model.ui.settingsOpen || mappingIncomplete();
 });
 
 function onModalUpdate(val: boolean) {
-  const mustStayOpen = app.model.args.format === "custom" && !mappingComplete.value;
+  const mustStayOpen = mappingIncomplete();
   if (mustStayOpen) {
     app.model.ui.settingsOpen = true;
     return;
