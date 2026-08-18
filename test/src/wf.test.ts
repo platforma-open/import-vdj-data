@@ -16,9 +16,33 @@
 
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
 import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
-import { uniquePlId } from "@platforma-sdk/model";
+import { createPlDataTableStateV2, uniquePlId } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
 import { ImportVdjBlockPointer } from "this-block";
+
+/**
+ * A complete `BlockData` from the fields a test actually cares about.
+ *
+ * `update-block-data` replaces the whole data object rather than merging, so every view-state
+ * field has to be present or the model reads undefined where it expects a default — most
+ * visibly `tableState`, which the stats table is built from.
+ */
+function blockData(fields: Record<string, unknown>): Record<string, unknown> {
+  return {
+    defaultBlockLabel: "",
+    customBlockLabel: "",
+    chains: [],
+    tableState: createPlDataTableStateV2(),
+    settingsOpen: true,
+    loadFromFile: false,
+    qiagenColumnsPresent: false,
+    immunoSeqColumnsPresent: false,
+    mixcrColumnsPresent: false,
+    crColumnsPresent: false,
+    airrColumnsPresent: false,
+    ...fields,
+  };
+}
 
 const SCHEME = "imgt";
 
@@ -73,20 +97,22 @@ blockTest(
     }[];
     expect(datasetOptions.length).toBeGreaterThan(0);
 
-    // V1 block storage, so args go in directly.
-    await project.setBlockArgs(blockId, {
-      defaultBlockLabel: "bare-paired-set",
-      customBlockLabel: "",
-      datasetRef: datasetOptions[0].ref,
-      format: "custom",
-      chains: ["IGHeavy", "IGLight"],
-      bareSet: {
-        identity: "mAb ID",
-        sequences: { A: "VH", B: "VL" },
-        scheme: SCHEME,
-        // A column the canonical vocabulary never anticipated — offered, not dropped.
-        properties: [{ header: "Affinity (nM)", valueType: "Double" }],
-      },
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "bare-paired-set",
+        customBlockLabel: "",
+        datasetRef: datasetOptions[0].ref,
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        bareSet: {
+          identity: "mAb ID",
+          sequences: { A: "VH", B: "VL" },
+          scheme: SCHEME,
+          // A column the canonical vocabulary never anticipated — offered, not dropped.
+          properties: [{ header: "Affinity (nM)", valueType: "Double" }],
+        },
+      }),
     });
 
     await project.runBlock(blockId);
@@ -263,13 +289,16 @@ blockTest(
     }[];
     expect(datasetOptions.length).toBeGreaterThan(0);
 
-    await project.setBlockArgs(blockId, {
-      defaultBlockLabel: "duplicate-id",
-      customBlockLabel: "",
-      datasetRef: datasetOptions[0].ref,
-      format: "custom",
-      chains: ["IGHeavy", "IGLight"],
-      bareSet: { identity: "mAb ID", sequences: { A: "VH", B: "VL" }, scheme: SCHEME },
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "duplicate-id",
+        customBlockLabel: "",
+        datasetRef: datasetOptions[0].ref,
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        bareSet: { identity: "mAb ID", sequences: { A: "VH", B: "VL" }, scheme: SCHEME },
+      }),
     });
 
     const state = (await awaitStableState(project.getBlockState(blockId), 300000)) as {
@@ -345,13 +374,16 @@ blockTest(
       ref: unknown;
     }[];
 
-    await project.setBlockArgs(blockId, {
-      defaultBlockLabel: "heavy-only",
-      customBlockLabel: "",
-      datasetRef: datasetOptions[0].ref,
-      format: "custom",
-      chains: ["IGHeavy"],
-      bareSet: { identity: "mAb ID", sequences: { A: "VH" }, scheme: SCHEME },
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "heavy-only",
+        customBlockLabel: "",
+        datasetRef: datasetOptions[0].ref,
+        format: "custom",
+        chains: ["IGHeavy"],
+        bareSet: { identity: "mAb ID", sequences: { A: "VH" }, scheme: SCHEME },
+      }),
     });
 
     await project.runBlock(blockId);
@@ -389,22 +421,25 @@ blockTest(
     const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
     const handle = await helpers.getLocalFileHandle("./assets/bare-paired-set.tsv");
 
-    await project.setBlockArgs(blockId, {
-      defaultBlockLabel: "direct",
-      customBlockLabel: "",
-      format: "custom",
-      chains: ["IGHeavy", "IGLight"],
-      fileSource: {
-        handle,
-        sampleId: "SDIRECT000000000000000001",
-        label: "bare-paired-set",
-        extension: "tsv",
-      },
-      bareSet: {
-        identity: "mAb ID",
-        sequences: { A: "VH", B: "VL" },
-        scheme: SCHEME,
-      },
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "direct",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          sampleId: "SDIRECT000000000000000001",
+          label: "bare-paired-set",
+          extension: "tsv",
+        },
+        bareSet: {
+          identity: "mAb ID",
+          sequences: { A: "VH", B: "VL" },
+          scheme: SCHEME,
+        },
+      }),
     });
 
     await project.runBlock(blockId);
@@ -456,22 +491,25 @@ blockTest(
     const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
     const handle = await helpers.getLocalFileHandle("./assets/bare-paired-set.tsv");
 
-    await project.setBlockArgs(blockId, {
-      defaultBlockLabel: "chain",
-      customBlockLabel: "",
-      format: "custom",
-      chains: ["IGHeavy", "IGLight"],
-      fileSource: {
-        handle,
-        sampleId: "SCHAIN0000000000000000001",
-        label: "bare-paired-set",
-        extension: "tsv",
-      },
-      bareSet: {
-        identity: "mAb ID",
-        sequences: { A: "VH", B: "VL" },
-        scheme: SCHEME,
-      },
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "chain",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          sampleId: "SCHAIN0000000000000000001",
+          label: "bare-paired-set",
+          extension: "tsv",
+        },
+        bareSet: {
+          identity: "mAb ID",
+          sequences: { A: "VH", B: "VL" },
+          scheme: SCHEME,
+        },
+      }),
     });
     await project.runBlock(blockId);
     await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
@@ -513,22 +551,25 @@ blockTest(
     const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
     const handle = await helpers.getLocalFileHandle("./assets/bare-paired-set.xlsx");
 
-    await project.setBlockArgs(blockId, {
-      defaultBlockLabel: "workbook",
-      customBlockLabel: "",
-      format: "custom",
-      chains: ["IGHeavy", "IGLight"],
-      fileSource: {
-        handle,
-        sampleId: "SXLSX00000000000000000001",
-        label: "bare-paired-set",
-        extension: "xlsx",
-      },
-      bareSet: {
-        identity: "mAb ID",
-        sequences: { A: "VH", B: "VL" },
-        scheme: SCHEME,
-      },
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "workbook",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          sampleId: "SXLSX00000000000000000001",
+          label: "bare-paired-set",
+          extension: "xlsx",
+        },
+        bareSet: {
+          identity: "mAb ID",
+          sequences: { A: "VH", B: "VL" },
+          scheme: SCHEME,
+        },
+      }),
     });
 
     await project.runBlock(blockId);

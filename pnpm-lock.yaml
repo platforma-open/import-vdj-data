@@ -182,6 +182,9 @@ importers:
       '@milaboratories/ts-configs':
         specifier: 'catalog:'
         version: 1.4.0
+      '@platforma-open/milaboratories.import-vdj.model':
+        specifier: workspace:*
+        version: link:../model
       '@platforma-open/milaboratories.samples-and-data':
         specifier: 'catalog:'
         version: 1.18.1

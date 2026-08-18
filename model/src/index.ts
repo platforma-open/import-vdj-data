@@ -1,250 +1,133 @@
-import type {
-  ImportFileHandle,
-  InferOutputsType,
-  PColumn,
-  PColumnDataUniversal,
-  PlDataTableStateV2,
-  PlRef,
-} from "@platforma-sdk/model";
-import {
-  BlockModel,
-  createPlDataTableStateV2,
-  createPlDataTableV2,
-  PColumnCollection,
-} from "@platforma-sdk/model";
+import type { InferOutputsType, PColumn, PColumnDataUniversal } from "@platforma-sdk/model";
+import { BlockModelV3, createPlDataTableV2, PColumnCollection } from "@platforma-sdk/model";
+import { blockDataModel } from "./data-model";
+import type { BlockArgs, BlockData, ColumnDescription } from "./types";
+import { bareSetValid } from "./types";
 
-export type BlockArgs = {
-  defaultBlockLabel: string;
-  customBlockLabel: string;
-  datasetRef?: PlRef;
-  format?:
-    | "immunoSeq"
-    | "qiagen"
-    | "mixcr"
-    | "mixcr-sc"
-    | "cellranger"
-    | "airr"
-    | "airr-sc"
-    | "custom";
-  chains: string[];
-  customMapping?: Record<string, string | undefined>;
-  primaryCountType?: "read" | "umi";
-  secondaryCountType?: "read" | "umi";
-  /**
-   * Present only for a bare paired set: sequences with no gene calls, no region boundaries
-   * and no count, imported as one record per row and annotated at import.
-   *
-   * Its presence is what selects the bare path in the workflow. The scientist still picks
-   * "Custom" as the format — whether a set is bare is something the block discovers from the
-   * mapping, not something it asks for up front.
-   *
-   * Additive to the existing args on purpose: no persisted state changes shape, so no
-   * project saved before this needs a migration.
-   */
-  bareSet?: BareSetMapping;
-  /**
-   * The second door: a file the scientist points the block at directly, instead of selecting a
-   * dataset somebody already loaded. Exactly one of `datasetRef` and `fileSource` is set.
-   *
-   * The pool door stays because replacing it would break projects that already import custom
-   * sets, and would cost the scientist whose table arrived alongside other data or who wants
-   * the sample metadata samples-and-data manages.
-   */
-  fileSource?: FileSource;
-};
-
-export type FileSource = {
-  handle: ImportFileHandle;
-  /**
-   * Minted in the UI at the moment the file is picked, not derived from the handle, so the
-   * sample keeps its identity across runs even if the same file is re-selected.
-   */
-  sampleId: string;
-  /** The filename stem — exactly what samples-and-data would have labelled the sample. */
-  label: string;
-  /**
-   * What kind of file this is. `xlsx` is converted to csv by the workflow before anything
-   * reads it, so the pipeline only ever sees csv or tsv.
-   */
-  extension: "csv" | "tsv" | "xlsx";
-};
-
-export type BareSetChain = "A" | "B";
-
-export type BareSetMapping = {
-  /**
-   * The column whose value identifies the record. Required, never inferred: the record key
-   * is its hash and the record label is its value, so a set without one has nothing to key on.
-   */
-  identity: string;
-  /**
-   * Amino-acid variable domain per chain — `A` heavy, `B` light. The chain comes from the
-   * slot the column was assigned to, so the file needs no chain column and nothing is matched
-   * against a locus map. A row carrying both is unpivoted into one record, not split into two.
-   */
-  sequences: Partial<Record<BareSetChain, string>>;
-  /** The numbering convention ANARCI is asked for, and the one recorded on every region. */
-  scheme: "imgt" | "kabat" | "chothia";
-  /**
-   * Non-sequence columns the scientist accepted as record properties. Offered rather than
-   * discarded: a column holding anything the canonical vocabulary never anticipated has no slot
-   * to be given, however ordinary the value is.
-   *
-   * The type is the one accepted at mapping and is emitted unchanged — nothing converts between
-   * types and nothing re-reads the values.
-   */
-  properties?: ImportedProperty[];
-};
-
-export type ImportedProperty = {
-  /** The source header, exactly as the file wrote it. It becomes the column's label. */
-  header: string;
-  valueType: "Int" | "Double" | "String";
-};
+export * from "./types";
+export { upgradeLegacyData } from "./data-model";
 
 /**
- * The SDK's `substituteSpecialCharacters` class, mirrored so the model can refuse a collision
- * without a round trip to the workflow. Kept in step with
- * `sdk/workflow-tengo/src/strings.lib.tengo:4`.
- */
-const SPECIAL_CHARACTERS = /[-_,.:; +()!<>[\]}{"\\/:$%^#@*&]+/g;
-
-export function sanitizeHeader(header: string): string {
-  return header.replace(SPECIAL_CHARACTERS, "_");
-}
-
-/**
- * Whether a bare-set mapping is complete enough to run.
+ * The mapping fields that belong to the dataset door and mean nothing on a bare set: the bare
+ * path in the workflow reads `bareSet`, `fileSource` and `datasetRef` and nothing else.
  *
- * The identity-uniqueness refusal is NOT here, and that is a constraint rather than a choice:
- * reading `ctx.prerun` from the `inputsValid` callback throws ("Error in block model
- * inputsValid") — it does not get the prerun accessor that output lambdas do — and touching it
- * left Run permanently disabled on a set with no collisions at all. The verdict is surfaced by
- * the `identityCollisions` output instead, and the refusal that actually protects the data has
- * to live in the workflow. Until it does, a colliding set can be run and will merge records.
+ * Stripping them is not tidiness. A scientist who configures a custom mapping, switches to a
+ * bare set and runs would otherwise ship the abandoned mapping to the workflow, where it is
+ * dead weight in the args and in every diff a reader of the run later looks at.
  */
-export function bareSetValid(bare: BareSetMapping | undefined): boolean {
-  if (bare === undefined) return false;
-  if (!bare.identity) return false;
-  if (!bare.sequences?.A && !bare.sequences?.B) return false;
-  if (!bare.scheme) return false;
-  // Two headers that sanitize alike would produce identical specs and dedupe into one column,
-  // losing a column the scientist explicitly chose. Refused rather than disambiguated: a
-  // generated suffix would leave names matching nothing in their file.
-  return Object.keys(propertyCollisions(bare.properties ?? [])).length === 0;
+function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
+  return {
+    datasetRef: args.datasetRef,
+    fileSource: args.fileSource,
+    chains: args.chains,
+    bareSet: args.bareSet,
+  };
 }
 
-/** Headers that sanitize to the same token, grouped by that token. */
-export function propertyCollisions(properties: ImportedProperty[]): Record<string, string[]> {
-  const byToken: Record<string, string[]> = {};
-  for (const p of properties) {
-    const token = sanitizeHeader(p.header);
-    (byToken[token] ??= []).push(p.header);
+/**
+ * The workflow's view of the block, and the only place validation lives.
+ *
+ * Three jobs, in order: refuse what cannot run (by throwing), drop the door that is not in
+ * use, and drop the fields the chosen path never reads. What it deliberately does NOT do is
+ * reorder `chains`: canonicalising a set the user picked in their own order would change the
+ * args of every project already on disk, and buys only the rare case of someone re-picking the
+ * same chains in a different order.
+ */
+function projectArgs(data: BlockData): BlockArgs {
+  const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
+
+  // Exactly one door. Both set is a UI bug rather than a choice, and neither means nothing
+  // has been picked yet.
+  if ((datasetRef === undefined) === (fileSource === undefined)) {
+    throw new Error("Select a dataset, or load a file");
   }
-  return Object.fromEntries(Object.entries(byToken).filter(([, hs]) => hs.length > 1));
+
+  const args: BlockArgs = {
+    datasetRef,
+    fileSource,
+    format,
+    chains,
+    customMapping,
+    primaryCountType,
+    bareSet: data.bareSet,
+  };
+
+  // The direct door serves the custom format and no other, so the door decides which
+  // validation applies. Making the interface set `format` instead was worse than redundant:
+  // the value outlived the door, so switching back to a dataset left the whole per-format
+  // mapping unfurled under a format nobody had chosen.
+  if (fileSource !== undefined) {
+    if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the file's columns");
+    return withoutDatasetDoorMapping(args);
+  }
+
+  if (format === undefined) throw new Error("Choose a data format");
+  if (!Array.isArray(chains) || chains.length === 0) throw new Error("Choose at least one chain");
+
+  if (format === "custom") {
+    // A bare set drops the V gene, the J gene and the abundance — it supplies none of them,
+    // and the rule that demanded all three could not tell a bare set from a malformed
+    // repertoire export. What it requires instead is a sequence mapped to a chain and an
+    // identity column, because the key is the identity's hash and the label is its value.
+    if (data.bareSet !== undefined) {
+      if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
+      return withoutDatasetDoorMapping(args);
+    }
+
+    const m = customMapping ?? {};
+    const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
+    const hasV = !!m["v-gene"];
+    const hasJ = !!m["j-gene"];
+    const pct = primaryCountType ?? "read";
+    const hasPrimaryAbundance = pct === "umi" ? !!m["umi-count"] : !!m["read-count"];
+    if (!hasSeq || !hasV || !hasJ || !hasPrimaryAbundance) {
+      throw new Error("Map a sequence, a V gene, a J gene and an abundance column");
+    }
+    return args;
+  }
+
+  // The per-format flags are written by the UI from the `validationResult` output. They are a
+  // mirror of a derivation, which is a hairpin, but replacing them is a separate change: the
+  // check they stand for needs the file's headers, and the args lambda cannot reach prerun.
+  const presentByFormat: Record<string, boolean> = {
+    qiagen: data.qiagenColumnsPresent === true,
+    immunoSeq: data.immunoSeqColumnsPresent === true,
+    mixcr: data.mixcrColumnsPresent === true,
+    "mixcr-sc": data.mixcrColumnsPresent === true,
+    cellranger: data.crColumnsPresent === true,
+    airr: data.airrColumnsPresent === true,
+    "airr-sc": data.airrColumnsPresent === true,
+  };
+  if (format in presentByFormat && !presentByFormat[format]) {
+    throw new Error(`The file does not carry the columns a ${format} dataset needs`);
+  }
+
+  return args;
 }
-
-export type UiState = {
-  tableState: PlDataTableStateV2;
-  settingsOpen: boolean;
-  /**
-   * Which door the panel is showing. View state rather than args: the block already knows which
-   * door is in use from whether `fileSource` or `datasetRef` is set, and derives nothing from
-   * this. It exists so the panel can show one door's controls before either is filled in.
-   */
-  loadFromFile: boolean;
-  qiagenColumnsPresent: boolean;
-  immunoSeqColumnsPresent: boolean;
-  mixcrColumnsPresent: boolean;
-  crColumnsPresent: boolean;
-  airrColumnsPresent: boolean;
-};
-
-export type ColumnDescription = {
-  label: string;
-  description: string;
-};
 
 // Named `platforma` because the structurer-generated block facade
 // (block/src/index.ts) imports that name. Every V3 block uses it too.
-export const platforma = BlockModel.create()
+export const platforma = BlockModelV3.create(blockDataModel)
 
-  .withArgs<BlockArgs>({
-    defaultBlockLabel: "",
-    customBlockLabel: "",
-    chains: ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta", "TCRGamma"],
-  })
+  .args<BlockArgs>(projectArgs)
 
-  .withUiState<UiState>({
-    tableState: createPlDataTableStateV2(),
-    settingsOpen: true,
-    loadFromFile: false,
-    qiagenColumnsPresent: false,
-    immunoSeqColumnsPresent: false,
-    mixcrColumnsPresent: false,
-    crColumnsPresent: false,
-    airrColumnsPresent: false,
-  })
-
-  .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = ctx.args;
-    // Exactly one door. Both set is a UI bug rather than a choice, and neither means nothing
-    // has been picked yet.
-    if ((datasetRef === undefined) === (fileSource === undefined)) return false;
-
-    // The direct door serves the custom format and no other, so the door decides which
-    // validation applies. Making the interface set `format` instead was worse than redundant:
-    // the value outlived the door, so switching back to a dataset left the whole per-format
-    // mapping unfurled under a format nobody had chosen.
-    if (fileSource !== undefined) return bareSetValid(ctx.args.bareSet);
-
-    if (format === undefined) return false;
-    if (!Array.isArray(chains) || chains.length === 0) return false;
-
-    if (format === "custom") {
-      // A bare set drops the V gene, the J gene and the abundance — it supplies none of them,
-      // and the rule that demanded all three could not tell a bare set from a malformed
-      // repertoire export. What it requires instead is a sequence mapped to a chain and an
-      // identity column, because the key is the identity's hash and the label is its value.
-      const bare = ctx.args.bareSet;
-      if (bare !== undefined) {
-        if (!bareSetValid(bare)) return false;
-
-        return true;
-      }
-
-      const m = customMapping ?? {};
-      const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
-      const hasV = !!m["v-gene"];
-      const hasJ = !!m["j-gene"];
-      const pct = primaryCountType ?? "read";
-      const hasPrimaryAbundance = pct === "umi" ? !!m["umi-count"] : !!m["read-count"];
-      return hasSeq && hasV && hasJ && hasPrimaryAbundance;
-    }
-
-    if (format === "qiagen") {
-      return ctx.uiState.qiagenColumnsPresent === true;
-    }
-
-    if (format === "immunoSeq") {
-      return ctx.uiState.immunoSeqColumnsPresent === true;
-    }
-
-    if (format === "mixcr" || format === "mixcr-sc") {
-      return ctx.uiState.mixcrColumnsPresent === true;
-    }
-
-    if (format === "cellranger") {
-      return ctx.uiState.crColumnsPresent === true;
-    }
-
-    if (format === "airr" || format === "airr-sc") {
-      return ctx.uiState.airrColumnsPresent === true;
-    }
-
-    // For other formats, basic args are sufficient
-    return true;
-  })
+  /**
+   * Prerun reads the file's header, infers the mapping and checks the identity column for
+   * collisions — discovery, all of it, and all of it expected to be current without the
+   * scientist pressing Run. So the projection is deliberately permissive where `args` is
+   * strict: it must survive a half-finished mapping, because a half-finished mapping is
+   * exactly when the panel needs the headers back.
+   *
+   * `chains` is absent because prerun never reads it (`workflow/src/prerun.tpl.tengo`).
+   */
+  .prerunArgs((data) => ({
+    datasetRef: data.datasetRef,
+    fileSource: data.fileSource,
+    format: data.format,
+    customMapping: data.customMapping,
+    primaryCountType: data.primaryCountType,
+    bareSet: data.bareSet,
+  }))
 
   /**
    * Identity values that appear on rows which are not identical to each other.
@@ -353,11 +236,11 @@ export const platforma = BlockModel.create()
       })
       ?.getDataAsJson<string[]>();
 
-    if (!headerColumns || !ctx.args.format) {
+    if (!headerColumns || !ctx.data.format) {
       return undefined;
     }
 
-    const format = ctx.args.format;
+    const format = ctx.data.format;
     const headers = headerColumns;
 
     if (format === "qiagen") {
@@ -528,15 +411,15 @@ export const platforma = BlockModel.create()
       new PColumnCollection().addColumns(pCols).getColumns(() => true) ?? []
     ).filter((c): c is PColumn<PColumnDataUniversal> => c.data !== undefined);
 
-    return createPlDataTableV2(ctx, withLabels, ctx.uiState.tableState);
+    return createPlDataTableV2(ctx, withLabels, ctx.data.tableState);
   })
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])
 
   .title(() => "Import V(D)J Data")
 
-  .subtitle((ctx) => ctx.args.customBlockLabel || ctx.args.defaultBlockLabel || "")
+  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 
-  .done(2);
+  .done();
 
 export type BlockOutputs = InferOutputsType<typeof platforma>;

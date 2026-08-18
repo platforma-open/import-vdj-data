@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BlockArgs, ImportedProperty } from "@platforma-open/milaboratories.import-vdj.model";
+import type { BlockData, ImportedProperty } from "@platforma-open/milaboratories.import-vdj.model";
 import { bareSetValid, propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
@@ -60,7 +60,7 @@ const schemeOptions = [
 
 // updating defaultBlockLabel
 watchEffect(() => {
-  const args = app.model.args as any;
+  const args = app.model.data as any;
   const parts: string[] = [];
 
   // On the file door the file IS the dataset, so its name is the only useful thing to show.
@@ -97,10 +97,10 @@ watchEffect(() => {
 // A bare set is not a mode the scientist declares up front — whether a set is bare is
 // something the block works out from what they mapped. So there is no toggle: the slots are
 // always offered, and filling the identity slot plus at least one chain is what makes it one.
-type BareSetArgs = NonNullable<BlockArgs["bareSet"]>;
+type BareSetArgs = NonNullable<BlockData["bareSet"]>;
 
 function getBare(): BareSetArgs | undefined {
-  return app.model.args.bareSet;
+  return app.model.data.bareSet;
 }
 
 function bareField(field: "identity" | "A" | "B"): string | undefined {
@@ -111,7 +111,7 @@ function bareField(field: "identity" | "A" | "B"): string | undefined {
 
 /** Written on user gesture only, never from a watcher on an output. */
 function setBareField(field: "identity" | "A" | "B", value: string | undefined) {
-  const a = app.model.args;
+  const a = app.model.data;
   const current: BareSetArgs = a.bareSet ?? { identity: "", sequences: {}, scheme: "imgt" };
   const next: BareSetArgs = {
     identity: field === "identity" ? (value ?? "") : current.identity,
@@ -130,12 +130,12 @@ function setBareField(field: "identity" | "A" | "B", value: string | undefined) 
 }
 
 function setBareScheme(value: string | undefined) {
-  const a = app.model.args;
+  const a = app.model.data;
   if (!a.bareSet || !value) return;
   a.bareSet = { ...a.bareSet, scheme: value as BareSetArgs["scheme"] };
 }
 
-const isBareSet = computed(() => app.model.args.bareSet !== undefined);
+const isBareSet = computed(() => app.model.data.bareSet !== undefined);
 
 /** Identity values the file repeats on rows that are not identical. The run cannot start
  *  while any exist: the record key is the identity's hash, so a repeat would merge two
@@ -153,7 +153,7 @@ const propertyTypeOptions = [
 /** Headers not taken by a sequence or the identity — offered as record properties rather than
  *  dropped, which is what the block used to do with them. */
 const propertyCandidates = computed(() => {
-  const bare = app.model.args.bareSet;
+  const bare = app.model.data.bareSet;
   const taken = new Set(
     [bare?.identity, bare?.sequences?.A, bare?.sequences?.B].filter(Boolean) as string[],
   );
@@ -161,9 +161,9 @@ const propertyCandidates = computed(() => {
 });
 
 const acceptedProperties = computed<string[]>({
-  get: () => (app.model.args.bareSet?.properties ?? []).map((p) => p.header),
+  get: () => (app.model.data.bareSet?.properties ?? []).map((p) => p.header),
   set: (headers) => {
-    const a = app.model.args;
+    const a = app.model.data;
     if (!a.bareSet) return;
     const existing = new Map((a.bareSet.properties ?? []).map((p) => [p.header, p]));
     // Text unless the scientist says otherwise: nothing re-reads the values, so a wrong guess
@@ -178,7 +178,7 @@ const acceptedProperties = computed<string[]>({
 });
 
 function setPropertyType(header: string, valueType: string | undefined) {
-  const a = app.model.args;
+  const a = app.model.data;
   if (!a.bareSet || !valueType) return;
   a.bareSet = {
     ...a.bareSet,
@@ -189,7 +189,7 @@ function setPropertyType(header: string, valueType: string | undefined) {
 }
 
 const propertyCollisionMessage = computed(() => {
-  const collisions = propertyCollisions(app.model.args.bareSet?.properties ?? []);
+  const collisions = propertyCollisions(app.model.data.bareSet?.properties ?? []);
   const groups = Object.values(collisions);
   if (groups.length === 0) return "";
   const pairs = groups.map((hs) => hs.join(" / ")).join("; ");
@@ -201,7 +201,7 @@ const identityCollisionMessage = computed(() => {
   if (values.length === 0) return "";
   const shown = values.slice(0, 10).join(", ");
   const rest = values.length > 10 ? ` and ${values.length - 10} more` : "";
-  return `These values of "${app.model.args.bareSet?.identity}" appear on rows that are not identical: ${shown}${rest}. Each record needs its own identifier — two rows sharing one would become a single record. Fix them in the file, or choose a different identity column.`;
+  return `These values of "${app.model.data.bareSet?.identity}" appear on rows that are not identical: ${shown}${rest}. Each record needs its own identifier — two rows sharing one would become a single record. Fix them in the file, or choose a different identity column.`;
 });
 
 const countTypeOptions = [
@@ -210,7 +210,7 @@ const countTypeOptions = [
 ];
 
 const secondaryTypeOptions = computed(() => {
-  const p = app.model.args.primaryCountType;
+  const p = app.model.data.primaryCountType;
   if (p === "read") return [{ label: "UMIs", value: "umi" }];
   if (p === "umi") return [{ label: "Reads", value: "read" }];
   return countTypeOptions;
@@ -218,9 +218,9 @@ const secondaryTypeOptions = computed(() => {
 
 const isSingleCell = computed(
   () =>
-    app.model.args.format === "mixcr-sc" ||
-    app.model.args.format === "cellranger" ||
-    app.model.args.format === "airr-sc",
+    app.model.data.format === "mixcr-sc" ||
+    app.model.data.format === "cellranger" ||
+    app.model.data.format === "airr-sc",
 );
 
 const tableSettings = usePlDataTableSettingsV2({
@@ -228,10 +228,10 @@ const tableSettings = usePlDataTableSettingsV2({
 });
 
 const setDataset = (datasetRef: PlRef | undefined) => {
-  app.model.args.datasetRef = datasetRef;
+  app.model.data.datasetRef = datasetRef;
   // Exactly one door. Picking a dataset clears the file and the reverse, so the two can never
   // both be set and the block never has to guess which the scientist meant.
-  if (datasetRef !== undefined) app.model.args.fileSource = undefined;
+  if (datasetRef !== undefined) app.model.data.fileSource = undefined;
 };
 
 const fileSourceError = ref("");
@@ -241,10 +241,10 @@ const loadFromFile = computed({
   // Falls back to whichever door is actually in use. A block created before this field existed
   // has no value for it — V1 ui state does not backfill new defaults into existing blocks — and
   // without the fallback such a block shows the dataset door while holding a loaded file.
-  get: () => app.model.ui.loadFromFile ?? app.model.args.fileSource !== undefined,
+  get: () => app.model.data.loadFromFile ?? app.model.data.fileSource !== undefined,
   set: (on) => {
-    app.model.ui.loadFromFile = on;
-    const a = app.model.args;
+    app.model.data.loadFromFile = on;
+    const a = app.model.data;
     if (on) {
       a.datasetRef = undefined;
     } else {
@@ -274,7 +274,7 @@ function detectExtension(firstLine: string): "csv" | "tsv" | undefined {
 
 async function setFile(handle: ImportFileHandle | undefined) {
   fileSourceError.value = "";
-  const a = app.model.args;
+  const a = app.model.data;
   if (handle === undefined) {
     a.fileSource = undefined;
     return;
@@ -313,12 +313,12 @@ function setReceptors(selected: string[]) {
   if (selected.includes("TCRGD")) {
     chains.push("TCRDelta", "TCRGamma");
   }
-  app.model.args.chains = chains;
+  app.model.data.chains = chains;
 }
 
 const selectedReceptors = computed<string[]>({
   get: () => {
-    const c = app.model.args.chains ?? [];
+    const c = app.model.data.chains ?? [];
     const sel: string[] = [];
     if (c.includes("IGHeavy") || c.includes("IGLight")) sel.push("IG");
     if (c.includes("TCRAlpha") || c.includes("TCRBeta")) sel.push("TCRAB");
@@ -402,20 +402,20 @@ const sequenceOptions = computed(() => {
 });
 
 function getMapping(key: string): string | undefined {
-  const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined> };
+  const a = app.model.data as unknown as { customMapping?: Record<string, string | undefined> };
   return a.customMapping?.[key];
 }
 function setMapping(key: string, value: string | undefined) {
-  const a = app.model.args as unknown as { customMapping?: Record<string, string> };
+  const a = app.model.data as unknown as { customMapping?: Record<string, string> };
   if (!a.customMapping) a.customMapping = {};
   if (value === undefined || value === "") delete a.customMapping[key];
   else a.customMapping[key] = value;
 }
 
 const mappingComplete = computed(() => {
-  if (loadFromFile.value) return bareSetValid(app.model.args.bareSet);
+  if (loadFromFile.value) return bareSetValid(app.model.data.bareSet);
 
-  const a = app.model.args as {
+  const a = app.model.data as {
     customMapping?: Record<string, string | undefined>;
     primaryCountType?: "read" | "umi";
   };
@@ -432,7 +432,7 @@ const mappingComplete = computed(() => {
 
 const validationResult = computed(() => {
   // Access format to create dependency and ensure reactivity when format changes
-  const format = app.model.args.format;
+  const format = app.model.data.format;
   // Access outputs - Vue should track this if outputs is reactive
   const outputs = app.model.outputs;
   const result = (
@@ -457,10 +457,10 @@ const validationMessage = computed(() => {
 });
 
 watch(
-  () => app.model.args,
+  () => app.model.data,
   (args) => {
     if (args.format === "custom") {
-      const a = app.model.args as unknown as {
+      const a = app.model.data as unknown as {
         customMapping?: Record<string, string>;
         primaryCountType?: "read" | "umi";
         secondaryCountType?: "read" | "umi";
@@ -504,16 +504,16 @@ const formatFlags = {
 } as const;
 
 watch(
-  [() => app.model.args.format, validationResult],
+  [() => app.model.data.format, validationResult],
   ([format, result]) => {
-    Object.values(formatFlags).forEach((flag) => (app.model.ui[flag] = false));
+    Object.values(formatFlags).forEach((flag) => (app.model.data[flag] = false));
 
     if (!result) return;
 
     if (result.format === format) {
       const flag = formatFlags[result.format as keyof typeof formatFlags];
       if (flag) {
-        app.model.ui[flag] = result.isValid;
+        app.model.data[flag] = result.isValid;
       }
     }
   },
@@ -522,27 +522,27 @@ watch(
 
 function mappingIncomplete(): boolean {
   if (loadFromFile.value) return !mappingComplete.value;
-  return app.model.args.format === "custom" && !mappingComplete.value;
+  return app.model.data.format === "custom" && !mappingComplete.value;
 }
 
 const forceSettingsOpen = computed(() => {
-  return app.model.ui.settingsOpen || mappingIncomplete();
+  return app.model.data.settingsOpen || mappingIncomplete();
 });
 
 function onModalUpdate(val: boolean) {
   const mustStayOpen = mappingIncomplete();
   if (mustStayOpen) {
-    app.model.ui.settingsOpen = true;
+    app.model.data.settingsOpen = true;
     return;
   }
-  app.model.ui.settingsOpen = val;
+  app.model.data.settingsOpen = val;
 }
 </script>
 
 <template>
   <PlBlockPage title="Import V(D)J Data">
     <template #append>
-      <PlBtnGhost @click.stop="() => (app.model.ui.settingsOpen = true)">
+      <PlBtnGhost @click.stop="() => (app.model.data.settingsOpen = true)">
         Settings
         <template #append>
           <PlMaskIcon24 name="settings" />
@@ -557,7 +557,7 @@ function onModalUpdate(val: boolean) {
 
       <template v-if="loadFromFile">
         <PlFileInput
-          :model-value="app.model.args.fileSource?.handle"
+          :model-value="app.model.data.fileSource?.handle"
           :extensions="['csv', 'tsv', 'txt', 'xlsx']"
           label="File"
           clearable
@@ -603,7 +603,7 @@ function onModalUpdate(val: boolean) {
                 label="Import as record properties"
               />
               <PlDropdown
-                v-for="p in app.model.args.bareSet?.properties ?? []"
+                v-for="p in app.model.data.bareSet?.properties ?? []"
                 :key="p.header"
                 :model-value="p.valueType"
                 :options="propertyTypeOptions"
@@ -625,7 +625,7 @@ function onModalUpdate(val: boolean) {
           <PlSectionSeparator>Region annotation</PlSectionSeparator>
           <div class="field-col">
             <PlDropdown
-              :model-value="app.model.args.bareSet?.scheme"
+              :model-value="app.model.data.bareSet?.scheme"
               :options="schemeOptions"
               label="Numbering scheme"
               required
@@ -637,7 +637,7 @@ function onModalUpdate(val: boolean) {
 
       <template v-else>
         <PlDropdownRef
-          v-model="app.model.args.datasetRef"
+          v-model="app.model.data.datasetRef"
           :options="app.model.outputs.datasetOptions"
           label="Select dataset"
           clearable
@@ -646,7 +646,7 @@ function onModalUpdate(val: boolean) {
         />
 
         <PlDropdown
-          v-model="app.model.args.format"
+          v-model="app.model.data.format"
           :options="formatOptions"
           label="Data format"
           required
@@ -659,7 +659,7 @@ function onModalUpdate(val: boolean) {
 
         <PlDropdownMulti
           v-if="!isSingleCell"
-          v-model="app.model.args.chains"
+          v-model="app.model.data.chains"
           :options="chainsOptions"
           label="Chains to import"
           required
@@ -672,7 +672,7 @@ function onModalUpdate(val: boolean) {
           required
         />
 
-        <template v-if="app.model.args.format === 'custom'">
+        <template v-if="app.model.data.format === 'custom'">
           <PlSectionSeparator>Required columns</PlSectionSeparator>
           <div class="field-col">
             <PlDropdown
@@ -689,14 +689,14 @@ function onModalUpdate(val: boolean) {
             />
 
             <PlDropdown
-              v-model="(app.model.args as any).primaryCountType"
+              v-model="(app.model.data as any).primaryCountType"
               :options="countTypeOptions"
               label="Primary count type"
               required
             />
 
             <PlDropdown
-              v-if="(app.model.args as any).primaryCountType === 'read'"
+              v-if="(app.model.data as any).primaryCountType === 'read'"
               :model-value="getMapping('read-count')"
               :options="headerOptions"
               label="Read count column (primary)"
@@ -707,7 +707,7 @@ function onModalUpdate(val: boolean) {
               "
             />
             <PlDropdown
-              v-if="(app.model.args as any).primaryCountType === 'umi'"
+              v-if="(app.model.data as any).primaryCountType === 'umi'"
               :model-value="getMapping('umi-count')"
               :options="headerOptions"
               label="UMI count column (primary)"
@@ -724,13 +724,13 @@ function onModalUpdate(val: boolean) {
             <PlAccordionSection label="Canonical">
               <div class="field-col">
                 <PlDropdown
-                  v-model="(app.model.args as any).secondaryCountType"
+                  v-model="(app.model.data as any).secondaryCountType"
                   :options="secondaryTypeOptions"
                   label="Secondary count type"
                   clearable
                 />
                 <PlDropdown
-                  v-if="(app.model.args as any).secondaryCountType === 'umi'"
+                  v-if="(app.model.data as any).secondaryCountType === 'umi'"
                   :model-value="getMapping('umi-count')"
                   :options="headerOptions"
                   label="UMI count column (secondary, optional)"
@@ -740,7 +740,7 @@ function onModalUpdate(val: boolean) {
                   "
                 />
                 <PlDropdown
-                  v-if="(app.model.args as any).secondaryCountType === 'read'"
+                  v-if="(app.model.data as any).secondaryCountType === 'read'"
                   :model-value="getMapping('read-count')"
                   :options="headerOptions"
                   label="Read count column (secondary, optional)"
@@ -817,7 +817,7 @@ function onModalUpdate(val: boolean) {
     </PlSlideModal>
 
     <PlAgDataTableV2
-      v-model="app.model.ui.tableState"
+      v-model="app.model.data.tableState"
       :settings="tableSettings"
       show-export-button
     />
