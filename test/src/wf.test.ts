@@ -115,15 +115,24 @@ blockTest(
           c.domain["pl7.app/vdj/scClonotypeChain"] === chain,
       );
 
-    // Property columns sit on [sampleId, variantKey] — one frame, not one per chain.
+    // The shape, and the reason downstream blocks can read this set unchanged. Consumers match
+    // axes positionally: a selector naming one axis is compared against the candidate column's
+    // axis 0. A property column carrying the sample axis first is invisible to them, and the
+    // failure surfaces there as "no sequence columns found" rather than here. So abundance is
+    // the ONLY column keeping the sample axis — it is a presence marker, one per sample — and
+    // everything else is a property of the record, on the record axis alone. Same split MiXCR
+    // makes. One frame, not one per chain.
     for (const c of columns) {
-      if (c.name === "pl7.app/label") continue;
-      expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/sampleId", "pl7.app/variantKey"]);
+      if (c.name === "pl7.app/vdj/uniqueMoleculeCount") {
+        expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/sampleId", "pl7.app/variantKey"]);
+        continue;
+      }
+      expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/variantKey"]);
     }
 
-    // The label is the exception, and it has to be: a pl7.app/label column only acts as an
-    // axis's label when it sits on that axis ALONE. On [sampleId, variantKey] it is merely a
-    // per-record property and the axis goes on showing the opaque hash.
+    // The label needs that shape for a second reason of its own: a pl7.app/label column only
+    // acts as an axis's label when it sits on that axis ALONE. Carrying the sample axis it is
+    // merely a per-record property, and the axis goes on showing the opaque hash.
     const label = columns.find((c) => c.name === "pl7.app/label");
     expect(label).toBeDefined();
     expect(label!.axes.map((a) => a.name)).toEqual(["pl7.app/variantKey"]);
@@ -410,19 +419,24 @@ blockTest(
     const columns = wrapped?.value ?? [];
     expect(columns.length).toBeGreaterThan(0);
 
-    // Indistinguishable from the pool door: same axes, same key, same columns. The label is
-    // excluded because it must sit on the record axis alone to act as that axis's label.
+    // Indistinguishable from the pool door: same axes, same key, same columns — abundance
+    // alone on [sampleId, variantKey], every property of the record on the record axis.
     for (const c of columns) {
-      if (c.name === "pl7.app/label") continue;
-      expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/sampleId", "pl7.app/variantKey"]);
+      if (c.name === "pl7.app/vdj/uniqueMoleculeCount") {
+        expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/sampleId", "pl7.app/variantKey"]);
+        continue;
+      }
+      expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/variantKey"]);
     }
     expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
     expect(columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toHaveLength(2);
   },
 );
 
-// Runs against the LOCAL sequence-properties checkout, linked in test/package.json, because
-// the fix it needs is unreleased. Point the dep back at a published version once it ships.
+// Runs against the PUBLISHED sequence-properties, deliberately. The bare set carries MiXCR's
+// axis split precisely so that consumers need no change to read it, and a test against a local
+// checkout could not tell the difference between that being true and a fix sitting unmerged
+// next door.
 blockTest(
   "a bare set reaches and runs Sequence Properties",
   { timeout: 900000 },
