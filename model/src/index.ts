@@ -327,6 +327,27 @@ export const platforma = BlockModel.create()
     };
   })
 
+  /**
+   * What the import actually emitted: one entry per exported p-column, with the axes and
+   * domain that give it its identity.
+   *
+   * Read from the workflow's own output rather than derived from the mapping, so it reports
+   * what was produced rather than what was intended — which is what makes it useful when a
+   * downstream block cannot see the dataset and the question is whether the column is missing
+   * or merely differently keyed.
+   */
+  .output("importedColumns", (ctx) => {
+    const cols = ctx.outputs?.resolve("result")?.getPColumns();
+    if (cols === undefined) return undefined;
+    return cols.map((c) => ({
+      name: c.spec.name,
+      valueType: c.spec.valueType,
+      domain: c.spec.domain ?? {},
+      annotations: c.spec.annotations ?? {},
+      axes: (c.spec.axesSpec ?? []).map((a) => ({ name: a.name, domain: a.domain ?? {} })),
+    }));
+  })
+
   .outputWithStatus("stats", (ctx) => {
     const pCols = ctx.outputs?.resolve("stats")?.getPColumns();
     if (pCols === undefined) {

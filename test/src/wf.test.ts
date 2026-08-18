@@ -92,6 +92,94 @@ blockTest(
     const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
       outputs?: Record<string, unknown>;
     };
-    expect(state.outputs).toBeDefined();
+
+    type Emitted = {
+      name: string;
+      valueType: string;
+      domain: Record<string, string>;
+      annotations: Record<string, string>;
+      axes: { name: string; domain: Record<string, string> }[];
+    };
+    const wrapped = state.outputs?.importedColumns as { value?: Emitted[] } | Emitted[] | undefined;
+    const columns = (Array.isArray(wrapped) ? wrapped : (wrapped?.value ?? [])) as Emitted[];
+    expect(columns.length).toBeGreaterThan(0);
+
+    const seq = (chain: string, feature: string) =>
+      columns.find(
+        (c) =>
+          c.name === "pl7.app/vdj/sequence" &&
+          c.domain["pl7.app/vdj/feature"] === feature &&
+          c.domain["pl7.app/vdj/scClonotypeChain"] === chain,
+      );
+
+    // Every column sits on [sampleId, variantKey]. One frame, not one per chain.
+    for (const c of columns) {
+      expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/sampleId", "pl7.app/variantKey"]);
+    }
+
+    // Modality rides on the run-id key, never on the axis name. Stamping another modality's
+    // key would not mislabel the dataset, it would make it that modality to every reader.
+    const keyAxis = columns[0].axes[1];
+    expect(keyAxis.domain["pl7.app/vdj/clonotypingRunId"]).toBeTruthy();
+    expect(keyAxis.domain["pl7.app/vdj/receptor"]).toBe("IG");
+    expect(keyAxis.domain["pl7.app/peptide/extractionRunId"]).toBeUndefined();
+    expect(keyAxis.domain["pl7.app/repertoire/extractionRunId"]).toBeUndefined();
+    expect(keyAxis.domain["pl7.app/vdj/scClonotypeKey/structure"]).toBeUndefined();
+
+    // The amino-acid variable domain per chain, carrying the annotations Lead Selection needs.
+    for (const chain of ["A", "B"]) {
+      const main = seq(chain, "VDJRegionInFrame");
+      expect(main, `main sequence for chain ${chain}`).toBeDefined();
+      expect(main!.domain["pl7.app/vdj/scClonotypeChain/index"]).toBe("primary");
+      expect(main!.annotations["pl7.app/vdj/isMainSequence"]).toBe("true");
+      expect(main!.annotations["pl7.app/vdj/isAssemblingFeature"]).toBe("true");
+      // A whole variable domain has no located boundary, so it carries no convention.
+      expect(main!.domain["pl7.app/vdj/numberingSchema"]).toBeUndefined();
+    }
+
+    // Seven regions per chain, fourteen in all — FR4 included, which is the one every region
+    // list in the workspace has historically been missing.
+    for (const chain of ["A", "B"]) {
+      for (const region of ["FR1", "CDR1", "CDR2", "FR2", "FR3", "FR4", "CDR3"]) {
+        const col = seq(chain, region);
+        expect(col, `${chain} ${region}`).toBeDefined();
+        // Emitted twice: the domain copy buys distinct identity, the annotation copy is what
+        // Sequence Liabilities reads to choose its coordinate map.
+        expect(col!.domain["pl7.app/vdj/numberingSchema"]).toBe(SCHEME);
+        expect(col!.annotations["pl7.app/vdj/numberingSchema"]).toBe(SCHEME);
+      }
+    }
+
+    // One status per chain, a closed three-member enum.
+    for (const chain of ["A", "B"]) {
+      const status = columns.find(
+        (c) =>
+          c.name === "pl7.app/vdj/regionAnnotationStatus" &&
+          c.domain["pl7.app/vdj/scClonotypeChain"] === chain,
+      );
+      expect(status, `status for chain ${chain}`).toBeDefined();
+      expect(status!.annotations["pl7.app/discreteValues"]).toBe(
+        '["Annotated","Not applicable","Failed"]',
+      );
+    }
+
+    // The synthetic abundance: exactly the triple Clustering's bundle queries, plus the anchor
+    // that makes the dataset selectable at all. No unit — nothing was measured.
+    const presence = columns.find((c) => c.name === "pl7.app/vdj/clonotypePresence");
+    expect(presence).toBeDefined();
+    expect(presence!.annotations["pl7.app/isAbundance"]).toBe("true");
+    expect(presence!.annotations["pl7.app/abundance/normalized"]).toBe("false");
+    expect(presence!.annotations["pl7.app/abundance/isPrimary"]).toBe("true");
+    expect(presence!.annotations["pl7.app/isAnchor"]).toBe("true");
+    expect(presence!.annotations["pl7.app/abundance/unit"]).toBeUndefined();
+
+    // Exactly one column may claim the anchor and the primary abundance.
+    expect(columns.filter((c) => c.annotations["pl7.app/isAnchor"] === "true")).toHaveLength(1);
+
+    // A count of how often a record repeats is never presented as an abundance.
+    expect(columns.find((c) => c.name === "pl7.app/vdj/sampleCount")).toBeUndefined();
+
+    // The scientist's own identifier is the label; nothing shows a minted C-XXXXX form.
+    expect(columns.find((c) => c.name === "pl7.app/label")).toBeDefined();
   },
 );
