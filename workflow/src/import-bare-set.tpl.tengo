@@ -1,0 +1,121 @@
+// Import one sample's worth of a bare paired set.
+//
+// Runs once per sample, as the body of a `pframes.processColumn` step. Produces two TSVs on
+// the same key, which the caller imports into one frame:
+//
+//   records.tsv   variantKey, recordLabel, clonotypePresence, <chain>_sequence
+//   regions.tsv   variantKey, <chain>_<region>_aa x7, <chain>_regionAnnotationStatus
+//
+// They are kept separate rather than joined because both are keyed on `variantKey` and both
+// go into the same pFrameBuilder against the same axis, so a join would buy nothing.
+//
+// How this differs from `import-custom.tpl.tengo`, which serves every other custom import:
+//
+//   - no V/J presence filter. A bare set supplies neither, and dropping rows on a column the
+//     input never had would drop all of them.
+//   - no chain row-filter and no locus prefix matching. Chain comes from the slot a column was
+//     assigned to, so a wide row is unpivoted into one record holding both chains rather than
+//     split into two records.
+//   - the key is the hash of the identity column alone. The sequences take no part in it.
+//   - no groupBy collapse. Two rows sharing a sequence are two different antibodies here, and
+//     collapsing them is what loses 119 of the acceptance panel's 1,243 records.
+//   - one frame, not one per chain.
+
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+
+specs := import(":bare-set-specs")
+regions := import(":annotate-regions")
+
+self.defineOutputs("records", "regions", "regionStats")
+
+self.body(func(inputs) {
+	inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
+	mapping := inputs.mapping
+	chains := inputs.chains
+	scheme := inputs.scheme
+	xsvType := inputs.xsvType
+
+	ll.assert(mapping != undefined, "import-bare-set: mapping is required")
+	ll.assert(
+		mapping.identity != undefined && mapping.identity != "",
+		"import-bare-set: an identity column must be selected"
+	)
+	ll.assert(len(chains) > 0, "import-bare-set: at least one chain must be mapped")
+
+	wf := pt.workflow().mem("8GiB").cpu(4)
+
+	// Sorted iteration: the frame list ends up in the polars schema and therefore in the
+	// output bytes, so map order would break dedup silently.
+	frames := []
+	inputMap := inputFiles.inputs()
+	for key in maps.getKeys(inputMap) {
+		frames = append(frames, wf.frame(inputMap[key], {
+			xsvType: xsvType,
+			id: "table_" + key,
+			// The file is the scientist's own; a column of antibody names next to a column of
+			// counts is exactly the mixed-type case schema inference gets wrong.
+			inferSchema: false
+		}))
+	}
+	ll.assert(len(frames) > 0, "import-bare-set: no input files found")
+
+	df := pt.concat(frames)
+
+	// Rename the mapped source columns to their canonical names. Self-aliases are skipped:
+	// col("x").alias("x") creates a duplicate column and fails.
+	renames := []
+	addRename := func(source, canonical) {
+		if source != undefined && source != "" && source != canonical {
+			renames = append(renames, pt.col(source).alias(canonical))
+		}
+	}
+	addRename(mapping.identity, specs.labelColumn)
+	for chain in chains {
+		addRename(mapping.sequences[chain], specs.sequenceColumn(chain))
+	}
+	if len(renames) > 0 {
+		df = df.withColumns(renames...)
+	}
+
+	// The record's key: sha256 of the identity column alone, base64_alphanumeric, truncated
+	// to 120 bits, nulls filled with the literal NA. This is the block's existing key-minting
+	// mechanism given a one-column key list — the sequences play no part in it, so two
+	// antibodies sharing a heavy chain stay two records.
+	df = df.withColumns(
+		pt.concatStr([pt.col(specs.labelColumn).fillNull("NA")], { delimiter: "|" }).
+			hash("sha256", "base64_alphanumeric", 120).
+			alias(specs.keyColumn)
+	)
+
+	// Presence: the literal 1 on every row, one per record rather than per chain. The column
+	// the input did not supply, so every consuming block is reached unchanged.
+	df = df.withColumns(pt.lit(1).cast("Int32").alias(specs.abundanceColumn))
+
+	// A row identical in every mapped cell states the same record twice and collapses to one.
+	// A row sharing only its identity is a failure the model refuses before the run starts,
+	// so by the time this executes the remaining duplicates are whole-row repeats.
+	keep := [specs.keyColumn, specs.labelColumn, specs.abundanceColumn]
+	for chain in chains {
+		keep = append(keep, specs.sequenceColumn(chain))
+	}
+	df = df.select(keep...).unique()
+
+	df.save("records.tsv")
+	wf = wf.run()
+
+	recordsTsv := wf.getFile("records.tsv")
+
+	// Region annotation happens here, inside import, so the set leaves already carrying its
+	// frameworks and CDRs and reaches every consumer annotated.
+	annotated := regions.annotate(recordsTsv, specs.keyColumn, scheme)
+
+	return {
+		records: recordsTsv,
+		regions: annotated.regions,
+		regionStats: annotated.stats
+	}
+})

@@ -1,0 +1,120 @@
+// Assemble a bare paired set into one p-frame.
+//
+// One `processColumn` pass, not two. The per-chain path takes a second pass to compute
+// cross-sample aggregates — `pl7.app/vdj/sampleCount` and the `…CountTotal` / `…FractionMean`
+// pair — and a bare set emits none of them: a count of how often a record repeats must never
+// be presented as an abundance, and a total of a constant is the number of samples wearing an
+// abundance label. Since every emitted column sits on `[pl7.app/sampleId, pl7.app/variantKey]`
+// with nothing collapsing across samples, the second pass has no work left to do.
+//
+// Suppressing those columns is therefore not a filter applied at the end — the pass that
+// computed them is simply absent.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+processUtils := import(":process-utils")
+specs := import(":bare-set-specs")
+
+importTpl := assets.importTemplate(":import-bare-set")
+
+self.awaitState("InputsLocked")
+self.awaitState("dataset", "ResourceReady")
+
+self.body(func(inputs) {
+	datasetSpec := inputs.dataset.spec
+	dataset := inputs.dataset.data
+	blockId := inputs.blockId
+	chains := inputs.chains
+	scheme := inputs.scheme
+	mapping := inputs.mapping
+
+	ll.assert(len(chains) > 0, "process-bare-set: at least one chain must be mapped")
+
+	keyAxis := specs.keyAxis(blockId)
+	// Both TSVs are keyed on the same axis and land in the same frame; the split is only
+	// about which file each column is read from.
+	bySource := specs.columnsBySource(chains, scheme)
+
+	trace := pSpec.makeTrace(datasetSpec, {
+		type: "milaboratories.importVDJ",
+		id: blockId,
+		importance: 81,
+		label: "Import V(D)J Data"
+	})
+
+	results := pframes.processColumn(
+		{ spec: datasetSpec, data: dataset },
+		importTpl,
+		[
+			{
+				type: "Xsv",
+				xsvType: "tsv",
+				settings: {
+					axes: [keyAxis],
+					columns: bySource.records,
+					storageFormat: "Parquet",
+					partitionKeyLength: 0
+				},
+				mem: "16GiB",
+				cpu: 2,
+				name: "records",
+				path: ["records"]
+			},
+			{
+				type: "Xsv",
+				xsvType: "tsv",
+				settings: {
+					axes: [keyAxis],
+					columns: bySource.regions,
+					storageFormat: "Parquet",
+					partitionKeyLength: 0
+				},
+				mem: "16GiB",
+				cpu: 2,
+				name: "regions",
+				path: ["regions"]
+			}
+		],
+		{
+			// The sample axis is not declared by this block on this door — it arrives from the
+			// dataset's own partition, so every emitted column ends up on
+			// [pl7.app/sampleId, pl7.app/variantKey]. On the direct door import declares it
+			// itself; the emitted shape is identical either way.
+			aggregate: [{
+				name: "pl7.app/sequencing/lane",
+				optional: true
+			}, {
+				name: "pl7.app/sequencing/tag",
+				optional: true
+			}],
+			passAggregationAxesNames: true,
+
+			traceSteps: [{
+				type: "milaboratories.importVDJ",
+				id: blockId,
+				importance: 81,
+				label: "Import V(D)J Data"
+			}],
+
+			extra: {
+				mapping: mapping,
+				chains: chains,
+				scheme: scheme,
+				xsvType: processUtils.applyXsvType({ xsvType: "tsv" }, datasetSpec).xsvType
+			}
+		}
+	)
+
+	result := pframes.pFrameBuilder()
+	results.addXsvOutputToBuilder(result, "records", "records")
+	results.addXsvOutputToBuilder(result, "regions", "regions")
+
+	return {
+		result: result.build(),
+		stats: pframes.pFrameBuilder().build()
+	}
+})

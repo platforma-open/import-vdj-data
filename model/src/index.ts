@@ -29,6 +29,36 @@ export type BlockArgs = {
   customMapping?: Record<string, string | undefined>;
   primaryCountType?: "read" | "umi";
   secondaryCountType?: "read" | "umi";
+  /**
+   * Present only for a bare paired set: sequences with no gene calls, no region boundaries
+   * and no count, imported as one record per row and annotated at import.
+   *
+   * Its presence is what selects the bare path in the workflow. The scientist still picks
+   * "Custom" as the format — whether a set is bare is something the block discovers from the
+   * mapping, not something it asks for up front.
+   *
+   * Additive to the existing args on purpose: no persisted state changes shape, so no
+   * project saved before this needs a migration.
+   */
+  bareSet?: BareSetMapping;
+};
+
+export type BareSetChain = "A" | "B";
+
+export type BareSetMapping = {
+  /**
+   * The column whose value identifies the record. Required, never inferred: the record key
+   * is its hash and the record label is its value, so a set without one has nothing to key on.
+   */
+  identity: string;
+  /**
+   * Amino-acid variable domain per chain — `A` heavy, `B` light. The chain comes from the
+   * slot the column was assigned to, so the file needs no chain column and nothing is matched
+   * against a locus map. A row carrying both is unpivoted into one record, not split into two.
+   */
+  sequences: Partial<Record<BareSetChain, string>>;
+  /** The numbering convention ANARCI is asked for, and the one recorded on every region. */
+  scheme: "imgt" | "kabat" | "chothia";
 };
 
 export type UiState = {
@@ -73,6 +103,18 @@ export const platforma = BlockModel.create()
     if (!Array.isArray(chains) || chains.length === 0) return false;
 
     if (format === "custom") {
+      // A bare set drops the V gene, the J gene and the abundance — it supplies none of them,
+      // and the rule that demanded all three could not tell a bare set from a malformed
+      // repertoire export. What it requires instead is a sequence mapped to a chain and an
+      // identity column, because the key is the identity's hash and the label is its value.
+      const bare = ctx.args.bareSet;
+      if (bare !== undefined) {
+        const hasIdentity = !!bare.identity;
+        const hasChainSequence = !!bare.sequences?.A || !!bare.sequences?.B;
+        const hasScheme = !!bare.scheme;
+        return hasIdentity && hasChainSequence && hasScheme;
+      }
+
       const m = customMapping ?? {};
       const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
       const hasV = !!m["v-gene"];

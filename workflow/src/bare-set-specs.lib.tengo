@@ -351,6 +351,37 @@ allColumns := func(chains, scheme) {
 	return columns
 }
 
+/**
+ * The same columns, split by which TSV the import step writes them to.
+ *
+ * `records` is what the polars step emits directly; `regions` is what the annotation step
+ * produces. Both are keyed on `variantKey` and both land in the same frame, so this is only
+ * about which file each column is read from — the split lives here so the process template
+ * does not have to infer it from column names.
+ */
+columnsBySource := func(chains, scheme) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+	validateScheme(scheme)
+
+	records := [labelColumnSpec(), abundanceColumnSpec()]
+	for chain in chains {
+		records = append(records, mainSequenceColumn(chain))
+	}
+
+	regions := []
+	for chain in chains {
+		for region in REGIONS {
+			regions = append(regions, regionColumnSpec(chain, region, scheme))
+		}
+		regions = append(regions, statusColumnSpec(chain, scheme))
+	}
+
+	return {
+		records: records,
+		regions: regions
+	}
+}
+
 export {
 	CHAINS: CHAINS,
 	CHAIN_LABELS: CHAIN_LABELS,
@@ -370,5 +401,6 @@ export {
 	statusColumnSpec: statusColumnSpec,
 	abundanceColumnSpec: abundanceColumnSpec,
 	labelColumnSpec: labelColumnSpec,
-	allColumns: allColumns
+	allColumns: allColumns,
+	columnsBySource: columnsBySource
 }

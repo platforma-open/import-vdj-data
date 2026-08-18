@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { BlockArgs } from "@platforma-open/milaboratories.import-vdj.model";
 import type { PlRef } from "@platforma-sdk/model";
 import { plRefsEqual } from "@platforma-sdk/model";
 import {
@@ -68,6 +69,55 @@ watchEffect(() => {
   }
   args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
 });
+
+const schemeOptions = [
+  { label: "IMGT", value: "imgt" },
+  { label: "Kabat", value: "kabat" },
+  { label: "Chothia", value: "chothia" },
+];
+
+// A bare set is not a mode the scientist declares up front — whether a set is bare is
+// something the block works out from what they mapped. So there is no toggle: the slots are
+// always offered, and filling the identity slot plus at least one chain is what makes it one.
+type BareSetArgs = NonNullable<BlockArgs["bareSet"]>;
+
+function getBare(): BareSetArgs | undefined {
+  return app.model.args.bareSet;
+}
+
+function bareField(field: "identity" | "A" | "B"): string | undefined {
+  const bare = getBare();
+  if (!bare) return undefined;
+  return field === "identity" ? bare.identity : bare.sequences?.[field];
+}
+
+/** Written on user gesture only, never from a watcher on an output. */
+function setBareField(field: "identity" | "A" | "B", value: string | undefined) {
+  const a = app.model.args;
+  const current: BareSetArgs = a.bareSet ?? { identity: "", sequences: {}, scheme: "imgt" };
+  const next: BareSetArgs = {
+    identity: field === "identity" ? (value ?? "") : current.identity,
+    sequences: { ...current.sequences },
+    scheme: current.scheme,
+  };
+  if (field !== "identity") {
+    if (value) next.sequences[field] = value;
+    else delete next.sequences[field];
+  }
+
+  // Cleared right back out when nothing is mapped, so its mere presence stays a reliable
+  // signal that this is a bare set.
+  const empty = !next.identity && !next.sequences.A && !next.sequences.B;
+  a.bareSet = empty ? undefined : next;
+}
+
+function setBareScheme(value: string | undefined) {
+  const a = app.model.args;
+  if (!a.bareSet || !value) return;
+  a.bareSet = { ...a.bareSet, scheme: value as BareSetArgs["scheme"] };
+}
+
+const isBareSet = computed(() => app.model.args.bareSet !== undefined);
 
 const countTypeOptions = [
   { label: "Reads", value: "read" },
@@ -193,6 +243,9 @@ function setMapping(key: string, value: string | undefined) {
 }
 
 const mappingComplete = computed(() => {
+  const bare = app.model.args.bareSet;
+  if (bare) return !!bare.identity && (!!bare.sequences?.A || !!bare.sequences?.B) && !!bare.scheme;
+
   const a = app.model.args as {
     customMapping?: Record<string, string | undefined>;
     primaryCountType?: "read" | "umi";
@@ -394,124 +447,159 @@ function onModalUpdate(val: boolean) {
       <!-- receptor selector for single-cell formats can be added here if needed -->
 
       <template v-if="app.model.args.format === 'custom'">
-        <PlSectionSeparator>Required columns</PlSectionSeparator>
+        <PlSectionSeparator>Bare sequences</PlSectionSeparator>
         <div class="field-col">
           <PlDropdown
-            v-for="f in requiredCanonicalBase"
-            :key="f.key"
-            :model-value="getMapping(f.key)"
+            :model-value="bareField('identity')"
             :options="headerOptions"
-            :label="f.label"
+            label="Record identity"
             clearable
-            required
-            @update:model-value="
-              (v: string | undefined) => setMapping(f.key, v as string | undefined)
-            "
-          />
-
-          <PlDropdown
-            v-model="(app.model.args as any).primaryCountType"
-            :options="countTypeOptions"
-            label="Primary count type"
-            required
-          />
-
-          <PlDropdown
-            v-if="(app.model.args as any).primaryCountType === 'read'"
-            :model-value="getMapping('read-count')"
-            :options="headerOptions"
-            label="Read count column (primary)"
-            clearable
-            required
-            @update:model-value="
-              (v: string | undefined) => setMapping('read-count', v as string | undefined)
-            "
+            @update:model-value="(v: string | undefined) => setBareField('identity', v)"
           />
           <PlDropdown
-            v-if="(app.model.args as any).primaryCountType === 'umi'"
-            :model-value="getMapping('umi-count')"
+            :model-value="bareField('A')"
             :options="headerOptions"
-            label="UMI count column (primary)"
+            label="Heavy chain variable domain (aa)"
             clearable
+            @update:model-value="(v: string | undefined) => setBareField('A', v)"
+          />
+          <PlDropdown
+            :model-value="bareField('B')"
+            :options="headerOptions"
+            label="Light chain variable domain (aa)"
+            clearable
+            @update:model-value="(v: string | undefined) => setBareField('B', v)"
+          />
+          <PlDropdown
+            v-if="isBareSet"
+            :model-value="app.model.args.bareSet?.scheme"
+            :options="schemeOptions"
+            label="Numbering scheme"
             required
-            @update:model-value="
-              (v: string | undefined) => setMapping('umi-count', v as string | undefined)
-            "
+            @update:model-value="(v: string | undefined) => setBareScheme(v)"
           />
         </div>
 
-        <PlSectionSeparator>Optional columns</PlSectionSeparator>
-        <PlAccordion>
-          <PlAccordionSection label="Canonical">
-            <div class="field-col">
-              <PlDropdown
-                v-model="(app.model.args as any).secondaryCountType"
-                :options="secondaryTypeOptions"
-                label="Secondary count type"
-                clearable
-              />
-              <PlDropdown
-                v-if="(app.model.args as any).secondaryCountType === 'umi'"
-                :model-value="getMapping('umi-count')"
-                :options="headerOptions"
-                label="UMI count column (secondary, optional)"
-                clearable
-                @update:model-value="
-                  (v: string | undefined) => setMapping('umi-count', v as string | undefined)
-                "
-              />
-              <PlDropdown
-                v-if="(app.model.args as any).secondaryCountType === 'read'"
-                :model-value="getMapping('read-count')"
-                :options="headerOptions"
-                label="Read count column (secondary, optional)"
-                clearable
-                @update:model-value="
-                  (v: string | undefined) => setMapping('read-count', v as string | undefined)
-                "
-              />
-              <PlDropdown
-                v-for="f in optionalCanonical"
-                :key="f.key"
-                :model-value="getMapping(f.key)"
-                :options="headerOptions"
-                :label="f.label"
-                clearable
-                @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
-              />
-            </div>
-          </PlAccordionSection>
-          <PlAccordionSection label="Sequence">
-            <div class="field-col">
-              <PlDropdown
-                v-for="f in optionalSequence"
-                :key="f.key"
-                :model-value="getMapping(f.key)"
-                :options="headerOptions"
-                :label="f.label"
-                clearable
-                @update:model-value="
-                  (v: string | undefined) => setMapping(f.key, v as string | undefined)
-                "
-              />
-            </div>
-          </PlAccordionSection>
-          <PlAccordionSection label="Mutations">
-            <div class="field-col">
-              <PlDropdown
-                v-for="f in optionalMutations"
-                :key="f.key"
-                :model-value="getMapping(f.key)"
-                :options="headerOptions"
-                :label="f.label"
-                clearable
-                @update:model-value="
-                  (v: string | undefined) => setMapping(f.key, v as string | undefined)
-                "
-              />
-            </div>
-          </PlAccordionSection>
-        </PlAccordion>
+        <template v-if="!isBareSet">
+          <PlSectionSeparator>Required columns</PlSectionSeparator>
+          <div class="field-col">
+            <PlDropdown
+              v-for="f in requiredCanonicalBase"
+              :key="f.key"
+              :model-value="getMapping(f.key)"
+              :options="headerOptions"
+              :label="f.label"
+              clearable
+              required
+              @update:model-value="
+                (v: string | undefined) => setMapping(f.key, v as string | undefined)
+              "
+            />
+
+            <PlDropdown
+              v-model="(app.model.args as any).primaryCountType"
+              :options="countTypeOptions"
+              label="Primary count type"
+              required
+            />
+
+            <PlDropdown
+              v-if="(app.model.args as any).primaryCountType === 'read'"
+              :model-value="getMapping('read-count')"
+              :options="headerOptions"
+              label="Read count column (primary)"
+              clearable
+              required
+              @update:model-value="
+                (v: string | undefined) => setMapping('read-count', v as string | undefined)
+              "
+            />
+            <PlDropdown
+              v-if="(app.model.args as any).primaryCountType === 'umi'"
+              :model-value="getMapping('umi-count')"
+              :options="headerOptions"
+              label="UMI count column (primary)"
+              clearable
+              required
+              @update:model-value="
+                (v: string | undefined) => setMapping('umi-count', v as string | undefined)
+              "
+            />
+          </div>
+
+          <PlSectionSeparator>Optional columns</PlSectionSeparator>
+          <PlAccordion>
+            <PlAccordionSection label="Canonical">
+              <div class="field-col">
+                <PlDropdown
+                  v-model="(app.model.args as any).secondaryCountType"
+                  :options="secondaryTypeOptions"
+                  label="Secondary count type"
+                  clearable
+                />
+                <PlDropdown
+                  v-if="(app.model.args as any).secondaryCountType === 'umi'"
+                  :model-value="getMapping('umi-count')"
+                  :options="headerOptions"
+                  label="UMI count column (secondary, optional)"
+                  clearable
+                  @update:model-value="
+                    (v: string | undefined) => setMapping('umi-count', v as string | undefined)
+                  "
+                />
+                <PlDropdown
+                  v-if="(app.model.args as any).secondaryCountType === 'read'"
+                  :model-value="getMapping('read-count')"
+                  :options="headerOptions"
+                  label="Read count column (secondary, optional)"
+                  clearable
+                  @update:model-value="
+                    (v: string | undefined) => setMapping('read-count', v as string | undefined)
+                  "
+                />
+                <PlDropdown
+                  v-for="f in optionalCanonical"
+                  :key="f.key"
+                  :model-value="getMapping(f.key)"
+                  :options="headerOptions"
+                  :label="f.label"
+                  clearable
+                  @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
+                />
+              </div>
+            </PlAccordionSection>
+            <PlAccordionSection label="Sequence">
+              <div class="field-col">
+                <PlDropdown
+                  v-for="f in optionalSequence"
+                  :key="f.key"
+                  :model-value="getMapping(f.key)"
+                  :options="headerOptions"
+                  :label="f.label"
+                  clearable
+                  @update:model-value="
+                    (v: string | undefined) => setMapping(f.key, v as string | undefined)
+                  "
+                />
+              </div>
+            </PlAccordionSection>
+            <PlAccordionSection label="Mutations">
+              <div class="field-col">
+                <PlDropdown
+                  v-for="f in optionalMutations"
+                  :key="f.key"
+                  :model-value="getMapping(f.key)"
+                  :options="headerOptions"
+                  :label="f.label"
+                  clearable
+                  @update:model-value="
+                    (v: string | undefined) => setMapping(f.key, v as string | undefined)
+                  "
+                />
+              </div>
+            </PlAccordionSection>
+          </PlAccordion>
+        </template>
       </template>
 
       <template v-if="app.model.outputs.columnDescriptions">

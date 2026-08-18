@@ -6,10 +6,12 @@ render := import("@platforma-sdk/workflow-tengo:render")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 formats := import(":formats")
+specs := import(":bare-set-specs")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
 processBulkTpl := assets.importTemplate(":process-bulk")
 processSingleCellTpl := assets.importTemplate(":process-single-cell")
+processBareSetTpl := assets.importTemplate(":process-bare-set")
 
 wf.setPreRun(assets.importTemplate(":prerun"))
 
@@ -22,6 +24,49 @@ wf.body(func(args) {
 
 	if chains == undefined || len(chains) == 0 {
 		chains = ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta", "TCRGamma"]
+	}
+
+	// A bare paired set takes its own path. The scientist still chooses "Custom" — the
+	// annotated-versus-bare distinction is something the block discovers from the mapping
+	// rather than asks for up front — so the switch is the presence of a chain-slotted
+	// sequence mapping and an identity column, not a separate format.
+	//
+	// The two paths share nothing downstream of here: this one emits one frame keyed on
+	// pl7.app/variantKey with chain in the column domain, the other emits one frame per chain
+	// keyed on pl7.app/vdj/clonotypeKey with chain in the axis domain.
+	if args.bareSet != undefined {
+		bare := args.bareSet
+
+		mappedChains := []
+		for chain in specs.CHAINS {
+			source := bare.sequences[chain]
+			if source != undefined && source != "" {
+				mappedChains = append(mappedChains, chain)
+			}
+		}
+		ll.assert(len(mappedChains) > 0, "no sequence column mapped to a chain")
+
+		bareResult := render.createEphemeral(processBareSetTpl, {
+			blockId: blockId,
+			dataset: dataset,
+			chains: mappedChains,
+			scheme: bare.scheme,
+			mapping: {
+				identity: bare.identity,
+				sequences: bare.sequences
+			}
+		})
+
+		return {
+			outputs: {
+				result: bareResult.output("result"),
+				stats: bareResult.output("stats")
+			},
+			exports: {
+				result: bareResult.output("result"),
+				stats: bareResult.output("stats")
+			}
+		}
 	}
 
 	columnsInfo := render.create(inferColumnsTpl, {
