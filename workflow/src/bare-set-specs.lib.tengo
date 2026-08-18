@@ -338,9 +338,19 @@ abundanceColumnSpec := func() {
  * It replaces the `C-XXXXX` label import mints from the key; nothing shows the minted form.
  * With the key hashed, this is the only place the scientist's own name appears.
  *
- * The spec shape mirrors the block's existing `clonotypeLabel` column rather than being
- * minted here. NOT FIXED BY AN ATOM: the atom settles the value, not the spec — the label
- * string below is chosen to agree with the key axis's own "Record ID".
+ * The shape is the workspace's convention for a column that labels an axis: the name
+ * `pl7.app/label`, a display name, and `pl7.app/isLabel` — as `samples-and-data`,
+ * `differential-expression` and `differential-clonotype-abundance` all emit it. Deliberately
+ * NOT the block's existing `clonotypeLabel`, which omits `isLabel` and sets a visibility and an
+ * order priority: those make it a table column of its own, showing the same text a second time
+ * beside the axis it is supposed to be naming.
+ *
+ * It must sit on the record axis ALONE. On `[sampleId, variantKey]` it is a per-record property
+ * and the axis goes on displaying the opaque hash, which is the whole thing the label exists to
+ * prevent — hence the pass that aggregates the sample axis away.
+ *
+ * NOT FIXED BY AN ATOM: the atom settles the value, not the spec — the display name below is
+ * chosen to agree with the key axis's own "Record ID".
  */
 labelColumnSpec := func() {
 	return {
@@ -350,10 +360,10 @@ labelColumnSpec := func() {
 		spec: {
 			name: "pl7.app/label",
 			valueType: "String",
-			annotations: a("109000", "default", {
+			annotations: {
 				"pl7.app/label": "Record ID",
-				"pl7.app/description": "The identifier this record carried in the imported file."
-			})
+				"pl7.app/isLabel": "true"
+			}
 		}
 	}
 }
@@ -533,7 +543,8 @@ columnsBySource := func(chains, scheme, properties) {
 	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
 	validateScheme(scheme)
 
-	records := [labelColumnSpec(), abundanceColumnSpec()]
+	// No label here: it is emitted by the aggregate pass, on the record axis alone.
+	records := [abundanceColumnSpec()]
 	for i, property in properties {
 		records = append(records, importedPropertyColumn(property, i))
 	}

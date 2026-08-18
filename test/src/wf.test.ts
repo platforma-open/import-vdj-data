@@ -115,10 +115,18 @@ blockTest(
           c.domain["pl7.app/vdj/scClonotypeChain"] === chain,
       );
 
-    // Every column sits on [sampleId, variantKey]. One frame, not one per chain.
+    // Property columns sit on [sampleId, variantKey] — one frame, not one per chain.
     for (const c of columns) {
+      if (c.name === "pl7.app/label") continue;
       expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/sampleId", "pl7.app/variantKey"]);
     }
+
+    // The label is the exception, and it has to be: a pl7.app/label column only acts as an
+    // axis's label when it sits on that axis ALONE. On [sampleId, variantKey] it is merely a
+    // per-record property and the axis goes on showing the opaque hash.
+    const label = columns.find((c) => c.name === "pl7.app/label");
+    expect(label).toBeDefined();
+    expect(label!.axes.map((a) => a.name)).toEqual(["pl7.app/variantKey"]);
 
     // Modality rides on the run-id key, never on the axis name. Stamping another modality's
     // key would not mislabel the dataset, it would make it that modality to every reader.
@@ -185,9 +193,6 @@ blockTest(
 
     // A count of how often a record repeats is never presented as an abundance.
     expect(columns.find((c) => c.name === "pl7.app/vdj/sampleCount")).toBeUndefined();
-
-    // The scientist's own identifier is the label; nothing shows a minted C-XXXXX form.
-    expect(columns.find((c) => c.name === "pl7.app/label")).toBeDefined();
 
     // A non-sequence column the scientist accepted: name sanitized, label the raw header, type
     // as accepted, no domain key.
@@ -405,8 +410,10 @@ blockTest(
     const columns = wrapped?.value ?? [];
     expect(columns.length).toBeGreaterThan(0);
 
-    // Indistinguishable from the pool door: same axes, same key, same columns.
+    // Indistinguishable from the pool door: same axes, same key, same columns. The label is
+    // excluded because it must sit on the record axis alone to act as that axis's label.
     for (const c of columns) {
+      if (c.name === "pl7.app/label") continue;
       expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/sampleId", "pl7.app/variantKey"]);
     }
     expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();

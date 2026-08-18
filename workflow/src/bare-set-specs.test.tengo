@@ -350,3 +350,20 @@ Test_allColumns_includesAcceptedProperties := func() {
 	test.isTrue(byId(withProps, "imported-property-Target") != undefined, "Target emitted")
 	test.isTrue(byId(withProps, "imported-property-Assay") != undefined, "Assay emitted")
 }
+
+
+// The convention for a column that labels an axis: the pl7.app/label name, a display name and
+// isLabel — and no visibility or order priority, which would make it a table column of its own
+// showing the same text a second time beside the axis it names.
+Test_recordLabel_followsTheAxisLabelConvention := func() {
+	col := specs.labelColumnSpec()
+
+	test.isEqual("pl7.app/label", col.spec.name, "name")
+	test.isEqual("true", col.spec.annotations["pl7.app/isLabel"], "isLabel")
+	test.isEqual("Record ID", col.spec.annotations["pl7.app/label"], "display name")
+	test.isTrue(
+		col.spec.annotations["pl7.app/table/visibility"] == undefined,
+		"a label column is not also a column of its own"
+	)
+	test.isTrue(col.spec.annotations["pl7.app/table/orderPriority"] == undefined, "no order")
+}

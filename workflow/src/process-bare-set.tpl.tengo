@@ -20,6 +20,7 @@ specs := import(":bare-set-specs")
 
 importTpl := assets.importTemplate(":import-bare-set")
 annotateTpl := assets.importTemplate(":annotate-regions")
+labelsTpl := assets.importTemplate(":aggregate-record-labels")
 
 self.awaitState("InputsLocked")
 self.awaitState("datasetData", "ResourceReady")
@@ -140,9 +141,34 @@ self.body(func(inputs) {
 		}
 	)
 
+	// The label has to be keyed on the record alone to act as the axis's label, so it comes
+	// from a pass that aggregates the sample axis away rather than from the per-sample import.
+	labels := pframes.processColumn(
+		results.output("recordsTsv"),
+		labelsTpl,
+		[{
+			type: "Xsv",
+			xsvType: "tsv",
+			settings: {
+				axes: [keyAxis],
+				columns: [specs.labelColumnSpec()],
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			mem: "8GiB",
+			cpu: 2,
+			name: "labels",
+			path: ["tsv", "main"]
+		}],
+		{
+			aggregate: ["pl7.app/sampleId"]
+		}
+	)
+
 	result := pframes.pFrameBuilder()
 	results.addXsvOutputToBuilder(result, "records", "records")
 	annotated.addXsvOutputToBuilder(result, "regions", "regions")
+	labels.addXsvOutputToBuilder(result, "labels", "labels")
 
 	stats := pframes.pFrameBuilder()
 	annotated.addXsvOutputToBuilder(stats, "regionStats", "regionStats")
