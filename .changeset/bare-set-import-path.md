@@ -16,3 +16,11 @@ chooses, and every record carries a per-chain annotation status.
 The custom-format validity rule no longer demands a V gene, a J gene and an abundance for
 such a set; it requires a sequence mapped to a chain and an identity column instead. The
 other formats are untouched.
+
+The identity column is checked for uniqueness before the run starts, and the values that
+clash are shown. Rows that repeat an identity while differing elsewhere would merge into one
+record, so the import refuses them; rows identical in every mapped cell state the same record
+twice and collapse to one.
+
+The block also reports the columns it emitted, so a successful import shows what it produced
+rather than an empty table.
