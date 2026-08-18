@@ -433,6 +433,63 @@ propertyCollisions := func(properties) {
 	return collisions
 }
 
+/**
+ * Per-chain import statistics, shown in the block's own table.
+ *
+ * A bare set has nothing to count in the usual sense — no reads, no UMIs, and its cross-sample
+ * aggregates are deliberately not emitted — so what it reports instead is the outcome of the
+ * annotation: how many records were placed, how many the input could not support an answer for,
+ * and how many the instrument could not resolve. `chainDisagreed` is the measurement the
+ * declared-versus-inferred question is deferred for want of.
+ */
+statsColumns := func(blockId) {
+	cols := []
+	entries := [
+		{ column: "annotated", name: "annotatedCount", label: "Annotated", order: "90000" },
+		{ column: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000" },
+		{ column: "failed", name: "failedCount", label: "Failed", order: "88000" },
+		{ column: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain", order: "87000" }
+	]
+	for e in entries {
+		// No allowNA: TsvContent columns validate against a narrower schema than the Xsv ones,
+		// accepting only column, id and spec.
+		cols = append(cols, {
+			id: e.column,
+			column: e.column,
+			spec: {
+				name: "pl7.app/vdj/stat/regionAnnotation/" + e.name,
+				valueType: "Int",
+				domain: {
+					"pl7.app/vdj/clonotypingRunId": blockId
+				},
+				annotations: a(e.order, "default", {
+					"pl7.app/label": e.label
+				})
+			}
+		})
+	}
+	return cols
+}
+
+/**
+ * The axis the statistics table is keyed on: one row per declared chain.
+ *
+ * No `naRegex` here, unlike the Xsv axes: TsvContent validates its axis entries against a
+ * narrower schema that accepts only `column` and `spec`.
+ */
+statsAxis := func() {
+	return {
+		column: "chain",
+		spec: {
+			type: "String",
+			name: "pl7.app/vdj/scClonotypeChain",
+			annotations: {
+				"pl7.app/label": "Chain"
+			}
+		}
+	}
+}
+
 // --- assembly -----------------------------------------------------------------------------
 
 /**
@@ -513,6 +570,8 @@ export {
 
 	keyAxis: keyAxis,
 	sampleAxis: sampleAxis,
+	statsColumns: statsColumns,
+	statsAxis: statsAxis,
 	mainSequenceColumn: mainSequenceColumn,
 	regionColumnSpec: regionColumnSpec,
 	statusColumnSpec: statusColumnSpec,

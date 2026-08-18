@@ -42,7 +42,7 @@ regionsSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.re
 // deterministic, so the result is worth holding on to.
 CACHE_MILLIS := 24 * 60 * 60 * 1000
 
-self.defineOutputs("regions")
+self.defineOutputs("regions", "stats")
 
 self.body(func(inputs) {
 	keyColumn := inputs.keyColumn
@@ -119,12 +119,18 @@ self.body(func(inputs) {
 		arg("--h_csv").arg("anarci.csv_H.csv").
 		arg("--kl_csv").arg("anarci.csv_KL.csv").
 		arg("--out_tsv").arg("regions.tsv").
+		arg("--out_stats").arg("region-stats.tsv").
 		saveFile("regions.tsv").
+		saveFileContent("region-stats.tsv").
 		printErrStreamToStdout().
 		cache(CACHE_MILLIS).
 		run()
 
 	return {
-		regions: { main: regionsCmd.getFile("regions.tsv") }
+		regions: { main: regionsCmd.getFile("regions.tsv") },
+		// Per-chain outcome counts. The other formats show per-chain import statistics in the
+		// block's table; a bare set has no counts to sum, so this is what it has to show —
+		// how many records were annotated, and how many the instrument could not place.
+		stats: { main: regionsCmd.getFileContent("region-stats.tsv") }
 	}
 })

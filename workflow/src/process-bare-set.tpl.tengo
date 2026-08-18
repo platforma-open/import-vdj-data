@@ -120,6 +120,14 @@ self.body(func(inputs) {
 			cpu: 2,
 			name: "regions",
 			path: ["regions", "main"]
+		}, {
+			type: "TsvContent",
+			settings: {
+				axes: [specs.statsAxis()],
+				columns: specs.statsColumns(blockId)
+			},
+			name: "regionStats",
+			path: ["stats", "main"]
 		}],
 		{
 			// No traceSteps: this pass consumes the first pass's output and inherits its step.
@@ -136,8 +144,11 @@ self.body(func(inputs) {
 	results.addXsvOutputToBuilder(result, "records", "records")
 	annotated.addXsvOutputToBuilder(result, "regions", "regions")
 
+	stats := pframes.pFrameBuilder()
+	annotated.addXsvOutputToBuilder(stats, "regionStats", "regionStats")
+
 	return {
 		result: result.build(),
-		stats: pframes.pFrameBuilder().build()
+		stats: stats.build()
 	}
 })
