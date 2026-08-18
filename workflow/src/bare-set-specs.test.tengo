@@ -367,3 +367,53 @@ Test_recordLabel_followsTheAxisLabelConvention := func() {
 	)
 	test.isTrue(col.spec.annotations["pl7.app/table/orderPriority"] == undefined, "no order")
 }
+
+
+// The dataset's shape, pinned. Abundance is the only column that keeps the sample axis;
+// everything else is a property of the record and is collapsed onto the record axis.
+//
+// This is not a stylistic choice — consumers match axes positionally, so a property column
+// whose axis 0 is pl7.app/sampleId is invisible to them. Widening this split silently breaks
+// every downstream block, and the failure surfaces there as "no sequence columns found"
+// rather than here.
+Test_columnsBySource_onlyAbundanceKeepsTheSampleAxis := func() {
+	properties := [{ header: "Target", valueType: "Double" }]
+	split := specs.columnsBySource(["A", "B"], "imgt", properties)
+
+	test.isEqual(1, len(split.perSample), "exactly one per-sample column")
+	test.isEqual(
+		"pl7.app/vdj/uniqueMoleculeCount",
+		split.perSample[0].spec.name,
+		"and it is the abundance"
+	)
+
+	// Label, one imported property, two main sequences.
+	test.isEqual(4, len(split.perRecord), "label + property + two sequences")
+	test.isEqual("pl7.app/label", split.perRecord[0].spec.name, "label leads the record columns")
+
+	// Seven regions plus one status, per chain.
+	test.isEqual(16, len(split.regions), "eight region columns per chain")
+}
+
+// Every column belongs to exactly one bucket, and the three together are allColumns. A column
+// that fell out of the split would simply never be emitted, with nothing to report it.
+Test_columnsBySource_partitionsAllColumns := func() {
+	properties := [{ header: "Target", valueType: "Double" }]
+	chains := ["A", "B"]
+
+	all := specs.allColumns(chains, "kabat", properties)
+	split := specs.columnsBySource(chains, "kabat", properties)
+
+	seen := {}
+	for bucket in [split.perSample, split.perRecord, split.regions] {
+		for col in bucket {
+			test.isTrue(seen[col.id] == undefined, "column in two buckets: " + col.id)
+			seen[col.id] = true
+		}
+	}
+
+	test.isEqual(len(all), len(seen), "split covers every column exactly once")
+	for col in all {
+		test.isTrue(seen[col.id] != undefined, "column missing from the split: " + col.id)
+	}
+}

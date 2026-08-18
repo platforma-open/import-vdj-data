@@ -1,14 +1,26 @@
 // Assemble a bare paired set into one p-frame.
 //
-// One `processColumn` pass, not two. The per-chain path takes a second pass to compute
-// cross-sample aggregates — `pl7.app/vdj/sampleCount` and the `…CountTotal` / `…FractionMean`
-// pair — and a bare set emits none of them: a count of how often a record repeats must never
-// be presented as an abundance, and a total of a constant is the number of samples wearing an
-// abundance label. Since every emitted column sits on `[pl7.app/sampleId, pl7.app/variantKey]`
-// with nothing collapsing across samples, the second pass has no work left to do.
+// Four passes, and the split between them is the shape of the emitted dataset:
 //
-// Suppressing those columns is therefore not a filter applied at the end — the pass that
-// computed them is simply absent.
+//   1. import          per sample   parse the scientist's file into a record TSV, and emit the
+//                                   abundance column — the only one that keeps the sample axis
+//   2. annotate        per sample   ANARCI over that TSV, producing a region TSV and per-chain
+//                                   outcome counts
+//   3. aggregate       collapse     the record TSVs -> sequences, imported properties, label
+//   4. aggregate       collapse     the region TSVs -> located regions and their statuses
+//
+// Passes 3 and 4 share one body (`aggregate-by-record`); only the declared Xsv columns differ.
+//
+// Why the collapse exists at all is in that template's header: consumers match axes
+// positionally, so a property column has to carry the record key at axis 0. This mirrors
+// MiXCR, which runs per sample and then aggregates onto `clonotypeKey`, leaving only abundance
+// per sample.
+//
+// Two columns the per-chain path emits are still absent, and their absence is a decision
+// rather than a filter: `pl7.app/vdj/sampleCount` and the `…CountTotal` / `…FractionMean` pair
+// are cross-sample aggregates of a real abundance. A bare set's abundance is the literal 1, so
+// a count of how often a record repeats would be presented as an abundance, and a total of a
+// constant is just the number of samples wearing an abundance label. Nothing computes them.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 
@@ -20,7 +32,7 @@ specs := import(":bare-set-specs")
 
 importTpl := assets.importTemplate(":import-bare-set")
 annotateTpl := assets.importTemplate(":annotate-regions")
-labelsTpl := assets.importTemplate(":aggregate-record-labels")
+aggregateTpl := assets.importTemplate(":aggregate-by-record")
 
 self.awaitState("InputsLocked")
 self.awaitState("datasetData", "ResourceReady")
@@ -38,10 +50,10 @@ self.body(func(inputs) {
 	ll.assert(len(chains) > 0, "process-bare-set: at least one chain must be mapped")
 
 	keyAxis := specs.keyAxis(blockId)
-	// Both TSVs are keyed on the same axis and land in the same frame; the split is only
-	// about which file each column is read from.
 	bySource := specs.columnsBySource(chains, scheme, properties)
 
+	// Pass 1. The Xsv output declares the abundance column only; the record TSV it also emits
+	// carries every other column, for pass 3 to collapse.
 	results := pframes.processColumn(
 		{ spec: datasetSpec, data: dataset },
 		importTpl,
@@ -51,13 +63,13 @@ self.body(func(inputs) {
 				xsvType: "tsv",
 				settings: {
 					axes: [keyAxis],
-					columns: bySource.records,
+					columns: bySource.perSample,
 					storageFormat: "Parquet",
 					partitionKeyLength: 0
 				},
 				mem: "16GiB",
 				cpu: 2,
-				name: "records",
+				name: "abundance",
 				path: ["records", "main"]
 			},
 			{
@@ -73,9 +85,8 @@ self.body(func(inputs) {
 		],
 		{
 			// The sample axis is not declared by this block on this door — it arrives from the
-			// dataset's own partition, so every emitted column ends up on
-			// [pl7.app/sampleId, pl7.app/variantKey]. On the direct door import declares it
-			// itself; the emitted shape is identical either way.
+			// dataset's own partition. On the direct door import declares it itself; the
+			// emitted shape is identical either way.
 			aggregate: [{
 				name: "pl7.app/sequencing/lane",
 				optional: true
@@ -102,24 +113,21 @@ self.body(func(inputs) {
 		}
 	)
 
-	// Second pass: ANARCI over each sample's record TSV. Separate from the first because a
-	// processColumn body is re-rendered per declared output and exec construction is not
-	// reproducible, so polars and execs cannot share one body.
+	// Pass 2. Separate from the first because a processColumn body is re-rendered per declared
+	// output and exec construction is not reproducible, so polars and execs cannot share one
+	// body. Emits the region TSV as a file for pass 4; only the stats become columns here,
+	// because they are genuinely per sample.
 	annotated := pframes.processColumn(
 		results.output("recordsTsv"),
 		annotateTpl,
 		[{
-			type: "Xsv",
-			xsvType: "tsv",
-			settings: {
-				axes: [keyAxis],
-				columns: bySource.regions,
-				storageFormat: "Parquet",
-				partitionKeyLength: 0
+			type: "Resource",
+			spec: {
+				kind: "PColumn",
+				name: "mixcr.com/clonotypeTable",
+				valueType: "File"
 			},
-			mem: "16GiB",
-			cpu: 2,
-			name: "regions",
+			name: "regionsTsv",
 			path: ["regions", "main"]
 		}, {
 			type: "TsvContent",
@@ -141,23 +149,45 @@ self.body(func(inputs) {
 		}
 	)
 
-	// The label has to be keyed on the record alone to act as the axis's label, so it comes
-	// from a pass that aggregates the sample axis away rather than from the per-sample import.
-	labels := pframes.processColumn(
+	// Pass 3.
+	records := pframes.processColumn(
 		results.output("recordsTsv"),
-		labelsTpl,
+		aggregateTpl,
 		[{
 			type: "Xsv",
 			xsvType: "tsv",
 			settings: {
 				axes: [keyAxis],
-				columns: [specs.labelColumnSpec()],
+				columns: bySource.perRecord,
 				storageFormat: "Parquet",
 				partitionKeyLength: 0
 			},
 			mem: "8GiB",
 			cpu: 2,
-			name: "labels",
+			name: "perRecord",
+			path: ["tsv", "main"]
+		}],
+		{
+			aggregate: ["pl7.app/sampleId"]
+		}
+	)
+
+	// Pass 4.
+	regions := pframes.processColumn(
+		annotated.output("regionsTsv"),
+		aggregateTpl,
+		[{
+			type: "Xsv",
+			xsvType: "tsv",
+			settings: {
+				axes: [keyAxis],
+				columns: bySource.regions,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			mem: "8GiB",
+			cpu: 2,
+			name: "regions",
 			path: ["tsv", "main"]
 		}],
 		{
@@ -166,9 +196,9 @@ self.body(func(inputs) {
 	)
 
 	result := pframes.pFrameBuilder()
-	results.addXsvOutputToBuilder(result, "records", "records")
-	annotated.addXsvOutputToBuilder(result, "regions", "regions")
-	labels.addXsvOutputToBuilder(result, "labels", "labels")
+	results.addXsvOutputToBuilder(result, "abundance", "abundance")
+	records.addXsvOutputToBuilder(result, "perRecord", "perRecord")
+	regions.addXsvOutputToBuilder(result, "regions", "regions")
 
 	stats := pframes.pFrameBuilder()
 	annotated.addXsvOutputToBuilder(stats, "regionStats", "regionStats")

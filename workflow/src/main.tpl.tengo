@@ -139,7 +139,7 @@ wf.body(func(args) {
 					name: "pl7.app/label",
 					valueType: "String",
 					annotations: {
-						"pl7.app/label": "Sample Name",
+						"pl7.app/label": "Sample",
 						"pl7.app/isLabel": "true"
 					},
 					axesSpec: [specs.sampleAxis(blockId)]
