@@ -31,15 +31,18 @@ wf.body(func(args) {
 		// supplies them. The separator comes from what the UI read out of the file's own first
 		// line rather than from the filename, which may not match the content.
 		separator := readable.extension == "csv" ? "," : "\t"
-		header := render.create(splitHeaderTpl, {
-			header: txt.head(readable.file, { lines: 1 }),
+		// More than one line, because the mapping dropdowns need to know which columns hold
+		// amino-acid sequences and a header cannot say. See split-header for the reasoning.
+		split := render.create(splitHeaderTpl, {
+			header: txt.head(readable.file, { lines: 21 }),
 			separator: separator
-		}).output("result")
+		})
 
 		outputs := {
 			// getImportProgress on this is what starts the upload.
 			fileImports: imported.handle,
-			headerColumns: header
+			headerColumns: split.output("result"),
+			aminoAcidColumns: split.output("aminoAcidColumns")
 		}
 
 		if args.bareSet != undefined {

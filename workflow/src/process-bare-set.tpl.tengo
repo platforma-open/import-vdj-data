@@ -47,6 +47,9 @@ self.body(func(inputs) {
 	properties := inputs.properties
 	if properties == undefined { properties = [] }
 
+	datasetLabel := inputs.datasetLabel
+	if datasetLabel == undefined || datasetLabel == "" { datasetLabel = "Import V(D)J Data" }
+
 	ll.assert(len(chains) > 0, "process-bare-set: at least one chain must be mapped")
 
 	keyAxis := specs.keyAxis(blockId)
@@ -96,11 +99,15 @@ self.body(func(inputs) {
 			}],
 			passAggregationAxesNames: true,
 
+			// Named after what was imported, not after the block that imported it. The trace
+			// label is what a downstream dataset dropdown shows, and "Import V(D)J Data" there
+			// tells the scientist nothing when two imports sit side by side. MiXCR does the
+			// same, labelling its step "MiXCR " + preset name.
 			traceSteps: [{
 				type: "milaboratories.importVDJ",
 				id: blockId,
 				importance: 81,
-				label: "Import V(D)J Data"
+				label: datasetLabel
 			}],
 
 			extra: {

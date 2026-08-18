@@ -52,10 +52,31 @@ const receptorOptions = [
   { value: "TCRGD", label: "TCR-ɣδ" },
 ];
 
+const schemeOptions = [
+  { label: "IMGT", value: "imgt" },
+  { label: "Kabat", value: "kabat" },
+  { label: "Chothia", value: "chothia" },
+];
+
 // updating defaultBlockLabel
 watchEffect(() => {
   const args = app.model.args as any;
   const parts: string[] = [];
+
+  // On the file door the file IS the dataset, so its name is the only useful thing to show.
+  // Falling through to the chain list below would title every such block with the same six
+  // chain names, which are a default the scientist never chose and which say nothing about
+  // what was imported.
+  if (args.fileSource) {
+    parts.push(args.fileSource.label);
+    const scheme = args.bareSet?.scheme;
+    if (scheme && scheme !== "imgt") {
+      parts.push(schemeOptions.find((o) => o.value === scheme)?.label ?? scheme);
+    }
+    args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
+    return;
+  }
+
   // Add dataset name if available
   if (args.datasetRef) {
     const datasetOptions = app.model.outputs.datasetOptions ?? [];
@@ -72,12 +93,6 @@ watchEffect(() => {
   }
   args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
 });
-
-const schemeOptions = [
-  { label: "IMGT", value: "imgt" },
-  { label: "Kabat", value: "kabat" },
-  { label: "Chothia", value: "chothia" },
-];
 
 // A bare set is not a mode the scientist declares up front — whether a set is bare is
 // something the block works out from what they mapped. So there is no toggle: the slots are
@@ -372,6 +387,20 @@ const headerOptions = computed(() =>
   (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })),
 );
 
+/** Headers whose sampled values actually read as amino-acid variable domains. The workflow
+ *  works this out at prerun by reading a few rows — a header cannot say it, and offering every
+ *  column here lets an antibody's *name* be mapped into a sequence slot, which imports cleanly
+ *  and leaves every record Failed after ANARCI declines to number it.
+ *
+ *  Falls back to every header when the classification is empty, which happens before the file
+ *  is read and on a file whose rows could not be sampled. An empty dropdown would be a worse
+ *  failure than an unfiltered one: the scientist could not proceed at all. */
+const sequenceOptions = computed(() => {
+  const aminoAcid = app.model.outputs.aminoAcidColumns ?? [];
+  if (aminoAcid.length === 0) return headerOptions.value;
+  return aminoAcid.map((h) => ({ label: h, value: h }));
+});
+
 function getMapping(key: string): string | undefined {
   const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined> };
   return a.customMapping?.[key];
@@ -555,48 +584,52 @@ function onModalUpdate(val: boolean) {
             />
             <PlDropdown
               :model-value="bareField('A')"
-              :options="headerOptions"
+              :options="sequenceOptions"
               label="Heavy chain variable domain (aa)"
               clearable
               @update:model-value="(v: string | undefined) => setBareField('A', v)"
             />
             <PlDropdown
               :model-value="bareField('B')"
-              :options="headerOptions"
+              :options="sequenceOptions"
               label="Light chain variable domain (aa)"
               clearable
               @update:model-value="(v: string | undefined) => setBareField('B', v)"
             />
+            <template v-if="isBareSet">
+              <PlDropdownMulti
+                v-model="acceptedProperties"
+                :options="propertyCandidates.map((h) => ({ label: h, value: h }))"
+                label="Import as record properties"
+              />
+              <PlDropdown
+                v-for="p in app.model.args.bareSet?.properties ?? []"
+                :key="p.header"
+                :model-value="p.valueType"
+                :options="propertyTypeOptions"
+                :label="p.header"
+                @update:model-value="(v: string | undefined) => setPropertyType(p.header, v)"
+              />
+            </template>
+          </div>
+          <PlAlert v-if="propertyCollisionMessage" type="warn" :style="{ width: '100%' }">
+            <template #title>Two headers would become one column</template>
+            {{ propertyCollisionMessage }}
+          </PlAlert>
+        </template>
+
+        <!-- Not a column mapping: it chooses how the mapped sequences are numbered, and the
+             region boundaries every downstream block reads follow from it. Kept apart from the
+             mapping so it does not read as one more column to assign. -->
+        <template v-if="isBareSet">
+          <PlSectionSeparator>Region annotation</PlSectionSeparator>
+          <div class="field-col">
             <PlDropdown
-              v-if="isBareSet"
               :model-value="app.model.args.bareSet?.scheme"
               :options="schemeOptions"
               label="Numbering scheme"
               required
               @update:model-value="(v: string | undefined) => setBareScheme(v)"
-            />
-          </div>
-        </template>
-
-        <template v-if="isBareSet">
-          <PlSectionSeparator>Other columns</PlSectionSeparator>
-          <PlAlert v-if="propertyCollisionMessage" type="warn" :style="{ width: '100%' }">
-            <template #title>Two headers would become one column</template>
-            {{ propertyCollisionMessage }}
-          </PlAlert>
-          <div class="field-col">
-            <PlDropdownMulti
-              v-model="acceptedProperties"
-              :options="propertyCandidates.map((h) => ({ label: h, value: h }))"
-              label="Import as record properties"
-            />
-            <PlDropdown
-              v-for="p in app.model.args.bareSet?.properties ?? []"
-              :key="p.header"
-              :model-value="p.valueType"
-              :options="propertyTypeOptions"
-              :label="p.header"
-              @update:model-value="(v: string | undefined) => setPropertyType(p.header, v)"
             />
           </div>
         </template>

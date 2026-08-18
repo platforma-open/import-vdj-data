@@ -419,6 +419,14 @@ blockTest(
     const columns = wrapped?.value ?? [];
     expect(columns.length).toBeGreaterThan(0);
 
+    // The chain dropdowns offer only columns whose sampled values read as variable domains.
+    // The fixture's headers are "mAb ID", "VH", "VL", "Affinity (nM)" — a header alone cannot
+    // tell which two are sequences, so the workflow samples rows and reads the alphabet. Get
+    // this wrong and an antibody's name can be mapped into a sequence slot: it imports
+    // cleanly and every record comes back Failed after ANARCI declines to number it.
+    const aminoAcid = (state.outputs?.aminoAcidColumns as { value?: string[] } | undefined)?.value;
+    expect(aminoAcid).toEqual(["VH", "VL"]);
+
     // Indistinguishable from the pool door: same axes, same key, same columns — abundance
     // alone on [sampleId, variantKey], every property of the record on the record axis.
     for (const c of columns) {

@@ -317,6 +317,21 @@ export const platforma = BlockModel.create()
       ?.getDataAsJson<ColumnDescription[]>();
   })
 
+  /** Headers whose sampled values actually look like amino-acid variable domains. The chain
+   *  dropdowns offer only these, so an identifier column cannot be mapped into a sequence slot.
+   *  Empty means "not determined" — the UI falls back to offering every header rather than
+   *  presenting an empty dropdown. */
+  .retentiveOutput("aminoAcidColumns", (ctx) => {
+    const cols = ctx.prerun
+      ?.resolve({
+        field: "aminoAcidColumns",
+        allowPermanentAbsence: true,
+      })
+      ?.getDataAsJson<string[]>();
+    if (cols === undefined) return undefined;
+    return cols.filter((h) => h.trim().length > 0);
+  })
+
   .retentiveOutput("headerColumns", (ctx) => {
     const headers = ctx.prerun
       ?.resolve({

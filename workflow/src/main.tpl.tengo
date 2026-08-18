@@ -107,6 +107,8 @@ wf.body(func(args) {
 
 		bareResult := render.createEphemeral(processBareSetTpl, {
 			blockId: blockId,
+			// On the direct door the file is the dataset, so its name is the dataset's name.
+			datasetLabel: fileSource != undefined ? fileSource.label : undefined,
 			datasetSpec: datasetSpec,
 			datasetData: datasetData,
 			chains: mappedChains,
