@@ -14,7 +14,6 @@ self := import("@platforma-sdk/workflow-tengo:tpl")
 
 ll := import("@platforma-sdk/workflow-tengo:ll")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
-pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 processUtils := import(":process-utils")
 specs := import(":bare-set-specs")
@@ -41,13 +40,6 @@ self.body(func(inputs) {
 	// Both TSVs are keyed on the same axis and land in the same frame; the split is only
 	// about which file each column is read from.
 	bySource := specs.columnsBySource(chains, scheme, properties)
-
-	trace := pSpec.makeTrace(datasetSpec, {
-		type: "milaboratories.importVDJ",
-		id: blockId,
-		importance: 81,
-		label: "Import V(D)J Data"
-	})
 
 	results := pframes.processColumn(
 		{ spec: datasetSpec, data: dataset },
@@ -130,12 +122,9 @@ self.body(func(inputs) {
 			path: ["regions", "main"]
 		}],
 		{
-			traceSteps: [{
-				type: "milaboratories.importVDJ",
-				id: blockId,
-				importance: 81,
-				label: "Import V(D)J Data"
-			}],
+			// No traceSteps: this pass consumes the first pass's output and inherits its step.
+			// Adding it again put the same import step in the trace twice, which the region
+			// columns showed as a duplicated provenance entry.
 			extra: {
 				keyColumn: specs.keyColumn,
 				scheme: scheme

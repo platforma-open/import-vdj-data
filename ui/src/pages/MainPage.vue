@@ -260,6 +260,11 @@ async function setFile(handle: ImportFileHandle | undefined) {
     extension,
   };
   a.datasetRef = undefined;
+  // The direct door serves the custom format and no other, so picking a file settles the
+  // format too. Leaving it unset left the scientist looking at a file they had loaded, no
+  // mapping controls — those are gated on the format — and a disabled Run with nothing
+  // indicating what was missing.
+  a.format = "custom";
 }
 
 function setReceptors(selected: string[]) {
@@ -530,6 +535,7 @@ function onModalUpdate(val: boolean) {
       />
 
       <PlDropdown
+        v-if="app.model.args.fileSource === undefined"
         v-model="app.model.args.format"
         :options="formatOptions"
         label="Data format"

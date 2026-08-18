@@ -138,10 +138,15 @@ wf.body(func(args) {
 				)
 			}
 
-			// getImportProgress on these is what actually starts the upload; keeping the
-			// resource here also stops the block reporting Done while bytes are still moving.
-			bareOutputs["fileImports"] = maps.mapValues(fileImports, func(im) { return im.handle })
-			bareOutputs["uploadedFiles"] = maps.mapValues(fileImports, func(im) { return im.file })
+			// A single resource, not a map of them: the direct door takes exactly one file, and
+			// the model calls getImportProgress on this field directly. Wrapping it in a map
+			// fails with "getProgressId: wrong resource type: std/map". Prerun returns the same
+			// shape, which is why only this side was broken.
+			//
+			// getImportProgress is what actually starts the upload; keeping the file resource
+			// alongside stops the block reporting Done while bytes are still moving.
+			bareOutputs["fileImports"] = fileImports["file"].handle
+			bareOutputs["uploadedFiles"] = fileImports["file"].file
 		}
 
 		return {

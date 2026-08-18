@@ -185,18 +185,15 @@ export const platforma = BlockModel.create()
           return false;
         }
 
-        // The identity must be unique before the run starts, so that a repeated name cannot
-        // silently merge two antibodies into one record. `undefined` means prerun has not
-        // answered yet — not knowing is not the same as knowing it is fine, so the run waits.
-        const collisions = ctx.prerun
-          ?.resolve({ field: "identityCollisions", allowPermanentAbsence: true })
-          ?.getDataAsString();
-        if (collisions === undefined) return false;
-        const colliding = collisions
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0);
-        return colliding.length <= 1; // header only
+        // The identity-uniqueness refusal is NOT gated here, and that is a constraint rather
+        // than a choice: reading ctx.prerun from inputsValid throws ("Error in block model
+        // inputsValid"), so the callback does not get the prerun accessor that output lambdas
+        // do. Touching it left Run permanently disabled on a set with no collisions at all.
+        //
+        // So the verdict is surfaced to the scientist by the identityCollisions output and the
+        // alert above it, and the refusal that actually protects the data has to live in the
+        // workflow. Until it does, a colliding set can be run and will merge records.
+        return true;
       }
 
       const m = customMapping ?? {};
@@ -304,12 +301,16 @@ export const platforma = BlockModel.create()
   })
 
   .retentiveOutput("headerColumns", (ctx) => {
-    return ctx.prerun
+    const headers = ctx.prerun
       ?.resolve({
         field: "headerColumns",
         allowPermanentAbsence: true,
       })
       ?.getDataAsJson<string[]>();
+    if (headers === undefined) return undefined;
+    // A workbook with a trailing empty column yields an empty header, which would show up as a
+    // blank option in every mapping dropdown and cannot be mapped to anything.
+    return headers.filter((h) => h.trim().length > 0);
   })
 
   .retentiveOutput("validationResult", (ctx) => {
