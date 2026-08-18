@@ -13,7 +13,7 @@ import sys
 
 import polars as pl
 
-from chains import CHAINS, fasta_id, sequence_column
+from chains import ANARCI_BUCKETS, CHAINS, PAD_KEY, PAD_SEQUENCES, fasta_id, sequence_column
 
 
 def to_fasta(input_tsv: str, key_column: str, output_fasta: str) -> None:
@@ -42,7 +42,15 @@ def to_fasta(input_tsv: str, key_column: str, output_fasta: str) -> None:
                 out.write(f">{fasta_id(key, chain)}\n{seq}\n")
                 written += 1
 
-    print(f"Wrote {written} sequences for chains [{', '.join(present)}] to {output_fasta}")
+        # Always, even when the set covers both buckets: making it conditional would mean the
+        # workflow could not know in advance which CSVs to save, which is the whole problem.
+        for bucket in ANARCI_BUCKETS:
+            out.write(f">{fasta_id(PAD_KEY, bucket)}\n{PAD_SEQUENCES[bucket]}\n")
+
+    print(
+        f"Wrote {written} sequences for chains [{', '.join(present)}] to {output_fasta}"
+        f" (plus {len(ANARCI_BUCKETS)} bucket-padding references)"
+    )
 
 
 def main() -> None:

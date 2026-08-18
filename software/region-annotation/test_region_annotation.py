@@ -94,8 +94,14 @@ def main():
               "--key_column", "variantKey", "--output_fasta", fasta))
 
     ids = [line[1:].strip() for line in open(fasta) if line.startswith(">")]
-    assert ids == ["K1|A", "K1|B", "K2|A", "K3|A", "K4|A", "K5|A"], ids
+    record_ids = [i for i in ids if not i.startswith("__anarci_bucket_pad__")]
+    pad_ids = [i for i in ids if i.startswith("__anarci_bucket_pad__")]
+    assert record_ids == ["K1|A", "K1|B", "K2|A", "K3|A", "K4|A", "K5|A"], record_ids
     print("  fasta: chain is in the id, unsupplied chains skipped, blank key dropped")
+
+    # Without these, a single-bucket set leaves one CSV unwritten and the workflow cannot save it.
+    assert pad_ids == ["__anarci_bucket_pad__|H", "__anarci_bucket_pad__|KL"], pad_ids
+    print("  fasta: one padding reference per ANARCI bucket, always")
 
     out_tsv = os.path.join(work, "out.tsv")
     stats_tsv = os.path.join(work, "stats.tsv")
@@ -176,6 +182,18 @@ def main():
     assert list(single[0].keys()) == ["variantKey"] + [f"A_{r}_aa" for r in REGIONS] + ["A_regionAnnotationStatus"]
     assert single[0]["A_regionAnnotationStatus"] == "Failed"  # S1 is not in the H csv
     print("  single-chain set: only that chain's columns emitted, header-only bucket tolerated")
+
+    # The padding must be invisible downstream: its ids name buckets, not chains, so the
+    # id parser rejects them and no record is ever emitted for them.
+    pad_csv = os.path.join(work, "pad_H.csv")
+    write_anarci_csv(pad_csv, ["__anarci_bucket_pad__|H", "K1|A"])
+    pad_out = os.path.join(work, "pad_out.tsv")
+    run(os.path.join(SRC, "main.py"), "--input_tsv", in_tsv, "--key_column", "variantKey",
+        "--scheme", "imgt", "--h_csv", pad_csv, "--out_tsv", pad_out)
+    padded = list(csv.DictReader(open(pad_out), delimiter="\t"))
+    assert all(r["variantKey"] != "__anarci_bucket_pad__" for r in padded)
+    assert [r["variantKey"] for r in padded] == ["K1", "K2", "K3", "K4", "K5"]
+    print("  padding references never become records")
 
     print("\nALL ASSERTIONS PASSED")
     return 0

@@ -41,6 +41,34 @@ def status_column(chain: str) -> str:
     return f"{chain}_regionAnnotationStatus"
 
 
+# Padding, and why it exists.
+#
+# ANARCI writes one CSV per bucket it actually found, so a heavy-only set leaves no
+# `_KL.csv` and a light-only set leaves no `_H.csv`. The workflow must declare up front which
+# files it will save, and saving one the run never wrote fails the step. Pre-creating
+# placeholders is what another block does, but a file the builder writes into the workdir is
+# read-only and ANARCI dies with "Permission denied" trying to overwrite it.
+#
+# So the FASTA always carries one reference domain per bucket. Both CSVs then always exist,
+# whatever the scientist's set contains. The cost is two extra sequences numbered per run.
+#
+# The ids use bucket names rather than chain names, so `parse_fasta_id` rejects them for free
+# and nothing downstream has to know they were here.
+PAD_KEY = "__anarci_bucket_pad__"
+
+# Trastuzumab VH / VL — published reference domains, numberable under every scheme.
+PAD_SEQUENCES = {
+    "H": (
+        "EVQLVESGGGLVQPGGSLRLSCAASGFNIKDTYIHWVRQAPGKGLEWVARIYPTNGYTRYADSVKGRFTISADTSKNTAYLQ"
+        "MNSLRAEDTAVYYCSRWGGDGFYAMDYWGQGTLVTVSS"
+    ),
+    "KL": (
+        "DIQMTQSPSSLSASVGDRVTITCRASQDVNTAVAWYQQKPGKAPKLLIYSASFLYSGVPSRFSGSRSGTDFTLTISSLQPEDF"
+        "ATYYCQQHYTTPPTFGQGTKVEIK"
+    ),
+}
+
+
 def fasta_id(key: str, chain: str) -> str:
     """FASTA record id.
 

@@ -81,14 +81,13 @@ self.body(func(inputs) {
 		run()
 
 	// ANARCI decides for itself whether each sequence is H or KL and writes one CSV per bucket
-	// it found.
+	// it found, so both are saved unconditionally only because the FASTA step guarantees both
+	// exist: it appends one reference domain per bucket. A heavy-only set would otherwise
+	// leave no `_KL.csv` and fail the save.
 	//
-	// KNOWN GAP: both are saved unconditionally, so a set whose sequences all land in one
-	// bucket — heavy-only, light-only, or nothing numbered at all — leaves saveFile looking
-	// for a file that was never written. Pre-creating placeholders is what
-	// antibody-tcr-lead-selection does, but here ANARCI cannot overwrite them: a file written
-	// into the workdir by the builder is read-only, and the run dies with
-	// "Permission denied: anarci.csv_H.csv". Needs a different mechanism.
+	// Pre-creating placeholders here is what antibody-tcr-lead-selection does and it does not
+	// work: a file the builder writes into the workdir is read-only, and ANARCI dies with
+	// "Permission denied: anarci.csv_H.csv" trying to overwrite it.
 	//
 	// Both buckets are always read, whichever chains were mapped: the chain a column was
 	// assigned to is *declared*, ANARCI's bucket is *inferred*, and the two can disagree.

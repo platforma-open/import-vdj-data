@@ -268,3 +268,84 @@ blockTest(
     await expect(project.runBlock(blockId)).resolves.toBeUndefined();
   },
 );
+
+blockTest(
+  "imports a heavy-only set, where ANARCI produces just one bucket",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    // The case that used to fail: with no light chains, ANARCI writes no `_KL.csv`, and the
+    // step cannot save a file the run never wrote. The FASTA now carries one reference domain
+    // per bucket so both always exist.
+    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+    const sampleId = uniquePlId();
+    const datasetId = uniquePlId();
+    const fileHandle = await helpers.getLocalFileHandle("./assets/bare-heavy-only.tsv");
+
+    await project.mutateBlockStorage(sndBlockId, {
+      operation: "update-block-data",
+      value: {
+        suggestedImport: false,
+        h5adFilesToPreprocess: [],
+        seuratFilesToPreprocess: [],
+        metadata: [],
+        sampleIds: [sampleId],
+        sampleLabelColumnLabel: "Sample Name",
+        sampleLabels: { [sampleId]: "heavy-only" },
+        datasets: [
+          {
+            id: datasetId,
+            label: "Heavy only",
+            content: { type: "Xsv", xsvType: "tsv", data: { [sampleId]: fileHandle } },
+          },
+        ],
+      },
+    });
+    await project.runBlock(sndBlockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const rawOptions = beforePick.outputs?.datasetOptions as
+      | { value?: { ref: unknown }[] }
+      | { ref: unknown }[]
+      | undefined;
+    const datasetOptions = (Array.isArray(rawOptions) ? rawOptions : (rawOptions?.value ?? [])) as {
+      ref: unknown;
+    }[];
+
+    await project.setBlockArgs(blockId, {
+      defaultBlockLabel: "heavy-only",
+      customBlockLabel: "",
+      datasetRef: datasetOptions[0].ref,
+      format: "custom",
+      chains: ["IGHeavy"],
+      bareSet: { identity: "mAb ID", sequences: { A: "VH" }, scheme: SCHEME },
+    });
+
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const wrapped = state.outputs?.importedColumns as
+      | { value?: { name: string; domain: Record<string, string> }[] }
+      | undefined;
+    const columns = wrapped?.value ?? [];
+    expect(columns.length).toBeGreaterThan(0);
+
+    // Only the mapped chain is emitted — no empty B columns invented for a chain the file
+    // never had.
+    expect(columns.filter((c) => c.domain["pl7.app/vdj/scClonotypeChain"] === "B")).toHaveLength(0);
+    const heavyRegions = columns.filter(
+      (c) => c.name === "pl7.app/vdj/sequence" && c.domain["pl7.app/vdj/scClonotypeChain"] === "A",
+    );
+    // Seven regions plus the variable domain itself.
+    expect(heavyRegions).toHaveLength(8);
+
+    // And the padding references never became records of their own.
+    expect(columns.find((c) => c.name === "pl7.app/vdj/clonotypePresence")).toBeDefined();
+  },
+);
