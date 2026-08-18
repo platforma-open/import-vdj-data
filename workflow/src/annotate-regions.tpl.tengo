@@ -1,5 +1,15 @@
-// Locate FR/CDR region boundaries in amino-acid antibody variable domains. Library, not a
-// template — see `annotate` below for why.
+// Locate FR/CDR region boundaries in amino-acid antibody variable domains.
+//
+// The body of a second `pframes.processColumn` pass, running once per sample over the record
+// TSV the first pass wrote.
+//
+// It is a separate pass rather than a few more lines in the first one, and that is load-bearing
+// rather than tidiness. A processColumn body is re-rendered once per declared output, so a body
+// must be reproducible. `pt.workflow()` is; `exec.builder()` is not — mixing them in one body
+// and declaring two outputs makes the second render disagree with the first, and the run dies
+// with a CIDConflictError on a field of the shared upstream node, pointing at the innocent file
+// they both consume rather than at the body that produced two graphs. Keeping polars in one
+// body and execs in another keeps each reproducible on its own.
 // Input:  a per-record TSV carrying the key column plus one `<chain>_sequence` column per
 //         mapped chain (`A` heavy, `B` light), and the numbering scheme the scientist chose.
 // Output: `regions` — a TSV with seven `<chain>_<region>_aa` columns per chain plus one
@@ -17,8 +27,11 @@
 // instrument rather than repseqio: repseqio's boundaries are whatever its reference library
 // defines, with nothing to ask for.
 
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 
 anarciSw := assets.importSoftware("@platforma-open/milaboratories.software-anarci:main")
@@ -29,17 +42,23 @@ regionsSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.re
 // deterministic, so the result is worth holding on to.
 CACHE_MILLIS := 24 * 60 * 60 * 1000
 
-/**
- * Three execs: build a FASTA, number it with ANARCI, project onto region ranges.
- *
- * A library rather than a template because its only caller is the body of a
- * `pframes.processColumn` step, which runs per sample and already holds the per-record TSV
- * as a local. A `tpl.light` body may run `exec.builder()` freely but does not render
- * sub-templates, so a template here would have to be reached some other way.
- *
- * Returns the two exec outputs; the caller decides what to do with them.
- */
-annotate := func(inputTsv, keyColumn, scheme) {
+self.defineOutputs("regions")
+
+self.body(func(inputs) {
+	keyColumn := inputs.keyColumn
+	scheme := inputs.scheme
+
+	// One group per sample. With no axes left to aggregate over, the group's value is the
+	// record TSV itself rather than a map of them, so both shapes are accepted.
+	inputValue := inputs[pConstants.VALUE_FIELD_NAME]
+	inputMap := inputValue.inputs()
+	keys := maps.getKeys(inputMap)
+	inputTsv := inputValue
+	if len(keys) > 0 {
+		ll.assert(len(keys) == 1, "annotate-regions: expected one record TSV per group, got %v", len(keys))
+		inputTsv = inputMap[keys[0]]
+	}
+
 	ll.assert(inputTsv != undefined, "annotate-regions: inputTsv is required")
 	ll.assert(keyColumn != undefined && keyColumn != "", "annotate-regions: keyColumn is required")
 	ll.assert(
@@ -61,10 +80,15 @@ annotate := func(inputTsv, keyColumn, scheme) {
 		cache(CACHE_MILLIS).
 		run()
 
-	// ANARCI decides for itself whether each sequence is H or KL and writes one CSV per
-	// bucket it found. Both are pre-created with just an `Id` header so the exec can always
-	// save both — otherwise a set whose sequences all land in one bucket, or which ANARCI
-	// cannot number at all, leaves saveFile looking for a file that was never written.
+	// ANARCI decides for itself whether each sequence is H or KL and writes one CSV per bucket
+	// it found.
+	//
+	// KNOWN GAP: both are saved unconditionally, so a set whose sequences all land in one
+	// bucket — heavy-only, light-only, or nothing numbered at all — leaves saveFile looking
+	// for a file that was never written. Pre-creating placeholders is what
+	// antibody-tcr-lead-selection does, but here ANARCI cannot overwrite them: a file written
+	// into the workdir by the builder is read-only, and the run dies with
+	// "Permission denied: anarci.csv_H.csv". Needs a different mechanism.
 	//
 	// Both buckets are always read, whichever chains were mapped: the chain a column was
 	// assigned to is *declared*, ANARCI's bucket is *inferred*, and the two can disagree.
@@ -77,8 +101,6 @@ annotate := func(inputTsv, keyColumn, scheme) {
 		arg("--scheme").arg(scheme).
 		arg("--ncpu").argWithVar("{system.cpu}").
 		arg("-o").arg("anarci.csv").arg("--csv").
-		writeFile("anarci.csv_H.csv", "Id\n").
-		writeFile("anarci.csv_KL.csv", "Id\n").
 		saveFile("anarci.csv_H.csv").
 		saveFile("anarci.csv_KL.csv").
 		printErrStreamToStdout().
@@ -98,20 +120,12 @@ annotate := func(inputTsv, keyColumn, scheme) {
 		arg("--h_csv").arg("anarci.csv_H.csv").
 		arg("--kl_csv").arg("anarci.csv_KL.csv").
 		arg("--out_tsv").arg("regions.tsv").
-		arg("--out_stats").arg("region-stats.tsv").
 		saveFile("regions.tsv").
-		saveFileContent("region-stats.tsv").
 		printErrStreamToStdout().
 		cache(CACHE_MILLIS).
 		run()
 
 	return {
-		regions: regionsCmd.getFile("regions.tsv"),
-		// Content, not a file handle: a handful of rows the model reads inline.
-		stats: regionsCmd.getFileContent("region-stats.tsv")
+		regions: { main: regionsCmd.getFile("regions.tsv") }
 	}
-}
-
-export {
-	annotate: annotate
-}
+})

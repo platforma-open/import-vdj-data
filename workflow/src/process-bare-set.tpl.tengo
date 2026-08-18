@@ -20,6 +20,7 @@ processUtils := import(":process-utils")
 specs := import(":bare-set-specs")
 
 importTpl := assets.importTemplate(":import-bare-set")
+annotateTpl := assets.importTemplate(":annotate-regions")
 
 self.awaitState("InputsLocked")
 self.awaitState("dataset", "ResourceReady")
@@ -62,21 +63,17 @@ self.body(func(inputs) {
 				mem: "16GiB",
 				cpu: 2,
 				name: "records",
-				path: ["records"]
+				path: ["records", "main"]
 			},
 			{
-				type: "Xsv",
-				xsvType: "tsv",
-				settings: {
-					axes: [keyAxis],
-					columns: bySource.regions,
-					storageFormat: "Parquet",
-					partitionKeyLength: 0
+				type: "Resource",
+				spec: {
+					kind: "PColumn",
+					name: "mixcr.com/clonotypeTable",
+					valueType: "File"
 				},
-				mem: "16GiB",
-				cpu: 2,
-				name: "regions",
-				path: ["regions"]
+				name: "recordsTsv",
+				path: ["records", "main"]
 			}
 		],
 		{
@@ -109,9 +106,43 @@ self.body(func(inputs) {
 		}
 	)
 
+	// Second pass: ANARCI over each sample's record TSV. Separate from the first because a
+	// processColumn body is re-rendered per declared output and exec construction is not
+	// reproducible, so polars and execs cannot share one body.
+	annotated := pframes.processColumn(
+		results.output("recordsTsv"),
+		annotateTpl,
+		[{
+			type: "Xsv",
+			xsvType: "tsv",
+			settings: {
+				axes: [keyAxis],
+				columns: bySource.regions,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			mem: "16GiB",
+			cpu: 2,
+			name: "regions",
+			path: ["regions", "main"]
+		}],
+		{
+			traceSteps: [{
+				type: "milaboratories.importVDJ",
+				id: blockId,
+				importance: 81,
+				label: "Import V(D)J Data"
+			}],
+			extra: {
+				keyColumn: specs.keyColumn,
+				scheme: scheme
+			}
+		}
+	)
+
 	result := pframes.pFrameBuilder()
 	results.addXsvOutputToBuilder(result, "records", "records")
-	results.addXsvOutputToBuilder(result, "regions", "regions")
+	annotated.addXsvOutputToBuilder(result, "regions", "regions")
 
 	return {
 		result: result.build(),

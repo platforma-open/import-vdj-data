@@ -36,3 +36,6 @@ catalog:
   'shx': ^0.4.0
 
   "@changesets/cli": ^2.29.6
+
+  # other blocks used in tests
+  "@platforma-open/milaboratories.samples-and-data": 1.18.1
