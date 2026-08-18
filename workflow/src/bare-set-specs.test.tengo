@@ -191,8 +191,8 @@ Test_abundance_carriesTheTripleAndTheAnchor := func() {
 	col := specs.abundanceColumnSpec()
 	ann := col.spec.annotations
 
-	test.isEqual("pl7.app/vdj/clonotypePresence", col.spec.name, "name")
-	test.isEqual("Int", col.spec.valueType, "Int: one value, nothing derived from it")
+	test.isEqual("pl7.app/vdj/uniqueMoleculeCount", col.spec.name, "name")
+	test.isEqual("Long", col.spec.valueType, "the block's own umi-count type, adopted whole")
 	test.isEqual("true", ann["pl7.app/isAbundance"], "isAbundance")
 	test.isEqual("false", ann["pl7.app/abundance/normalized"], "normalized false")
 	test.isEqual("true", ann["pl7.app/abundance/isPrimary"], "isPrimary")
@@ -200,11 +200,14 @@ Test_abundance_carriesTheTripleAndTheAnchor := func() {
 	test.isFalse(col.allowNA, "never null")
 }
 
-// Nothing was measured, so a unit would be a false claim. None may be added.
-Test_abundance_carriesNoUnitAndNoSyntheticMarker := func() {
+// The spec is the block's own umi-count spec adopted whole, so the unit rides along with it:
+// the fabrication is confined to the value, not to what the value is called.
+Test_abundance_isTheBlocksOwnUmiCountSpec := func() {
 	ann := specs.abundanceColumnSpec().spec.annotations
 
-	test.isTrue(ann["pl7.app/abundance/unit"] == undefined, "no unit")
+	test.isEqual("molecules", ann["pl7.app/abundance/unit"], "unit comes with the adopted spec")
+	test.isEqual("Number of UMIs", ann["pl7.app/label"], "label comes with the adopted spec")
+	test.isEqual("88000", ann["pl7.app/table/orderPriority"], "order comes with the adopted spec")
 	test.isTrue(ann["pl7.app/abundance/synthetic"] == undefined, "no synthetic marker, by decision")
 	test.isEqual(0, len(specs.abundanceColumnSpec().spec.domain), "empty domain")
 }
@@ -233,11 +236,11 @@ Test_allColumns_omitsSampleCountAndAggregates := func() {
 	for c in specs.allColumns(["A", "B"], "imgt") {
 		test.isTrue(c.spec.name != "pl7.app/vdj/sampleCount", "sampleCount must not be emitted")
 		test.isTrue(
-			c.spec.name != "pl7.app/vdj/clonotypePresenceTotal",
+			c.spec.name != "pl7.app/vdj/uniqueMoleculeCountTotal",
 			"no cross-sample total of the synthetic abundance"
 		)
 		test.isTrue(
-			c.spec.name != "pl7.app/vdj/clonotypePresenceMean",
+			c.spec.name != "pl7.app/vdj/uniqueMoleculeFractionMean",
 			"no cross-sample mean of the synthetic abundance"
 		)
 	}

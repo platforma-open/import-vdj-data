@@ -55,7 +55,7 @@ SCHEMES := ["imgt", "kabat", "chothia"]
 
 keyColumn := "variantKey"
 labelColumn := "recordLabel"
-abundanceColumn := "clonotypePresence"
+abundanceColumn := "umi-count"
 
 sequenceColumn := func(chain) { return chain + "_sequence" }
 regionColumn := func(chain, region) { return chain + "_" + region + "_aa" }
@@ -262,32 +262,40 @@ statusColumnSpec := func(chain, scheme) {
  * The value is the literal 1 on every row, never null. One per **record**, not per chain —
  * presence is a property of the record, and the record is the pair.
  *
- * This annotation set is exactly what makes Clustering run, which is the whole point of the
- * column: that block's bundle does an `addSingle` for the triple isAbundance /
- * normalized:"false" / isPrimary:"true", and `isAnchor` is what makes the dataset selectable
- * at all in the other four consumers ([[anchor-carries-selectability]]).
+ * **The spec is the block's own `umi-count` spec, adopted whole** — name, type, unit, label
+ * and order are copied unchanged from `infer-columns-common.lib.tengo:50-66`, with
+ * `abundance/isPrimary` and `isAnchor` stamped as the block already stamps them on whichever
+ * count is primary. The column introduces no vocabulary and nothing for a consumer to have
+ * been taught. The fabrication is confined to the value.
  *
- * **No `pl7.app/abundance/unit`, and none may be added** — nothing was measured, so `reads`
- * or `molecules` would each be a false claim of exactly the kind this design already accepts
- * one of. **No marker declaring the value synthetic**, by decision: minting one would be a
- * claim on documented platform vocabulary in service of a column meant to be short-lived.
+ * That annotation set is also exactly what makes Clustering run: its bundle does an
+ * `addSingle` for the triple isAbundance / normalized:"false" / isPrimary:"true", and
+ * `isAnchor` is what makes the dataset selectable at all in the other four consumers.
  *
- * The column is transitional. Nothing on the data distinguishes it from a measured
- * abundance, so if it outlives the plan that removes it there is no way to find it by query.
+ * **No marker declaring the value synthetic**, by decision: minting one would be a claim on
+ * documented platform vocabulary in service of a column meant to be short-lived. Nothing on
+ * the data distinguishes it from a measured abundance, so if the column outlives the plan
+ * that removes it there is no way to find it by query.
+ *
+ * **The label travels, and that is the cost's real extent.** A panel that was never sequenced
+ * is presented as "Number of UMIs" in every consuming block, and Clustering reads the name off
+ * this spec and carries molecule-named aggregates into its own outputs. The fabrication is
+ * confined to the value; what the value is *called* is not confined to import.
  */
 abundanceColumnSpec := func() {
 	return {
-		id: "clonotype-presence",
+		id: "umi-count",
 		column: abundanceColumn,
 		allowNA: false,
 		spec: {
-			name: "pl7.app/vdj/clonotypePresence",
-			valueType: "Int",
+			name: "pl7.app/vdj/uniqueMoleculeCount",
+			valueType: "Long",
 			domain: {},
-			annotations: a("90000", "default", {
-				"pl7.app/label": "Present in Sample",
+			annotations: a("88000", "default", {
+				"pl7.app/label": "Number of UMIs",
 				"pl7.app/min": "1",
 				"pl7.app/isAbundance": "true",
+				"pl7.app/abundance/unit": "molecules",
 				"pl7.app/abundance/normalized": "false",
 				"pl7.app/abundance/isPrimary": "true",
 				"pl7.app/isAnchor": "true"

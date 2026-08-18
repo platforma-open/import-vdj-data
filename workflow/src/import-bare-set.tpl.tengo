@@ -89,9 +89,10 @@ self.body(func(inputs) {
 			alias(specs.keyColumn)
 	)
 
-	// Presence: the literal 1 on every row, one per record rather than per chain. The column
-	// the input did not supply, so every consuming block is reached unchanged.
-	df = df.withColumns(pt.lit(1).cast("Int32").alias(specs.abundanceColumn))
+	// The abundance the input did not supply: the literal 1 on every row, one per record rather
+	// than per chain, so every consuming block is reached unchanged. Int64 because the spec
+	// adopted for it is the block's own umi-count spec, which is Long.
+	df = df.withColumns(pt.lit(1).cast("Int64").alias(specs.abundanceColumn))
 
 	// A row identical in every mapped cell states the same record twice and collapses to one.
 	// A row sharing only its identity is refused before the run starts, so by the time this

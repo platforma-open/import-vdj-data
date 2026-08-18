@@ -163,15 +163,19 @@ blockTest(
       );
     }
 
-    // The synthetic abundance: exactly the triple Clustering's bundle queries, plus the anchor
-    // that makes the dataset selectable at all. No unit — nothing was measured.
-    const presence = columns.find((c) => c.name === "pl7.app/vdj/clonotypePresence");
+    // The synthetic abundance is the block's own umi-count spec adopted whole: exactly the
+    // triple Clustering's bundle queries, plus the anchor that makes the dataset selectable.
+    // The unit and the "Number of UMIs" label ride along with the adopted spec — the
+    // fabrication is confined to the value, not to what the value is called.
+    const presence = columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount");
     expect(presence).toBeDefined();
+    expect(presence!.valueType).toBe("Long");
     expect(presence!.annotations["pl7.app/isAbundance"]).toBe("true");
     expect(presence!.annotations["pl7.app/abundance/normalized"]).toBe("false");
     expect(presence!.annotations["pl7.app/abundance/isPrimary"]).toBe("true");
     expect(presence!.annotations["pl7.app/isAnchor"]).toBe("true");
-    expect(presence!.annotations["pl7.app/abundance/unit"]).toBeUndefined();
+    expect(presence!.annotations["pl7.app/abundance/unit"]).toBe("molecules");
+    expect(presence!.annotations["pl7.app/label"]).toBe("Number of UMIs");
 
     // Exactly one column may claim the anchor and the primary abundance.
     expect(columns.filter((c) => c.annotations["pl7.app/isAnchor"] === "true")).toHaveLength(1);
@@ -346,6 +350,6 @@ blockTest(
     expect(heavyRegions).toHaveLength(8);
 
     // And the padding references never became records of their own.
-    expect(columns.find((c) => c.name === "pl7.app/vdj/clonotypePresence")).toBeDefined();
+    expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
   },
 );
