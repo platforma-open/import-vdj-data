@@ -39,3 +39,4 @@ catalog:
 
   # other blocks used in tests
   "@platforma-open/milaboratories.samples-and-data": 1.18.1
+  "@platforma-open/milaboratories.sequence-properties": 1.5.2

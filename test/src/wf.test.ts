@@ -15,6 +15,7 @@
 */
 
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
+import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
 import { uniquePlId } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
 import { ImportVdjBlockPointer } from "this-block";
@@ -410,5 +411,73 @@ blockTest(
     }
     expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
     expect(columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toHaveLength(2);
+  },
+);
+
+// SKIPPED, and the reason is a finding rather than a flake — see the plan's Phase 5 section.
+// The set is offered and the modality is detected correctly, then the run panics with
+// "antibody/TCR mode detected but no amino-acid VDJ sequence columns found". The consumer's
+// bundle query does not match property columns that carry the sample axis, and every working
+// producer — including this block's own per-chain path — emits them on the record axis alone,
+// via a second processColumn pass that aggregates pl7.app/sampleId away.
+//
+// bare-set-key-axis mandates the opposite: every emitted property column on
+// [pl7.app/sampleId, pl7.app/variantKey]. Either that contract or the consumers must move, and
+// that is a spec decision rather than an implementation one. Re-enable when it is settled.
+blockTest.skip(
+  "a bare set reaches and runs Sequence Properties",
+  { timeout: 900000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    // The first real consumer. Sequence Properties has an `antibody_tcr_universal` branch that
+    // reads a variantKey axis carrying pl7.app/vdj/clonotypingRunId — the shape this block now
+    // emits — but no producer in the workspace has ever reached it and its own test suite is
+    // entirely `it.todo`, so the branch has never executed. This is its first execution.
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-paired-set.tsv");
+
+    await project.setBlockArgs(blockId, {
+      defaultBlockLabel: "chain",
+      customBlockLabel: "",
+      format: "custom",
+      chains: ["IGHeavy", "IGLight"],
+      fileSource: {
+        handle,
+        sampleId: "SCHAIN0000000000000000001",
+        label: "bare-paired-set",
+        extension: "tsv",
+      },
+      bareSet: {
+        identity: "mAb ID",
+        sequences: { A: "VH", B: "VL" },
+        scheme: SCHEME,
+      },
+    });
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    const propsId = await project.addBlock("Sequence Properties", sequencePropertiesSpec);
+    const propsState = (await awaitStableState(project.getBlockState(propsId), 200000)) as {
+      outputs?: Record<string, any>;
+    };
+    const options =
+      propsState.outputs?.inputOptions?.value ?? propsState.outputs?.inputOptions ?? [];
+
+    // Reachability is its own condition: an analysis willing to run can simply never be
+    // offered the data, and no availability rule catches that.
+    expect(options.length).toBeGreaterThan(0);
+
+    await project.mutateBlockStorage(propsId, {
+      operation: "update-block-data",
+      value: { inputAnchor: options[0].ref, customBlockLabel: "", title: "" },
+    });
+    await project.runBlock(propsId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(propsId, 900000);
+
+    const done = (await awaitStableState(project.getBlockState(propsId), 200000)) as {
+      outputs?: Record<string, any>;
+    };
+    const cols = done.outputs?.propertiesPfCols?.value ?? done.outputs?.propertiesPfCols ?? [];
+    console.log("sequence-properties emitted", cols.length, "columns");
+    expect(cols.length).toBeGreaterThan(0);
   },
 );
