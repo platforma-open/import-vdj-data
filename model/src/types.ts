@@ -33,7 +33,6 @@ export type BareSetChain = "A" | "B";
 export type ImportedProperty = {
   /** The source header, exactly as the file wrote it. It becomes the column's label. */
   header: string;
-  valueType: "Int" | "Double" | "String";
 };
 
 export type BareSetMapping = {
@@ -55,8 +54,8 @@ export type BareSetMapping = {
    * discarded: a column holding anything the canonical vocabulary never anticipated has no slot
    * to be given, however ordinary the value is.
    *
-   * The type is the one accepted at mapping and is emitted unchanged — nothing converts between
-   * types and nothing re-reads the values.
+   * Emitted as String columns. The panel used to ask for a type per column, which asked the
+   * scientist to declare something nothing checks.
    */
   properties?: ImportedProperty[];
 };

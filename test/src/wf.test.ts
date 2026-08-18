@@ -110,7 +110,7 @@ blockTest(
           sequences: { A: "VH", B: "VL" },
           scheme: SCHEME,
           // A column the canonical vocabulary never anticipated — offered, not dropped.
-          properties: [{ header: "Affinity (nM)", valueType: "Double" }],
+          properties: [{ header: "Affinity (nM)" }],
         },
       }),
     });
@@ -229,13 +229,14 @@ blockTest(
     // A count of how often a record repeats is never presented as an abundance.
     expect(columns.find((c) => c.name === "pl7.app/vdj/sampleCount")).toBeUndefined();
 
-    // A non-sequence column the scientist accepted: name sanitized, label the raw header, type
-    // as accepted, no domain key.
+    // A non-sequence column the scientist accepted: name sanitized, label the raw header,
+    // no domain key.
     const affinity = columns.find((c) => c.name.startsWith("pl7.app/vdj/importedProperty/"));
     expect(affinity).toBeDefined();
     expect(affinity!.name).toBe("pl7.app/vdj/importedProperty/Affinity_nM_");
     expect(affinity!.annotations["pl7.app/label"]).toBe("Affinity (nM)");
-    expect(affinity!.valueType).toBe("Double");
+    // Always String: the panel asks for no type, and nothing samples the file to guess one.
+    expect(affinity!.valueType).toBe("String");
     expect(Object.keys(affinity!.domain)).toHaveLength(0);
   },
 );

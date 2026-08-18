@@ -381,8 +381,12 @@ labelColumnSpec := func() {
  * in a column name would put spaces, slashes and unicode into an identifier every downstream
  * query matches on.
  *
- * `valueType` is whatever was accepted at mapping and is not narrowed. Nothing converts
- * between types and nothing re-reads the values.
+ * Always `String`. The scientist used to pick Text / Whole number / Decimal per column, which
+ * asked them to declare something the block could not check: nothing re-reads the values, so a
+ * column typed Decimal that turns out to hold `N/A` on row 500 fails at import or nulls out.
+ * Sampling the file to guess instead has the same tail — the guess is made from the first rows
+ * and applied to all of them. A string is the one answer that is never wrong, and a downstream
+ * block that needs a number can convert a column it can actually see in full.
  *
  * No domain key: the column is a property of the record, distinguished from every other by its
  * name alone. Which is exactly why two headers that sanitize alike must be refused rather than
@@ -396,12 +400,6 @@ importedPropertyColumn := func(property, index) {
 		property.header != undefined && property.header != "",
 		"bare-set-specs: an imported property needs a header"
 	)
-	valueType := property.valueType
-	ll.assert(
-		valueType == "Int" || valueType == "Double" || valueType == "String",
-		"bare-set-specs: imported property %v has unsupported valueType %v", property.header, valueType
-	)
-
 	token := sanitize(property.header)
 
 	return {
@@ -410,7 +408,7 @@ importedPropertyColumn := func(property, index) {
 		allowNA: true,
 		spec: {
 			name: "pl7.app/vdj/importedProperty/" + token,
-			valueType: valueType,
+			valueType: "String",
 			domain: {},
 			annotations: a(string(108000 - index * 10), "default", {
 				"pl7.app/label": property.header

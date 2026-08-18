@@ -144,12 +144,6 @@ const identityCollisions = computed<string[]>(
   () => (app.model.outputs.identityCollisions as string[] | undefined) ?? [],
 );
 
-const propertyTypeOptions = [
-  { label: "Text", value: "String" },
-  { label: "Whole number", value: "Int" },
-  { label: "Decimal", value: "Double" },
-];
-
 /** Headers not taken by a sequence or the identity — offered as record properties rather than
  *  dropped, which is what the block used to do with them. */
 const propertyCandidates = computed(() => {
@@ -165,28 +159,12 @@ const acceptedProperties = computed<string[]>({
   set: (headers) => {
     const a = app.model.data;
     if (!a.bareSet) return;
-    const existing = new Map((a.bareSet.properties ?? []).map((p) => [p.header, p]));
-    // Text unless the scientist says otherwise: nothing re-reads the values, so a wrong guess
-    // here would be emitted as-is.
     a.bareSet = {
       ...a.bareSet,
-      properties: headers.map(
-        (h): ImportedProperty => existing.get(h) ?? { header: h, valueType: "String" },
-      ),
+      properties: headers.map((h): ImportedProperty => ({ header: h })),
     };
   },
 });
-
-function setPropertyType(header: string, valueType: string | undefined) {
-  const a = app.model.data;
-  if (!a.bareSet || !valueType) return;
-  a.bareSet = {
-    ...a.bareSet,
-    properties: (a.bareSet.properties ?? []).map((p) =>
-      p.header === header ? { ...p, valueType: valueType as ImportedProperty["valueType"] } : p,
-    ),
-  };
-}
 
 const propertyCollisionMessage = computed(() => {
   const collisions = propertyCollisions(app.model.data.bareSet?.properties ?? []);
@@ -601,14 +579,6 @@ function onModalUpdate(val: boolean) {
                 v-model="acceptedProperties"
                 :options="propertyCandidates.map((h) => ({ label: h, value: h }))"
                 label="Import as record properties"
-              />
-              <PlDropdown
-                v-for="p in app.model.data.bareSet?.properties ?? []"
-                :key="p.header"
-                :model-value="p.valueType"
-                :options="propertyTypeOptions"
-                :label="p.header"
-                @update:model-value="(v: string | undefined) => setPropertyType(p.header, v)"
               />
             </template>
           </div>

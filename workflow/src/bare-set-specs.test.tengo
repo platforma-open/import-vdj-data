@@ -288,17 +288,17 @@ Test_allColumns_sourceColumnsAreUnique := func() {
 // A raw header in a name would put spaces and punctuation into an identifier every downstream
 // query matches on.
 Test_importedProperty_sanitizesTheNameAndKeepsTheLabelRaw := func() {
-	col := specs.importedPropertyColumn({ header: "Target (nM)", valueType: "Double" }, 0)
+	col := specs.importedPropertyColumn({ header: "Target (nM)" }, 0)
 
 	test.isEqual("pl7.app/vdj/importedProperty/Target_nM_", col.spec.name, "sanitized name")
 	test.isEqual("Target (nM)", col.spec.annotations["pl7.app/label"], "label is the raw header")
-	test.isEqual("Double", col.spec.valueType, "the accepted type is emitted, not narrowed")
+	test.isEqual("String", col.spec.valueType, "always String — no type is asked for or guessed")
 	test.isEqual(0, len(col.spec.domain), "no domain key")
 }
 
 // Visible by default: the scientist turns off what they do not want to see.
 Test_importedProperty_isVisibleAndSitsBelowTheIdentifier := func() {
-	col := specs.importedPropertyColumn({ header: "Clone", valueType: "String" }, 0)
+	col := specs.importedPropertyColumn({ header: "Clone" }, 0)
 
 	test.isEqual("default", col.spec.annotations["pl7.app/table/visibility"], "visible by default")
 	// Below the label column (109000) and the key axis (110000), above the regions.
@@ -309,8 +309,8 @@ Test_importedProperty_isVisibleAndSitsBelowTheIdentifier := func() {
 // explicitly chose to import.
 Test_importedProperty_headersThatSanitizeAlikeCollide := func() {
 	collisions := specs.propertyCollisions([
-		{ header: "Target nM", valueType: "Double" },
-		{ header: "Target-nM", valueType: "Double" }
+		{ header: "Target nM" },
+		{ header: "Target-nM" }
 	])
 
 	test.isEqual(1, len(collisions), "one colliding token")
@@ -323,8 +323,8 @@ Test_importedProperty_headersThatSanitizeAlikeCollide := func() {
 // so the next reader does not "fix" the code to match the prose.
 Test_importedProperty_theAtomsCitedPairDoesNotActuallyCollide := func() {
 	collisions := specs.propertyCollisions([
-		{ header: "Target (nM)", valueType: "Double" },
-		{ header: "Target-nM", valueType: "Double" }
+		{ header: "Target (nM)" },
+		{ header: "Target-nM" }
 	])
 
 	test.isEqual(0, len(collisions), "trailing punctuation leaves a trailing underscore")
@@ -332,8 +332,8 @@ Test_importedProperty_theAtomsCitedPairDoesNotActuallyCollide := func() {
 
 Test_importedProperty_distinctHeadersDoNotCollide := func() {
 	collisions := specs.propertyCollisions([
-		{ header: "Target", valueType: "String" },
-		{ header: "Assay", valueType: "String" }
+		{ header: "Target" },
+		{ header: "Assay" }
 	])
 
 	test.isEqual(0, len(collisions), "no collisions")
@@ -342,8 +342,8 @@ Test_importedProperty_distinctHeadersDoNotCollide := func() {
 Test_allColumns_includesAcceptedProperties := func() {
 	base := specs.allColumns(["A", "B"], "imgt", [])
 	withProps := specs.allColumns(["A", "B"], "imgt", [
-		{ header: "Target", valueType: "Double" },
-		{ header: "Assay", valueType: "String" }
+		{ header: "Target" },
+		{ header: "Assay" }
 	])
 
 	test.isEqual(len(base) + 2, len(withProps), "two extra columns")
@@ -377,7 +377,7 @@ Test_recordLabel_followsTheAxisLabelConvention := func() {
 // every downstream block, and the failure surfaces there as "no sequence columns found"
 // rather than here.
 Test_columnsBySource_onlyAbundanceKeepsTheSampleAxis := func() {
-	properties := [{ header: "Target", valueType: "Double" }]
+	properties := [{ header: "Target" }]
 	split := specs.columnsBySource(["A", "B"], "imgt", properties)
 
 	test.isEqual(1, len(split.perSample), "exactly one per-sample column")
@@ -398,7 +398,7 @@ Test_columnsBySource_onlyAbundanceKeepsTheSampleAxis := func() {
 // Every column belongs to exactly one bucket, and the three together are allColumns. A column
 // that fell out of the split would simply never be emitted, with nothing to report it.
 Test_columnsBySource_partitionsAllColumns := func() {
-	properties := [{ header: "Target", valueType: "Double" }]
+	properties := [{ header: "Target" }]
 	chains := ["A", "B"]
 
 	all := specs.allColumns(chains, "kabat", properties)
