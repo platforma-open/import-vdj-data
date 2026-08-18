@@ -126,6 +126,12 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
 export type UiState = {
   tableState: PlDataTableStateV2;
   settingsOpen: boolean;
+  /**
+   * Which door the panel is showing. View state rather than args: the block already knows which
+   * door is in use from whether `fileSource` or `datasetRef` is set, and derives nothing from
+   * this. It exists so the panel can show one door's controls before either is filled in.
+   */
+  loadFromFile: boolean;
   qiagenColumnsPresent: boolean;
   immunoSeqColumnsPresent: boolean;
   mixcrColumnsPresent: boolean;
@@ -151,6 +157,7 @@ export const platforma = BlockModel.create()
   .withUiState<UiState>({
     tableState: createPlDataTableStateV2(),
     settingsOpen: true,
+    loadFromFile: false,
     qiagenColumnsPresent: false,
     immunoSeqColumnsPresent: false,
     mixcrColumnsPresent: false,

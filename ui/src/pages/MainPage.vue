@@ -4,7 +4,7 @@ import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.mo
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
 import { plRefsEqual } from "@platforma-sdk/model";
-import { PlFileInput } from "@platforma-sdk/ui-vue";
+import { PlCheckbox, PlFileInput } from "@platforma-sdk/ui-vue";
 import {
   PlAccordion,
   PlAccordionSection,
@@ -221,6 +221,27 @@ const setDataset = (datasetRef: PlRef | undefined) => {
 
 const fileSourceError = ref("");
 
+/** Which door the panel shows. Switching clears the other one, so exactly one is ever set. */
+const loadFromFile = computed({
+  // Falls back to whichever door is actually in use. A block created before this field existed
+  // has no value for it — V1 ui state does not backfill new defaults into existing blocks — and
+  // without the fallback such a block shows the dataset door while holding a loaded file.
+  get: () => app.model.ui.loadFromFile ?? app.model.args.fileSource !== undefined,
+  set: (on) => {
+    app.model.ui.loadFromFile = on;
+    const a = app.model.args;
+    if (on) {
+      a.datasetRef = undefined;
+      // The direct door serves the custom format and no other.
+      a.format = "custom";
+    } else {
+      a.fileSource = undefined;
+      a.bareSet = undefined;
+    }
+    fileSourceError.value = "";
+  },
+});
+
 /**
  * The file's own first line decides the delimiter. The declared extension is not trusted —
  * a .txt holding tabs and a .csv holding tabs are both things scientists actually have.
@@ -394,29 +415,18 @@ const validationResult = computed(() => {
   return format ? result : result;
 });
 
+/** The display name for a format id, from the same list the dropdown is built from. */
+function formatLabel(format: string | undefined): string {
+  if (!format) return "";
+  const key = format.toLowerCase();
+  return formatOptions.find((o) => o.value.toLowerCase() === key)?.label ?? format;
+}
+
 const validationMessage = computed(() => {
   const result = validationResult.value;
   if (!result || result.isValid) return "";
 
-  const formatKey = result.format?.toLowerCase?.() ?? result.format;
-  const formatName =
-    formatKey === "qiagen"
-      ? "QIAseq Immune Repertoire Analysis"
-      : formatKey === "immunoseq"
-        ? "ImmunoSeq"
-        : formatKey === "mixcr"
-          ? "MiXCR bulk"
-          : formatKey === "mixcr-sc"
-            ? "MiXCR single cell"
-            : formatKey === "cellranger"
-              ? "Cell Ranger VDJ"
-              : formatKey === "airr"
-                ? "AIRR bulk"
-                : formatKey === "airr-sc"
-                  ? "AIRR single cell"
-                  : result.format;
-
-  return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(", ")}. Please verify the format selection or choose a different dataset.`;
+  return `The selected dataset is missing required ${formatLabel(result.format)} columns: ${result.missingColumns.join(", ")}. Please verify the format selection or choose a different dataset.`;
 });
 
 watch(
@@ -512,112 +522,59 @@ function onModalUpdate(val: boolean) {
     <PlSlideModal :model-value="forceSettingsOpen" @update:model-value="onModalUpdate">
       <template #title>Settings</template>
 
-      <PlFileInput
-        :model-value="app.model.args.fileSource?.handle"
-        :extensions="['csv', 'tsv', 'txt', 'xlsx']"
-        label="Load a file"
-        clearable
-        @update:model-value="(v: ImportFileHandle | undefined) => setFile(v)"
-      />
-      <PlAlert v-if="fileSourceError" type="warn" :style="{ width: '100%' }">
-        {{ fileSourceError }}
-      </PlAlert>
+      <PlCheckbox v-model="loadFromFile">Load from file</PlCheckbox>
 
-      <PlSectionSeparator>or select a loaded dataset</PlSectionSeparator>
-
-      <PlDropdownRef
-        v-model="app.model.args.datasetRef"
-        :options="app.model.outputs.datasetOptions"
-        label="Select dataset"
-        clearable
-        required
-        @update:model-value="setDataset"
-      />
-
-      <PlDropdown
-        v-if="app.model.args.fileSource === undefined"
-        v-model="app.model.args.format"
-        :options="formatOptions"
-        label="Data format"
-        required
-      />
-
-      <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
-        <template #title>
-          Invalid
-          {{
-            validationResult?.format === "qiagen"
-              ? "QIAseq Immune Repertoire Analysis"
-              : validationResult?.format === "immunoSeq" || validationResult?.format === "immunoseq"
-                ? "ImmunoSeq"
-                : validationResult?.format === "mixcr"
-                  ? "MiXCR bulk"
-                  : validationResult?.format === "mixcr-sc"
-                    ? "MiXCR single cell"
-                    : validationResult?.format === "cellranger"
-                      ? "Cell Ranger VDJ"
-                      : validationResult?.format === "airr"
-                        ? "AIRR bulk"
-                        : validationResult?.format
-          }}
-          dataset
-        </template>
-        {{ validationMessage }}
-      </PlAlert>
-
-      <PlDropdownMulti
-        v-if="!isSingleCell"
-        v-model="app.model.args.chains"
-        :options="chainsOptions"
-        label="Chains to import"
-        required
-      />
-      <PlDropdownMulti
-        v-else
-        v-model="selectedReceptors"
-        :options="receptorOptions"
-        label="Immune receptors"
-        required
-      />
-      <!-- receptor selector for single-cell formats can be added here if needed -->
-
-      <template v-if="app.model.args.format === 'custom'">
-        <PlSectionSeparator>Bare sequences</PlSectionSeparator>
-        <PlAlert v-if="identityCollisionMessage" type="warn" :style="{ width: '100%' }">
-          <template #title>Record identity is not unique</template>
-          {{ identityCollisionMessage }}
+      <template v-if="loadFromFile">
+        <PlFileInput
+          :model-value="app.model.args.fileSource?.handle"
+          :extensions="['csv', 'tsv', 'txt', 'xlsx']"
+          label="File"
+          clearable
+          @update:model-value="(v: ImportFileHandle | undefined) => setFile(v)"
+        />
+        <PlAlert v-if="fileSourceError" type="warn" :style="{ width: '100%' }">
+          {{ fileSourceError }}
         </PlAlert>
-        <div class="field-col">
-          <PlDropdown
-            :model-value="bareField('identity')"
-            :options="headerOptions"
-            label="Record identity"
-            clearable
-            @update:model-value="(v: string | undefined) => setBareField('identity', v)"
-          />
-          <PlDropdown
-            :model-value="bareField('A')"
-            :options="headerOptions"
-            label="Heavy chain variable domain (aa)"
-            clearable
-            @update:model-value="(v: string | undefined) => setBareField('A', v)"
-          />
-          <PlDropdown
-            :model-value="bareField('B')"
-            :options="headerOptions"
-            label="Light chain variable domain (aa)"
-            clearable
-            @update:model-value="(v: string | undefined) => setBareField('B', v)"
-          />
-          <PlDropdown
-            v-if="isBareSet"
-            :model-value="app.model.args.bareSet?.scheme"
-            :options="schemeOptions"
-            label="Numbering scheme"
-            required
-            @update:model-value="(v: string | undefined) => setBareScheme(v)"
-          />
-        </div>
+
+        <template v-if="headerOptions.length > 0">
+          <PlSectionSeparator>Columns to import</PlSectionSeparator>
+          <PlAlert v-if="identityCollisionMessage" type="warn" :style="{ width: '100%' }">
+            <template #title>Record identity is not unique</template>
+            {{ identityCollisionMessage }}
+          </PlAlert>
+          <div class="field-col">
+            <PlDropdown
+              :model-value="bareField('identity')"
+              :options="headerOptions"
+              label="Record identity"
+              clearable
+              required
+              @update:model-value="(v: string | undefined) => setBareField('identity', v)"
+            />
+            <PlDropdown
+              :model-value="bareField('A')"
+              :options="headerOptions"
+              label="Heavy chain variable domain (aa)"
+              clearable
+              @update:model-value="(v: string | undefined) => setBareField('A', v)"
+            />
+            <PlDropdown
+              :model-value="bareField('B')"
+              :options="headerOptions"
+              label="Light chain variable domain (aa)"
+              clearable
+              @update:model-value="(v: string | undefined) => setBareField('B', v)"
+            />
+            <PlDropdown
+              v-if="isBareSet"
+              :model-value="app.model.args.bareSet?.scheme"
+              :options="schemeOptions"
+              label="Numbering scheme"
+              required
+              @update:model-value="(v: string | undefined) => setBareScheme(v)"
+            />
+          </div>
+        </template>
 
         <template v-if="isBareSet">
           <PlSectionSeparator>Other columns</PlSectionSeparator>
@@ -641,8 +598,46 @@ function onModalUpdate(val: boolean) {
             />
           </div>
         </template>
+      </template>
 
-        <template v-if="!isBareSet">
+      <template v-else>
+        <PlDropdownRef
+          v-model="app.model.args.datasetRef"
+          :options="app.model.outputs.datasetOptions"
+          label="Select dataset"
+          clearable
+          required
+          @update:model-value="setDataset"
+        />
+
+        <PlDropdown
+          v-model="app.model.args.format"
+          :options="formatOptions"
+          label="Data format"
+          required
+        />
+
+        <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
+          <template #title>Invalid {{ formatLabel(validationResult?.format) }} dataset</template>
+          {{ validationMessage }}
+        </PlAlert>
+
+        <PlDropdownMulti
+          v-if="!isSingleCell"
+          v-model="app.model.args.chains"
+          :options="chainsOptions"
+          label="Chains to import"
+          required
+        />
+        <PlDropdownMulti
+          v-else
+          v-model="selectedReceptors"
+          :options="receptorOptions"
+          label="Immune receptors"
+          required
+        />
+
+        <template v-if="app.model.args.format === 'custom'">
           <PlSectionSeparator>Required columns</PlSectionSeparator>
           <div class="field-col">
             <PlDropdown
