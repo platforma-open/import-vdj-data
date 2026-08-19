@@ -47,11 +47,29 @@ export type BareSetChain = "IGHeavy" | "IGLight";
  */
 export type ChainSelection = "IG" | "IGHeavy" | "IGLight";
 
+/** Numbering conventions the block offers. */
+export type BareSetScheme = "imgt" | "kabat" | "chothia";
+
 /** The sequence columns each selection asks for, in emission order. */
 export const CHAIN_SLOTS: Record<ChainSelection, BareSetChain[]> = {
   IG: ["IGHeavy", "IGLight"],
   IGHeavy: ["IGHeavy"],
   IGLight: ["IGLight"],
+};
+
+/**
+ * The numbering schemes each selection can be numbered under.
+ *
+ * IMGT is position-unified and chain-agnostic — ANARCI's `number_imgt` takes no chain type at
+ * all. Kabat, Chothia, Martin and Wolfguy were defined on antibody structures and ANARCI
+ * implements them for `H`/`K`/`L` only, raising "Unimplemented numbering scheme" for a TCR chain
+ * (anarci.py:558-592). So a TCR selection can only be numbered under IMGT, and offering the
+ * others would hand the scientist a choice that fails the run.
+ */
+export const SCHEMES_FOR_SELECTION: Record<ChainSelection, BareSetScheme[]> = {
+  IG: ["imgt", "kabat", "chothia"],
+  IGHeavy: ["imgt", "kabat", "chothia"],
+  IGLight: ["imgt", "kabat", "chothia"],
 };
 
 /** What to call each slot in front of the scientist. */
@@ -104,7 +122,7 @@ export type BareSetMapping = {
    */
   sequences: Partial<Record<BareSetChain, string>>;
   /** The numbering convention ANARCI is asked for, and the one recorded on every region. */
-  scheme: "imgt" | "kabat" | "chothia";
+  scheme: BareSetScheme;
   /**
    * Non-sequence columns the scientist accepted as record properties. Offered rather than
    * discarded: a column holding anything the canonical vocabulary never anticipated has no slot

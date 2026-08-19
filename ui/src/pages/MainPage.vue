@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import type {
   BareSetChain,
+  BareSetScheme,
   BlockData,
   ChainSelection,
   ImportedProperty,
 } from "@platforma-open/milaboratories.import-vdj.model";
-import { CHAIN_SLOT_LABELS, CHAIN_SLOTS } from "@platforma-open/milaboratories.import-vdj.model";
+import {
+  CHAIN_SLOT_LABELS,
+  CHAIN_SLOTS,
+  SCHEMES_FOR_SELECTION,
+} from "@platforma-open/milaboratories.import-vdj.model";
 import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
@@ -59,11 +64,24 @@ const receptorOptions = [
   { value: "TCRGD", label: "TCR-ɣδ" },
 ];
 
-const schemeOptions = [
-  { label: "IMGT", value: "imgt" },
-  { label: "Kabat", value: "kabat" },
-  { label: "Chothia", value: "chothia" },
-];
+const SCHEME_LABELS: Record<BareSetScheme, string> = {
+  imgt: "IMGT",
+  kabat: "Kabat",
+  chothia: "Chothia",
+};
+
+/**
+ * Only the schemes the declared chains can actually be numbered under. Kabat and Chothia are
+ * antibody schemes — ANARCI implements them for heavy and light only and raises for a TCR chain
+ * — so a TCR selection narrows this to IMGT rather than offering a choice that fails the run.
+ */
+const schemeOptions = computed(() => {
+  const selection = app.model.data.bareSet?.chainSelection;
+  const allowed = selection
+    ? (SCHEMES_FOR_SELECTION[selection] ?? (["imgt"] as BareSetScheme[]))
+    : (["imgt", "kabat", "chothia"] as BareSetScheme[]);
+  return allowed.map((s) => ({ label: SCHEME_LABELS[s], value: s }));
+});
 
 // updating defaultBlockLabel
 watchEffect(() => {
@@ -76,9 +94,9 @@ watchEffect(() => {
   // what was imported.
   if (args.fileSource) {
     parts.push(args.fileSource.label);
-    const scheme = args.bareSet?.scheme;
+    const scheme = args.bareSet?.scheme as BareSetScheme | undefined;
     if (scheme && scheme !== "imgt") {
-      parts.push(schemeOptions.find((o) => o.value === scheme)?.label ?? scheme);
+      parts.push(SCHEME_LABELS[scheme] ?? scheme);
     }
     args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
     return;
@@ -154,7 +172,12 @@ function setChainSelection(value: string | undefined) {
     if (existing) kept[slot] = existing;
   }
 
-  a.bareSet = { ...current, chainSelection: selection, sequences: kept };
+  // A scheme the new chains cannot be numbered under would fail the run rather than the
+  // mapping, so it is reset here rather than left for ANARCI to reject.
+  const allowed = SCHEMES_FOR_SELECTION[selection] ?? (["imgt"] as BareSetScheme[]);
+  const scheme = allowed.includes(current.scheme) ? current.scheme : allowed[0];
+
+  a.bareSet = { ...current, chainSelection: selection, sequences: kept, scheme };
 }
 
 function bareField(field: "identity" | BareSetChain): string | undefined {
