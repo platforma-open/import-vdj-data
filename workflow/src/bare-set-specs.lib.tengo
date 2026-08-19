@@ -86,6 +86,26 @@ validateChain := func(chain) {
 	)
 }
 
+/**
+ * The chain domain keys a column carries, or nothing when only one chain was mapped.
+ *
+ * `pl7.app/vdj/scClonotypeChain` is the marker consumers use to decide a dataset holds paired
+ * chains in one frame — clonotype-clustering probes for it, antibody-sequence-liabilities scans
+ * for it. A single-chain set is bulk-shaped, so stamping it there would make those blocks treat
+ * a one-chain import as paired.
+ *
+ * The chain is still named in the column's label. Nothing machine-readable states it, which
+ * matches bulk: sequence-properties defaults an absent chain to `A` and names its properties VH
+ * accordingly, exactly as it already does for a bulk MiXCR light-chain dataset.
+ */
+chainDomain := func(chain, paired) {
+	if !paired { return {} }
+	return {
+		"pl7.app/vdj/scClonotypeChain": chain,
+		"pl7.app/vdj/scClonotypeChain/index": "primary"
+	}
+}
+
 validateScheme := func(scheme) {
 	ll.assert(
 		scheme == "imgt" || scheme == "kabat" || scheme == "chothia",
@@ -177,7 +197,7 @@ sampleAxis := func(blockId) {
  * No convention key: a convention describes a located boundary, and a whole variable domain
  * has none ([[convention-travels-in-the-domain]]).
  */
-mainSequenceColumn := func(chain) {
+mainSequenceColumn := func(chain, paired) {
 	validateChain(chain)
 	return {
 		id: "main-sequence-" + chain,
@@ -186,12 +206,10 @@ mainSequenceColumn := func(chain) {
 		spec: {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
-			domain: {
+			domain: maps.merge({
 				"pl7.app/alphabet": "aminoacid",
-				"pl7.app/vdj/feature": "VDJRegionInFrame",
-				"pl7.app/vdj/scClonotypeChain": chain,
-				"pl7.app/vdj/scClonotypeChain/index": "primary"
-			},
+				"pl7.app/vdj/feature": "VDJRegionInFrame"
+			}, chainDomain(chain, paired)),
 			annotations: a("46870", "optional", {
 				"pl7.app/label": CHAIN_LABELS[chain] + " VDJRegionInFrame aa",
 				"pl7.app/table/fontFamily": "monospace",
@@ -218,7 +236,7 @@ mainSequenceColumn := func(chain) {
  * string ([[unnumberable-record-is-identified]]); its state is read from the status column.
  * That is what `allowNA` is for here.
  */
-regionColumnSpec := func(chain, region, scheme) {
+regionColumnSpec := func(chain, region, scheme, paired) {
 	validateChain(chain)
 	validateScheme(scheme)
 	entry := REGION_TABLE[region]
@@ -231,13 +249,11 @@ regionColumnSpec := func(chain, region, scheme) {
 		spec: {
 			name: "pl7.app/vdj/sequence",
 			valueType: "String",
-			domain: {
+			domain: maps.merge({
 				"pl7.app/alphabet": "aminoacid",
 				"pl7.app/vdj/feature": region,
-				"pl7.app/vdj/numberingSchema": scheme,
-				"pl7.app/vdj/scClonotypeChain": chain,
-				"pl7.app/vdj/scClonotypeChain/index": "primary"
-			},
+				"pl7.app/vdj/numberingSchema": scheme
+			}, chainDomain(chain, paired)),
 			annotations: a(entry.order, entry.visibility, {
 				"pl7.app/label": CHAIN_LABELS[chain] + " " + region + " aa",
 				"pl7.app/table/fontFamily": "monospace",
@@ -258,14 +274,10 @@ regionColumnSpec := func(chain, region, scheme) {
  * Never null — it carries the success member too, so absence of a verdict is not a state.
  * `String` is not a preference: `xsv.importFile` rejects `Boolean`.
  *
- * Note the domain carries no `/index` key, unlike the sequence columns. That is the atom as
- * written: the status is a property of the chain's annotation attempt, not of one of its
- * sequences.
- *
  * `46895` puts it between FR4 (46900) and `pl7.app/vdj/isotype` (46890), so the verdict sits
  * with the boundaries it describes rather than among the identity columns.
  */
-statusColumnSpec := func(chain, scheme) {
+statusColumnSpec := func(chain, scheme, paired) {
 	validateChain(chain)
 	validateScheme(scheme)
 	return {
@@ -275,10 +287,12 @@ statusColumnSpec := func(chain, scheme) {
 		spec: {
 			name: "pl7.app/vdj/regionAnnotationStatus",
 			valueType: "String",
-			domain: {
-				"pl7.app/vdj/numberingSchema": scheme,
-				"pl7.app/vdj/scClonotypeChain": chain
-			},
+			// No `/index` key, unlike the sequence columns: the status is a property of the
+			// chain's annotation attempt, not of one of its sequences.
+			domain: maps.merge(
+				{ "pl7.app/vdj/numberingSchema": scheme },
+				paired ? { "pl7.app/vdj/scClonotypeChain": chain } : {}
+			),
 			annotations: a("46895", "default", {
 				"pl7.app/label": CHAIN_LABELS[chain] + " region annotation status",
 				"pl7.app/isDiscreteFilter": "true",
@@ -516,19 +530,20 @@ allColumns := func(chains, scheme, properties) {
 	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
 	validateScheme(scheme)
 
+	paired := len(chains) > 1
 	columns := [labelColumnSpec(), abundanceColumnSpec()]
 	for i, property in properties {
 		columns = append(columns, importedPropertyColumn(property, i))
 	}
 
 	for chain in chains {
-		columns = append(columns, mainSequenceColumn(chain))
+		columns = append(columns, mainSequenceColumn(chain, paired))
 	}
 	for chain in chains {
 		for region in REGIONS {
-			columns = append(columns, regionColumnSpec(chain, region, scheme))
+			columns = append(columns, regionColumnSpec(chain, region, scheme, paired))
 		}
-		columns = append(columns, statusColumnSpec(chain, scheme))
+		columns = append(columns, statusColumnSpec(chain, scheme, paired))
 	}
 
 	return columns
@@ -547,6 +562,8 @@ columnsBySource := func(chains, scheme, properties) {
 	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
 	validateScheme(scheme)
 
+	paired := len(chains) > 1
+
 	// The only column that keeps the sample axis. Its value is the literal 1, so what it
 	// carries is presence: this record was seen in this sample. Everything else below is a
 	// function of the record key and identical in every sample the record appears in.
@@ -559,16 +576,16 @@ columnsBySource := func(chains, scheme, properties) {
 		perRecord = append(perRecord, importedPropertyColumn(property, i))
 	}
 	for chain in chains {
-		perRecord = append(perRecord, mainSequenceColumn(chain))
+		perRecord = append(perRecord, mainSequenceColumn(chain, paired))
 	}
 
 	// Read from the annotation pass's TSV, aggregated the same way.
 	regions := []
 	for chain in chains {
 		for region in REGIONS {
-			regions = append(regions, regionColumnSpec(chain, region, scheme))
+			regions = append(regions, regionColumnSpec(chain, region, scheme, paired))
 		}
-		regions = append(regions, statusColumnSpec(chain, scheme))
+		regions = append(regions, statusColumnSpec(chain, scheme, paired))
 	}
 
 	return {

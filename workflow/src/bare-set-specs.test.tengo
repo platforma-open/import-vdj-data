@@ -53,7 +53,7 @@ Test_keyAxis_carriesNoStructureKey := func() {
 // --- main sequence ----------------------------------------------------------------------
 
 Test_mainSequence_carriesChainAndIndexAndTheTwoAnnotations := func() {
-	col := specs.mainSequenceColumn("A")
+	col := specs.mainSequenceColumn("A", true)
 
 	test.isEqual("pl7.app/vdj/sequence", col.spec.name, "name")
 	test.isEqual("aminoacid", col.spec.domain["pl7.app/alphabet"], "alphabet")
@@ -68,7 +68,7 @@ Test_mainSequence_carriesChainAndIndexAndTheTwoAnnotations := func() {
 
 // A whole variable domain has no located boundary, so it carries no convention.
 Test_mainSequence_carriesNoConventionKey := func() {
-	col := specs.mainSequenceColumn("B")
+	col := specs.mainSequenceColumn("B", true)
 
 	test.isTrue(col.spec.domain["pl7.app/vdj/numberingSchema"] == undefined, "no scheme in domain")
 	test.isTrue(col.spec.annotations["pl7.app/vdj/numberingSchema"] == undefined, "no scheme annotation")
@@ -77,8 +77,8 @@ Test_mainSequence_carriesNoConventionKey := func() {
 // Two columns whose specs were identical would dedupe into one, and the heavy and light
 // sequences would stop being separately addressable. The chain key is what prevents that.
 Test_mainSequence_chainsAreDistinctSpecs := func() {
-	a := specs.mainSequenceColumn("A")
-	b := specs.mainSequenceColumn("B")
+	a := specs.mainSequenceColumn("A", true)
+	b := specs.mainSequenceColumn("B", true)
 
 	test.isTrue(a.spec.domain != b.spec.domain, "chain A and B must not share a domain")
 	test.isTrue(a.column != b.column, "chain A and B must not share a source column")
@@ -102,14 +102,14 @@ Test_regions_areSevenAndIncludeFR4 := func() {
 // The convention is emitted twice on purpose: the domain copy buys distinct identity, the
 // annotation copy is what Sequence Liabilities reads to pick its coordinate map.
 Test_region_carriesConventionInDomainAndAnnotation := func() {
-	col := specs.regionColumnSpec("A", "CDR3", "kabat")
+	col := specs.regionColumnSpec("A", "CDR3", "kabat", true)
 
 	test.isEqual("kabat", col.spec.domain["pl7.app/vdj/numberingSchema"], "scheme in domain")
 	test.isEqual("kabat", col.spec.annotations["pl7.app/vdj/numberingSchema"], "scheme in annotation")
 }
 
 Test_region_carriesChainAndFeatureAndIndex := func() {
-	col := specs.regionColumnSpec("B", "FR4", "imgt")
+	col := specs.regionColumnSpec("B", "FR4", "imgt", true)
 
 	test.isEqual("pl7.app/vdj/sequence", col.spec.name, "name")
 	test.isEqual("FR4", col.spec.domain["pl7.app/vdj/feature"], "feature")
@@ -133,7 +133,7 @@ Test_region_ordersAndVisibilityMatchTheContract := func() {
 
 	for region in specs.REGIONS {
 		want := expect[region]
-		col := specs.regionColumnSpec("A", region, "imgt")
+		col := specs.regionColumnSpec("A", region, "imgt", true)
 		test.isEqual(want[0], col.spec.annotations["pl7.app/table/orderPriority"], region + " order")
 		test.isEqual(want[1], col.spec.annotations["pl7.app/table/visibility"], region + " visibility")
 	}
@@ -141,14 +141,14 @@ Test_region_ordersAndVisibilityMatchTheContract := func() {
 
 // A chain with no located boundaries carries no value — not an empty string.
 Test_region_allowsNA := func() {
-	test.isTrue(specs.regionColumnSpec("A", "FR1", "imgt").allowNA, "regions must allow NA")
+	test.isTrue(specs.regionColumnSpec("A", "FR1", "imgt", true).allowNA, "regions must allow NA")
 }
 
 // A convention-blind query matches every convention, but two sets drawn under different
 // conventions must stay separately selectable. Only the domain gives that.
 Test_region_schemesProduceDistinctDomains := func() {
-	imgt := specs.regionColumnSpec("A", "CDR1", "imgt")
-	kabat := specs.regionColumnSpec("A", "CDR1", "kabat")
+	imgt := specs.regionColumnSpec("A", "CDR1", "imgt", true)
+	kabat := specs.regionColumnSpec("A", "CDR1", "kabat", true)
 
 	test.isTrue(imgt.spec.domain != kabat.spec.domain, "schemes must not share a domain")
 }
@@ -156,7 +156,7 @@ Test_region_schemesProduceDistinctDomains := func() {
 // --- status column -------------------------------------------------------------------------
 
 Test_status_isAClosedThreeMemberEnum := func() {
-	col := specs.statusColumnSpec("A", "imgt")
+	col := specs.statusColumnSpec("A", "imgt", true)
 
 	test.isEqual("pl7.app/vdj/regionAnnotationStatus", col.spec.name, "name")
 	test.isEqual("String", col.spec.valueType, "String, because xsv.importFile rejects Boolean")
@@ -170,13 +170,13 @@ Test_status_isAClosedThreeMemberEnum := func() {
 
 // A null status would restore the ambiguity the column exists to remove.
 Test_status_isNeverNull := func() {
-	test.isFalse(specs.statusColumnSpec("B", "imgt").allowNA, "status must not allow NA")
+	test.isFalse(specs.statusColumnSpec("B", "imgt", true).allowNA, "status must not allow NA")
 }
 
 Test_status_isPerChainAndPerScheme := func() {
-	a := specs.statusColumnSpec("A", "imgt")
-	b := specs.statusColumnSpec("B", "imgt")
-	k := specs.statusColumnSpec("A", "kabat")
+	a := specs.statusColumnSpec("A", "imgt", true)
+	b := specs.statusColumnSpec("B", "imgt", true)
+	k := specs.statusColumnSpec("A", "kabat", true)
 
 	test.isTrue(a.spec.domain != b.spec.domain, "one status per chain")
 	test.isTrue(a.spec.domain != k.spec.domain, "one status per scheme")
@@ -416,4 +416,47 @@ Test_columnsBySource_partitionsAllColumns := func() {
 	for col in all {
 		test.isTrue(seen[col.id] != undefined, "column missing from the split: " + col.id)
 	}
+}
+
+
+// pl7.app/vdj/scClonotypeChain is how consumers recognise a dataset that holds paired chains in
+// one frame: clonotype-clustering probes for it, antibody-sequence-liabilities scans for it. A
+// one-chain set is bulk-shaped, so stamping it there would make both treat it as paired.
+Test_singleChain_carriesNoChainDomain := func() {
+	main := specs.mainSequenceColumn("A", false)
+	test.isTrue(main.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined, "main: no chain key")
+	test.isTrue(main.spec.domain["pl7.app/vdj/scClonotypeChain/index"] == undefined, "main: no index")
+	test.isEqual("VDJRegionInFrame", main.spec.domain["pl7.app/vdj/feature"], "feature survives")
+	test.isEqual("aminoacid", main.spec.domain["pl7.app/alphabet"], "alphabet survives")
+
+	region := specs.regionColumnSpec("B", "CDR3", "imgt", false)
+	test.isTrue(region.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined, "region: no chain key")
+	test.isTrue(region.spec.domain["pl7.app/vdj/scClonotypeChain/index"] == undefined, "region: no index")
+	test.isEqual("imgt", region.spec.domain["pl7.app/vdj/numberingSchema"], "scheme survives")
+
+	status := specs.statusColumnSpec("A", "imgt", false)
+	test.isTrue(status.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined, "status: no chain key")
+
+	// The chain is still named for the reader — it is only the machine-readable claim that goes.
+	test.isEqual("Light CDR3 aa", region.spec.annotations["pl7.app/label"], "label keeps the chain")
+}
+
+// One mapped chain means bulk-shaped; two means paired. columnsBySource decides it, so the
+// process template cannot get it wrong.
+Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
+	oneChain := specs.columnsBySource(["A"], "imgt", [])
+	for col in oneChain.perRecord + oneChain.regions {
+		test.isTrue(
+			col.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined,
+			"one chain must not be stamped: " + col.id
+		)
+	}
+
+	twoChains := specs.columnsBySource(["A", "B"], "imgt", [])
+	stamped := 0
+	for col in twoChains.perRecord + twoChains.regions {
+		if col.spec.domain["pl7.app/vdj/scClonotypeChain"] != undefined { stamped += 1 }
+	}
+	// Two main sequences, two statuses, seven regions each.
+	test.isEqual(18, stamped, "both chains stamped when paired")
 }
