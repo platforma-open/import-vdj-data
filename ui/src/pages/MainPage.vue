@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import type { BlockData, ImportedProperty } from "@platforma-open/milaboratories.import-vdj.model";
+import type {
+  BareSetChain,
+  BlockData,
+  ImportedProperty,
+} from "@platforma-open/milaboratories.import-vdj.model";
 import { bareSetValid, propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
@@ -103,14 +107,14 @@ function getBare(): BareSetArgs | undefined {
   return app.model.data.bareSet;
 }
 
-function bareField(field: "identity" | "A" | "B"): string | undefined {
+function bareField(field: "identity" | BareSetChain): string | undefined {
   const bare = getBare();
   if (!bare) return undefined;
   return field === "identity" ? bare.identity : bare.sequences?.[field];
 }
 
 /** Written on user gesture only, never from a watcher on an output. */
-function setBareField(field: "identity" | "A" | "B", value: string | undefined) {
+function setBareField(field: "identity" | BareSetChain, value: string | undefined) {
   const a = app.model.data;
   const current: BareSetArgs = a.bareSet ?? { identity: "", sequences: {}, scheme: "imgt" };
   const next: BareSetArgs = {
@@ -125,7 +129,7 @@ function setBareField(field: "identity" | "A" | "B", value: string | undefined) 
 
   // Cleared right back out when nothing is mapped, so its mere presence stays a reliable
   // signal that this is a bare set.
-  const empty = !next.identity && !next.sequences.A && !next.sequences.B;
+  const empty = !next.identity && !next.sequences.IGHeavy && !next.sequences.IGLight;
   a.bareSet = empty ? undefined : next;
 }
 
@@ -149,7 +153,9 @@ const identityCollisions = computed<string[]>(
 const propertyCandidates = computed(() => {
   const bare = app.model.data.bareSet;
   const taken = new Set(
-    [bare?.identity, bare?.sequences?.A, bare?.sequences?.B].filter(Boolean) as string[],
+    [bare?.identity, bare?.sequences?.IGHeavy, bare?.sequences?.IGLight].filter(
+      Boolean,
+    ) as string[],
   );
   return (app.model.outputs.headerColumns ?? []).filter((h) => !taken.has(h));
 });
@@ -561,18 +567,18 @@ function onModalUpdate(val: boolean) {
               @update:model-value="(v: string | undefined) => setBareField('identity', v)"
             />
             <PlDropdown
-              :model-value="bareField('A')"
+              :model-value="bareField('IGHeavy')"
               :options="sequenceOptions"
               label="Heavy chain variable domain (aa)"
               clearable
-              @update:model-value="(v: string | undefined) => setBareField('A', v)"
+              @update:model-value="(v: string | undefined) => setBareField('IGHeavy', v)"
             />
             <PlDropdown
-              :model-value="bareField('B')"
+              :model-value="bareField('IGLight')"
               :options="sequenceOptions"
               label="Light chain variable domain (aa)"
               clearable
-              @update:model-value="(v: string | undefined) => setBareField('B', v)"
+              @update:model-value="(v: string | undefined) => setBareField('IGLight', v)"
             />
             <template v-if="isBareSet">
               <PlDropdownMulti

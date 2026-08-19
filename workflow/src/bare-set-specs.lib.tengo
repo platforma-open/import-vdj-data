@@ -23,7 +23,7 @@ strings := import("@platforma-sdk/workflow-tengo:strings")
 
 // Declared chains, in emission order. `A` heavy, `B` light — the vocabulary of
 // `pl7.app/vdj/scClonotypeChain`, which `sequence-properties` already reads.
-CHAINS := ["A", "B"]
+CHAINS := ["IGHeavy", "IGLight"]
 
 // Labels use Heavy/Light while domains use A/B. The atoms write `<chain>` in both
 // positions, but the workspace's one shipped paired producer renders labels as
@@ -31,15 +31,19 @@ CHAINS := ["A", "B"]
 // (blocks/mixcr-scfv-clonotyping/workflow/src/mixcr-exports.lib.tengo:173-178,271).
 // Following it: a literal reading would put "A CDR3 aa" in front of the scientist.
 CHAIN_LABELS := {
-	"A": "Heavy",
-	"B": "Light"
+	"IGHeavy": "Heavy",
+	"IGLight": "Light"
 }
 
-// The `pl7.app/vdj/chain` vocabulary, which is the block's own bulk vocabulary rather than the
-// A/B slot names. Stamped on the key axis of a single-chain set — see `keyAxis`.
-CHAIN_LOCI := {
-	"A": "IGHeavy",
-	"B": "IGLight"
+// The value `pl7.app/vdj/scClonotypeChain` takes for each slot, emitted only on a paired set.
+//
+// Two vocabularies, deliberately. A slot is named in the `pl7.app/vdj/chain` vocabulary the
+// block's bulk path uses, because a mapped chain is a locus and one chain is a bulk shape.
+// `scClonotypeChain` is the separate, positional vocabulary for chains sharing one frame, and
+// A/B is what every producer puts in it — so the slot name does not belong there.
+PAIRED_CHAIN_DOMAIN := {
+	"IGHeavy": "A",
+	"IGLight": "B"
 }
 
 // Seven regions. Order here is emission order and is fixed so the assembled column list is
@@ -88,7 +92,7 @@ a := func(order, visibility, spec) {
 
 validateChain := func(chain) {
 	ll.assert(
-		chain == "A" || chain == "B",
+		chain == "IGHeavy" || chain == "IGLight",
 		"bare-set-specs: unknown chain %v (expected A or B)", chain
 	)
 }
@@ -108,7 +112,7 @@ validateChain := func(chain) {
 chainDomain := func(chain, paired) {
 	if !paired { return {} }
 	return {
-		"pl7.app/vdj/scClonotypeChain": chain,
+		"pl7.app/vdj/scClonotypeChain": PAIRED_CHAIN_DOMAIN[chain],
 		"pl7.app/vdj/scClonotypeChain/index": "primary"
 	}
 }
@@ -153,7 +157,7 @@ keyAxis := func(blockId, chains) {
 	chainDom := {}
 	if len(chains) == 1 {
 		validateChain(chains[0])
-		chainDom = { "pl7.app/vdj/chain": CHAIN_LOCI[chains[0]] }
+		chainDom = { "pl7.app/vdj/chain": chains[0] }
 	}
 
 	return {
@@ -313,7 +317,7 @@ statusColumnSpec := func(chain, scheme, paired) {
 			// chain's annotation attempt, not of one of its sequences.
 			domain: maps.merge(
 				{ "pl7.app/vdj/numberingSchema": scheme },
-				paired ? { "pl7.app/vdj/scClonotypeChain": chain } : {}
+				paired ? { "pl7.app/vdj/scClonotypeChain": PAIRED_CHAIN_DOMAIN[chain] } : {}
 			),
 			annotations: a("46895", "default", {
 				"pl7.app/label": CHAIN_LABELS[chain] + " region annotation status",
@@ -525,7 +529,7 @@ statsColumns := func(chains, blockId) {
 					valueType: "Int",
 					domain: maps.merge(
 						{ "pl7.app/vdj/clonotypingRunId": blockId },
-						paired ? { "pl7.app/vdj/scClonotypeChain": chain } : {}
+						paired ? { "pl7.app/vdj/scClonotypeChain": PAIRED_CHAIN_DOMAIN[chain] } : {}
 					),
 					annotations: a(e.order, "default", {
 						"pl7.app/label": label

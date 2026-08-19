@@ -21,7 +21,7 @@ ids := func(columns) {
 // --- key axis ---------------------------------------------------------------------------
 
 Test_keyAxis_isVariantKeyWithRunIdAndReceptor := func() {
-	axis := specs.keyAxis("block-42", ["A", "B"])
+	axis := specs.keyAxis("block-42", ["IGHeavy", "IGLight"])
 
 	test.isEqual("pl7.app/variantKey", axis.spec.name, "key axis name")
 	test.isEqual("String", axis.spec.type, "key axis type")
@@ -34,7 +34,7 @@ Test_keyAxis_isVariantKeyWithRunIdAndReceptor := func() {
 // The run-id key is what makes a set on this shared axis antibody rather than peptide or
 // amplicon. A reader that takes modality from the axis *name* is wrong; this is the carrier.
 Test_keyAxis_carriesTheVdjRunIdAndNotAnotherModalitys := func() {
-	domain := specs.keyAxis("b1", ["A", "B"]).spec.domain
+	domain := specs.keyAxis("b1", ["IGHeavy", "IGLight"]).spec.domain
 
 	test.isEqual("b1", domain["pl7.app/vdj/clonotypingRunId"], "vdj run id")
 	test.isTrue(domain["pl7.app/peptide/extractionRunId"] == undefined, "must not claim peptide")
@@ -44,7 +44,7 @@ Test_keyAxis_carriesTheVdjRunIdAndNotAnotherModalitys := func() {
 // `scClonotypeKey/structure` belongs to the vocabulary this axis no longer uses, and no
 // variantKey producer in the workspace emits a structure key.
 Test_keyAxis_carriesNoStructureKey := func() {
-	domain := specs.keyAxis("b1", ["A", "B"]).spec.domain
+	domain := specs.keyAxis("b1", ["IGHeavy", "IGLight"]).spec.domain
 
 	test.isTrue(domain["pl7.app/vdj/scClonotypeKey/structure"] == undefined, "no structure key")
 	test.isEqual(2, len(domain), "exactly two domain keys when paired")
@@ -54,22 +54,22 @@ Test_keyAxis_carriesNoStructureKey := func() {
 // vocabulary the block's bulk path puts on its clonotypeKey axis. It is the only machine-readable
 // statement of the chain on a single-chain set, since the columns carry none.
 Test_keyAxis_namesTheChainWhenThereIsOnlyOne := func() {
-	heavy := specs.keyAxis("b1", ["A"]).spec.domain
+	heavy := specs.keyAxis("b1", ["IGHeavy"]).spec.domain
 	test.isEqual("IGHeavy", heavy["pl7.app/vdj/chain"], "heavy-only names its locus")
 	test.isEqual(3, len(heavy), "run id, receptor and chain")
 
-	light := specs.keyAxis("b1", ["B"]).spec.domain
+	light := specs.keyAxis("b1", ["IGLight"]).spec.domain
 	test.isEqual("IGLight", light["pl7.app/vdj/chain"], "light-only names its locus")
 
 	// A paired record holds both chains, so no single value applies.
-	paired := specs.keyAxis("b1", ["A", "B"]).spec.domain
+	paired := specs.keyAxis("b1", ["IGHeavy", "IGLight"]).spec.domain
 	test.isTrue(paired["pl7.app/vdj/chain"] == undefined, "paired names no chain")
 }
 
 // --- main sequence ----------------------------------------------------------------------
 
 Test_mainSequence_carriesChainAndIndexAndTheTwoAnnotations := func() {
-	col := specs.mainSequenceColumn("A", true)
+	col := specs.mainSequenceColumn("IGHeavy", true)
 
 	test.isEqual("pl7.app/vdj/sequence", col.spec.name, "name")
 	test.isEqual("aminoacid", col.spec.domain["pl7.app/alphabet"], "alphabet")
@@ -84,7 +84,7 @@ Test_mainSequence_carriesChainAndIndexAndTheTwoAnnotations := func() {
 
 // A whole variable domain has no located boundary, so it carries no convention.
 Test_mainSequence_carriesNoConventionKey := func() {
-	col := specs.mainSequenceColumn("B", true)
+	col := specs.mainSequenceColumn("IGLight", true)
 
 	test.isTrue(col.spec.domain["pl7.app/vdj/numberingSchema"] == undefined, "no scheme in domain")
 	test.isTrue(col.spec.annotations["pl7.app/vdj/numberingSchema"] == undefined, "no scheme annotation")
@@ -93,8 +93,8 @@ Test_mainSequence_carriesNoConventionKey := func() {
 // Two columns whose specs were identical would dedupe into one, and the heavy and light
 // sequences would stop being separately addressable. The chain key is what prevents that.
 Test_mainSequence_chainsAreDistinctSpecs := func() {
-	a := specs.mainSequenceColumn("A", true)
-	b := specs.mainSequenceColumn("B", true)
+	a := specs.mainSequenceColumn("IGHeavy", true)
+	b := specs.mainSequenceColumn("IGLight", true)
 
 	test.isTrue(a.spec.domain != b.spec.domain, "chain A and B must not share a domain")
 	test.isTrue(a.column != b.column, "chain A and B must not share a source column")
@@ -118,14 +118,14 @@ Test_regions_areSevenAndIncludeFR4 := func() {
 // The convention is emitted twice on purpose: the domain copy buys distinct identity, the
 // annotation copy is what Sequence Liabilities reads to pick its coordinate map.
 Test_region_carriesConventionInDomainAndAnnotation := func() {
-	col := specs.regionColumnSpec("A", "CDR3", "kabat", true)
+	col := specs.regionColumnSpec("IGHeavy", "CDR3", "kabat", true)
 
 	test.isEqual("kabat", col.spec.domain["pl7.app/vdj/numberingSchema"], "scheme in domain")
 	test.isEqual("kabat", col.spec.annotations["pl7.app/vdj/numberingSchema"], "scheme in annotation")
 }
 
 Test_region_carriesChainAndFeatureAndIndex := func() {
-	col := specs.regionColumnSpec("B", "FR4", "imgt", true)
+	col := specs.regionColumnSpec("IGLight", "FR4", "imgt", true)
 
 	test.isEqual("pl7.app/vdj/sequence", col.spec.name, "name")
 	test.isEqual("FR4", col.spec.domain["pl7.app/vdj/feature"], "feature")
@@ -149,7 +149,7 @@ Test_region_ordersAndVisibilityMatchTheContract := func() {
 
 	for region in specs.REGIONS {
 		want := expect[region]
-		col := specs.regionColumnSpec("A", region, "imgt", true)
+		col := specs.regionColumnSpec("IGHeavy", region, "imgt", true)
 		test.isEqual(want[0], col.spec.annotations["pl7.app/table/orderPriority"], region + " order")
 		test.isEqual(want[1], col.spec.annotations["pl7.app/table/visibility"], region + " visibility")
 	}
@@ -157,14 +157,14 @@ Test_region_ordersAndVisibilityMatchTheContract := func() {
 
 // A chain with no located boundaries carries no value — not an empty string.
 Test_region_allowsNA := func() {
-	test.isTrue(specs.regionColumnSpec("A", "FR1", "imgt", true).allowNA, "regions must allow NA")
+	test.isTrue(specs.regionColumnSpec("IGHeavy", "FR1", "imgt", true).allowNA, "regions must allow NA")
 }
 
 // A convention-blind query matches every convention, but two sets drawn under different
 // conventions must stay separately selectable. Only the domain gives that.
 Test_region_schemesProduceDistinctDomains := func() {
-	imgt := specs.regionColumnSpec("A", "CDR1", "imgt", true)
-	kabat := specs.regionColumnSpec("A", "CDR1", "kabat", true)
+	imgt := specs.regionColumnSpec("IGHeavy", "CDR1", "imgt", true)
+	kabat := specs.regionColumnSpec("IGHeavy", "CDR1", "kabat", true)
 
 	test.isTrue(imgt.spec.domain != kabat.spec.domain, "schemes must not share a domain")
 }
@@ -172,7 +172,7 @@ Test_region_schemesProduceDistinctDomains := func() {
 // --- status column -------------------------------------------------------------------------
 
 Test_status_isAClosedThreeMemberEnum := func() {
-	col := specs.statusColumnSpec("A", "imgt", true)
+	col := specs.statusColumnSpec("IGHeavy", "imgt", true)
 
 	test.isEqual("pl7.app/vdj/regionAnnotationStatus", col.spec.name, "name")
 	test.isEqual("String", col.spec.valueType, "String, because xsv.importFile rejects Boolean")
@@ -186,13 +186,13 @@ Test_status_isAClosedThreeMemberEnum := func() {
 
 // A null status would restore the ambiguity the column exists to remove.
 Test_status_isNeverNull := func() {
-	test.isFalse(specs.statusColumnSpec("B", "imgt", true).allowNA, "status must not allow NA")
+	test.isFalse(specs.statusColumnSpec("IGLight", "imgt", true).allowNA, "status must not allow NA")
 }
 
 Test_status_isPerChainAndPerScheme := func() {
-	a := specs.statusColumnSpec("A", "imgt", true)
-	b := specs.statusColumnSpec("B", "imgt", true)
-	k := specs.statusColumnSpec("A", "kabat", true)
+	a := specs.statusColumnSpec("IGHeavy", "imgt", true)
+	b := specs.statusColumnSpec("IGLight", "imgt", true)
+	k := specs.statusColumnSpec("IGHeavy", "kabat", true)
 
 	test.isTrue(a.spec.domain != b.spec.domain, "one status per chain")
 	test.isTrue(a.spec.domain != k.spec.domain, "one status per scheme")
@@ -231,14 +231,14 @@ Test_abundance_isTheBlocksOwnUmiCountSpec := func() {
 // --- assembly ---------------------------------------------------------------------------------
 
 Test_allColumns_pairedSetEmitsTwentyColumns := func() {
-	columns := specs.allColumns(["A", "B"], "imgt", [])
+	columns := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [])
 
 	// label + abundance + 2 main sequences + 14 regions + 2 statuses
 	test.isEqual(20, len(columns), "paired set column count")
 }
 
 Test_allColumns_singleChainEmitsHalfTheChainColumns := func() {
-	columns := specs.allColumns(["A"], "imgt", [])
+	columns := specs.allColumns(["IGHeavy"], "imgt", [])
 
 	// label + abundance + 1 main sequence + 7 regions + 1 status
 	test.isEqual(11, len(columns), "single chain column count")
@@ -249,7 +249,7 @@ Test_allColumns_singleChainEmitsHalfTheChainColumns := func() {
 // sampleCount is never emitted: a count of how often a record repeats must not be presented
 // as an abundance, and the synthetic column's cross-sample aggregates are suppressed too.
 Test_allColumns_omitsSampleCountAndAggregates := func() {
-	for c in specs.allColumns(["A", "B"], "imgt", []) {
+	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", []) {
 		test.isTrue(c.spec.name != "pl7.app/vdj/sampleCount", "sampleCount must not be emitted")
 		test.isTrue(
 			c.spec.name != "pl7.app/vdj/uniqueMoleculeCountTotal",
@@ -266,7 +266,7 @@ Test_allColumns_omitsSampleCountAndAggregates := func() {
 Test_allColumns_hasExactlyOneAnchor := func() {
 	anchors := 0
 	primaries := 0
-	for c in specs.allColumns(["A", "B"], "imgt", []) {
+	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", []) {
 		if c.spec.annotations["pl7.app/isAnchor"] == "true" {
 			anchors = anchors + 1
 		}
@@ -282,8 +282,8 @@ Test_allColumns_hasExactlyOneAnchor := func() {
 // Pure templates downstream dedup on their inputs, so equal inputs must give byte-equal
 // output. Map iteration anywhere in assembly would break this silently.
 Test_allColumns_isCanonical := func() {
-	first := ids(specs.allColumns(["A", "B"], "kabat", []))
-	second := ids(specs.allColumns(["A", "B"], "kabat", []))
+	first := ids(specs.allColumns(["IGHeavy", "IGLight"], "kabat", []))
+	second := ids(specs.allColumns(["IGHeavy", "IGLight"], "kabat", []))
 
 	test.isEqual(first, second, "column order must be stable across calls")
 }
@@ -291,7 +291,7 @@ Test_allColumns_isCanonical := func() {
 // Every emitted column must be addressable on its own: no two may share a source column.
 Test_allColumns_sourceColumnsAreUnique := func() {
 	seen := {}
-	for c in specs.allColumns(["A", "B"], "imgt", []) {
+	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", []) {
 		test.isTrue(seen[c.column] == undefined, "duplicate source column " + c.column)
 		seen[c.column] = true
 	}
@@ -356,8 +356,8 @@ Test_importedProperty_distinctHeadersDoNotCollide := func() {
 }
 
 Test_allColumns_includesAcceptedProperties := func() {
-	base := specs.allColumns(["A", "B"], "imgt", [])
-	withProps := specs.allColumns(["A", "B"], "imgt", [
+	base := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [])
+	withProps := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [
 		{ header: "Target" },
 		{ header: "Assay" }
 	])
@@ -394,7 +394,7 @@ Test_recordLabel_followsTheAxisLabelConvention := func() {
 // rather than here.
 Test_columnsBySource_onlyAbundanceKeepsTheSampleAxis := func() {
 	properties := [{ header: "Target" }]
-	split := specs.columnsBySource(["A", "B"], "imgt", properties)
+	split := specs.columnsBySource(["IGHeavy", "IGLight"], "imgt", properties)
 
 	test.isEqual(1, len(split.perSample), "exactly one per-sample column")
 	test.isEqual(
@@ -415,7 +415,7 @@ Test_columnsBySource_onlyAbundanceKeepsTheSampleAxis := func() {
 // that fell out of the split would simply never be emitted, with nothing to report it.
 Test_columnsBySource_partitionsAllColumns := func() {
 	properties := [{ header: "Target" }]
-	chains := ["A", "B"]
+	chains := ["IGHeavy", "IGLight"]
 
 	all := specs.allColumns(chains, "kabat", properties)
 	split := specs.columnsBySource(chains, "kabat", properties)
@@ -439,18 +439,18 @@ Test_columnsBySource_partitionsAllColumns := func() {
 // one frame: clonotype-clustering probes for it, antibody-sequence-liabilities scans for it. A
 // one-chain set is bulk-shaped, so stamping it there would make both treat it as paired.
 Test_singleChain_carriesNoChainDomain := func() {
-	main := specs.mainSequenceColumn("A", false)
+	main := specs.mainSequenceColumn("IGHeavy", false)
 	test.isTrue(main.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined, "main: no chain key")
 	test.isTrue(main.spec.domain["pl7.app/vdj/scClonotypeChain/index"] == undefined, "main: no index")
 	test.isEqual("VDJRegionInFrame", main.spec.domain["pl7.app/vdj/feature"], "feature survives")
 	test.isEqual("aminoacid", main.spec.domain["pl7.app/alphabet"], "alphabet survives")
 
-	region := specs.regionColumnSpec("B", "CDR3", "imgt", false)
+	region := specs.regionColumnSpec("IGLight", "CDR3", "imgt", false)
 	test.isTrue(region.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined, "region: no chain key")
 	test.isTrue(region.spec.domain["pl7.app/vdj/scClonotypeChain/index"] == undefined, "region: no index")
 	test.isEqual("imgt", region.spec.domain["pl7.app/vdj/numberingSchema"], "scheme survives")
 
-	status := specs.statusColumnSpec("A", "imgt", false)
+	status := specs.statusColumnSpec("IGHeavy", "imgt", false)
 	test.isTrue(status.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined, "status: no chain key")
 
 	// The chain is still named for the reader — it is only the machine-readable claim that goes.
@@ -460,7 +460,7 @@ Test_singleChain_carriesNoChainDomain := func() {
 // One mapped chain means bulk-shaped; two means paired. columnsBySource decides it, so the
 // process template cannot get it wrong.
 Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
-	oneChain := specs.columnsBySource(["A"], "imgt", [])
+	oneChain := specs.columnsBySource(["IGHeavy"], "imgt", [])
 	for col in oneChain.perRecord + oneChain.regions {
 		test.isTrue(
 			col.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined,
@@ -468,7 +468,7 @@ Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
 		)
 	}
 
-	twoChains := specs.columnsBySource(["A", "B"], "imgt", [])
+	twoChains := specs.columnsBySource(["IGHeavy", "IGLight"], "imgt", [])
 	stamped := 0
 	for col in twoChains.perRecord + twoChains.regions {
 		if col.spec.domain["pl7.app/vdj/scClonotypeChain"] != undefined { stamped += 1 }
@@ -481,13 +481,13 @@ Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
 // The statistics table carries the chain in each column's domain, not on an axis — the shape the
 // block's bulk path already uses. So a one-chain set's statistics are shaped exactly like bulk's.
 Test_statsColumns_carryTheChainInTheDomain := func() {
-	paired := specs.statsColumns(["A", "B"], "b1")
+	paired := specs.statsColumns(["IGHeavy", "IGLight"], "b1")
 	test.isEqual(8, len(paired), "four statistics per chain")
-	test.isEqual("A_annotated", paired[0].column, "TSV header is chain-prefixed")
+	test.isEqual("IGHeavy_annotated", paired[0].column, "TSV header is chain-prefixed")
 	test.isEqual("A", paired[0].spec.domain["pl7.app/vdj/scClonotypeChain"], "chain in the domain")
 	test.isEqual("Heavy Annotated", paired[0].spec.annotations["pl7.app/label"], "chain in the label")
 
-	one := specs.statsColumns(["A"], "b1")
+	one := specs.statsColumns(["IGHeavy"], "b1")
 	test.isEqual(4, len(one), "four statistics, one chain")
 	test.isTrue(
 		one[0].spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined,

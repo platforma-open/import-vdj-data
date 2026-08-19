@@ -28,7 +28,14 @@ export type FileSource = {
   extension: "csv" | "tsv" | "xlsx";
 };
 
-export type BareSetChain = "A" | "B";
+/**
+ * The mapping slots a scientist can assign a sequence column to.
+ *
+ * Named in the `pl7.app/vdj/chain` vocabulary the block's bulk path already uses, rather than
+ * the A/B of `pl7.app/vdj/scClonotypeChain`: a mapped chain is a locus, and one mapped chain is
+ * a bulk shape. The workflow translates to A/B where the paired-chain domain needs it.
+ */
+export type BareSetChain = "IGHeavy" | "IGLight";
 
 export type ImportedProperty = {
   /** The source header, exactly as the file wrote it. It becomes the column's label. */
@@ -42,7 +49,7 @@ export type BareSetMapping = {
    */
   identity: string;
   /**
-   * Amino-acid variable domain per chain — `A` heavy, `B` light. The chain comes from the
+   * Amino-acid variable domain per chain. The chain comes from the
    * slot the column was assigned to, so the file needs no chain column and nothing is matched
    * against a locus map. A row carrying both is unpivoted into one record, not split into two.
    */
@@ -192,7 +199,7 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
 export function bareSetValid(bare: BareSetMapping | undefined): boolean {
   if (bare === undefined) return false;
   if (!bare.identity) return false;
-  if (!bare.sequences?.A && !bare.sequences?.B) return false;
+  if (!bare.sequences?.IGHeavy && !bare.sequences?.IGLight) return false;
   if (!bare.scheme) return false;
   // Two headers that sanitize alike would produce identical specs and dedupe into one column,
   // losing a column the scientist explicitly chose. Refused rather than disambiguated: a

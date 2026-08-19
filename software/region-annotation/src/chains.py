@@ -1,10 +1,13 @@
 """Chain vocabulary shared by both entrypoints.
 
-The block speaks `A` / `B` (heavy / light) because that is the vocabulary of the
-`pl7.app/vdj/scClonotypeChain` column domain the emitted columns carry. ANARCI speaks
-`H` / `KL` and writes one CSV per bucket. The two are related but not the same thing:
-`A` / `B` is *declared* by the mapping slot the scientist assigned a column to, while
-`H` / `KL` is *inferred* by ANARCI from the sequence itself.
+The block speaks `IGHeavy` / `IGLight`, the `pl7.app/vdj/chain` vocabulary its bulk path
+already uses — a mapped chain is a locus, and one mapped chain is a bulk shape. ANARCI speaks
+`H` / `KL` and writes one CSV per bucket. The two are related but not the same thing: the locus
+is *declared* by the mapping slot the scientist assigned a column to, while `H` / `KL` is
+*inferred* by ANARCI from the sequence itself.
+
+(The workflow separately emits `pl7.app/vdj/scClonotypeChain` as `A` / `B` on a paired set. That
+is a different, positional vocabulary for chains sharing one frame; nothing here uses it.)
 
 Reconciling a declared chain against an inferred one is explicitly out of scope for this
 spec, so this package never compares them. It records regions under the declared chain,
@@ -13,17 +16,17 @@ actually put the sequence in. See `regions.py` for why.
 """
 
 # Declared chains, in emission order.
-CHAINS = ["A", "B"]
+CHAINS = ["IGHeavy", "IGLight"]
 
-CHAIN_LABELS = {"A": "heavy", "B": "light"}
+CHAIN_LABELS = {"IGHeavy": "heavy", "IGLight": "light"}
 
 # ANARCI's own buckets. It writes `<out>_H.csv` and `<out>_KL.csv`.
 ANARCI_BUCKETS = ["H", "KL"]
 
 # The bucket a declared chain is expected to land in, used *only* to count disagreements —
-# never to choose a range table, and never to stop a run. ANARCI merges kappa and lambda
-# into one KL bucket, and `B` is light regardless of which, so the pairing is total.
-EXPECTED_BUCKET = {"A": "H", "B": "KL"}
+# never to choose a range table, and never to stop a run. ANARCI merges kappa and lambda into
+# one KL bucket, and IGLight is light regardless of which, so the pairing is total.
+EXPECTED_BUCKET = {"IGHeavy": "H", "IGLight": "KL"}
 
 
 def sequence_column(chain: str) -> str:

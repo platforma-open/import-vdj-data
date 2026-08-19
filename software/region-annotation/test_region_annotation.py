@@ -76,7 +76,7 @@ def main():
     in_tsv = os.path.join(work, "in.tsv")
     with open(in_tsv, "w", newline="") as f:
         w = csv.writer(f, delimiter="\t")
-        w.writerow(["variantKey", "A_sequence", "B_sequence"])
+        w.writerow(["variantKey", "IGHeavy_sequence", "IGLight_sequence"])
         w.writerow(["K1", "EVQLVQ", "DIQMTQ"])  # both chains numbered
         w.writerow(["K2", "EVQLVQ", ""])        # B not supplied
         w.writerow(["K3", "EVQLVQ", ""])        # A supplied, ANARCI returned nothing
@@ -86,8 +86,8 @@ def main():
 
     h_csv = os.path.join(work, "anarci.csv_H.csv")
     kl_csv = os.path.join(work, "anarci.csv_KL.csv")
-    write_anarci_csv(h_csv, ["K1|A", "K2|A", "K4|A"], all_gaps={"K4|A"})
-    write_anarci_csv(kl_csv, ["K1|B", "K5|A"])
+    write_anarci_csv(h_csv, ["K1|IGHeavy", "K2|IGHeavy", "K4|IGHeavy"], all_gaps={"K4|IGHeavy"})
+    write_anarci_csv(kl_csv, ["K1|IGLight", "K5|IGHeavy"])
 
     fasta = os.path.join(work, "out.fasta")
     print(run(os.path.join(SRC, "fasta.py"), "--input_tsv", in_tsv,
@@ -96,7 +96,7 @@ def main():
     ids = [line[1:].strip() for line in open(fasta) if line.startswith(">")]
     record_ids = [i for i in ids if not i.startswith("__anarci_bucket_pad__")]
     pad_ids = [i for i in ids if i.startswith("__anarci_bucket_pad__")]
-    assert record_ids == ["K1|A", "K1|B", "K2|A", "K3|A", "K4|A", "K5|A"], record_ids
+    assert record_ids == ["K1|IGHeavy", "K1|IGLight", "K2|IGHeavy", "K3|IGHeavy", "K4|IGHeavy", "K5|IGHeavy"], record_ids
     print("  fasta: chain is in the id, unsupplied chains skipped, blank key dropped")
 
     # Without these, a single-bucket set leaves one CSV unwritten and the workflow cannot save it.
@@ -114,12 +114,12 @@ def main():
     assert [r["variantKey"] for r in rows] == ["K1", "K2", "K3", "K4", "K5"], list(by_key)
 
     want_header = (["variantKey"]
-                   + [f"A_{r}_aa" for r in REGIONS] + ["A_regionAnnotationStatus"]
-                   + [f"B_{r}_aa" for r in REGIONS] + ["B_regionAnnotationStatus"])
+                   + [f"IGHeavy_{r}_aa" for r in REGIONS] + ["IGHeavy_regionAnnotationStatus"]
+                   + [f"IGLight_{r}_aa" for r in REGIONS] + ["IGLight_regionAnnotationStatus"])
     assert list(rows[0].keys()) == want_header, list(rows[0].keys())
     print("  header: seven regions per chain including FR4, plus a status per chain")
 
-    for chain, bucket in (("A", "H"), ("B", "KL")):
+    for chain, bucket in (("IGHeavy", "H"), ("IGLight", "KL")):
         for region in REGIONS:
             got = by_key["K1"][f"{chain}_{region}_aa"]
             exp = expected(*KABAT[bucket][region])
@@ -127,27 +127,27 @@ def main():
         assert by_key["K1"][f"{chain}_regionAnnotationStatus"] == "Annotated"
     print("  K1: both chains Annotated, all seven regions match their bucket's kabat ranges")
 
-    assert by_key["K2"]["B_regionAnnotationStatus"] == "Not applicable"
-    assert all(by_key["K2"][f"B_{r}_aa"] == "" for r in REGIONS)
+    assert by_key["K2"]["IGLight_regionAnnotationStatus"] == "Not applicable"
+    assert all(by_key["K2"][f"IGLight_{r}_aa"] == "" for r in REGIONS)
     print("  K2: chain not supplied -> Not applicable, no region values")
 
-    assert by_key["K3"]["A_regionAnnotationStatus"] == "Failed"
-    assert all(by_key["K3"][f"A_{r}_aa"] == "" for r in REGIONS)
+    assert by_key["K3"]["IGHeavy_regionAnnotationStatus"] == "Failed"
+    assert all(by_key["K3"][f"IGHeavy_{r}_aa"] == "" for r in REGIONS)
     print("  K3: supplied but unnumbered -> Failed, no region values (not empty strings)")
 
-    assert by_key["K4"]["A_regionAnnotationStatus"] == "Failed"
-    assert all(by_key["K4"][f"A_{r}_aa"] == "" for r in REGIONS)
+    assert by_key["K4"]["IGHeavy_regionAnnotationStatus"] == "Failed"
+    assert all(by_key["K4"][f"IGHeavy_{r}_aa"] == "" for r in REGIONS)
     print("  K4: numbered but nothing located -> Failed, no region values")
 
     # The declared chain labels the column; the bucket ANARCI chose supplies the ranges.
-    assert by_key["K5"]["A_regionAnnotationStatus"] == "Annotated"
+    assert by_key["K5"]["IGHeavy_regionAnnotationStatus"] == "Annotated"
     for region in REGIONS:
-        assert by_key["K5"][f"A_{region}_aa"] == expected(*KABAT["KL"][region]), region
-    assert by_key["K5"]["A_FR1_aa"] != expected(*KABAT["H"]["FR1"])
+        assert by_key["K5"][f"IGHeavy_{region}_aa"] == expected(*KABAT["KL"][region]), region
+    assert by_key["K5"]["IGHeavy_FR1_aa"] != expected(*KABAT["H"]["FR1"])
     print("  K5: declared A, bucketed KL -> Annotated under A, with KL ranges")
 
     for key, row in by_key.items():
-        for chain in ("A", "B"):
+        for chain in ("IGHeavy", "IGLight"):
             assert row[f"{chain}_regionAnnotationStatus"], f"{key} {chain}: empty status"
     print("  status is never empty")
 
@@ -157,28 +157,28 @@ def main():
     assert len(stats_rows) == 1, stats_rows
     stats = stats_rows[0]
     assert list(stats) == [
-        "A_annotated", "A_notApplicable", "A_failed", "A_chainDisagreed",
-        "B_annotated", "B_notApplicable", "B_failed", "B_chainDisagreed",
+        "IGHeavy_annotated", "IGHeavy_notApplicable", "IGHeavy_failed", "IGHeavy_chainDisagreed",
+        "IGLight_annotated", "IGLight_notApplicable", "IGLight_failed", "IGLight_chainDisagreed",
     ], list(stats)
     # A: K1 K2 K5 annotated, K3 K4 failed, none unsupplied.
-    assert (stats["A_annotated"], stats["A_notApplicable"], stats["A_failed"],
-            stats["A_chainDisagreed"]) == ("3", "0", "2", "1"), stats
-    # B: only K1 supplied and annotated; K2..K5 unsupplied. K1|B is in KL, which is where a
+    assert (stats["IGHeavy_annotated"], stats["IGHeavy_notApplicable"], stats["IGHeavy_failed"],
+            stats["IGHeavy_chainDisagreed"]) == ("3", "0", "2", "1"), stats
+    # B: only K1 supplied and annotated; K2..K5 unsupplied. K1|IGLight is in KL, which is where a
     # declared B belongs, so nothing disagrees.
-    assert (stats["B_annotated"], stats["B_notApplicable"], stats["B_failed"],
-            stats["B_chainDisagreed"]) == ("1", "4", "0", "0"), stats
+    assert (stats["IGLight_annotated"], stats["IGLight_notApplicable"], stats["IGLight_failed"],
+            stats["IGLight_chainDisagreed"]) == ("1", "4", "0", "0"), stats
     print("  stats: one wide row, per-chain counts correct; K5 is the one chainDisagreed, and it"
           " is counted without changing its status or its values")
 
     # The count must not leak into the dataset — K5 is a normal Annotated record.
-    assert by_key["K5"]["A_regionAnnotationStatus"] == "Annotated"
+    assert by_key["K5"]["IGHeavy_regionAnnotationStatus"] == "Annotated"
     print("  stats: disagreement is reported, not acted on")
 
     # A single-chain set, with the other bucket left header-only as the workflow creates it.
     single_tsv = os.path.join(work, "single.tsv")
     with open(single_tsv, "w", newline="") as f:
         w = csv.writer(f, delimiter="\t")
-        w.writerow(["variantKey", "A_sequence"])
+        w.writerow(["variantKey", "IGHeavy_sequence"])
         w.writerow(["S1", "EVQLVQ"])
     empty_kl = os.path.join(work, "empty_KL.csv")
     write_header_only_csv(empty_kl)
@@ -186,14 +186,14 @@ def main():
     print(run(os.path.join(SRC, "main.py"), "--input_tsv", single_tsv, "--key_column", "variantKey",
               "--scheme", "imgt", "--h_csv", h_csv, "--kl_csv", empty_kl, "--out_tsv", single_out))
     single = list(csv.DictReader(open(single_out), delimiter="\t"))
-    assert list(single[0].keys()) == ["variantKey"] + [f"A_{r}_aa" for r in REGIONS] + ["A_regionAnnotationStatus"]
-    assert single[0]["A_regionAnnotationStatus"] == "Failed"  # S1 is not in the H csv
+    assert list(single[0].keys()) == ["variantKey"] + [f"IGHeavy_{r}_aa" for r in REGIONS] + ["IGHeavy_regionAnnotationStatus"]
+    assert single[0]["IGHeavy_regionAnnotationStatus"] == "Failed"  # S1 is not in the H csv
     print("  single-chain set: only that chain's columns emitted, header-only bucket tolerated")
 
     # The padding must be invisible downstream: its ids name buckets, not chains, so the
     # id parser rejects them and no record is ever emitted for them.
     pad_csv = os.path.join(work, "pad_H.csv")
-    write_anarci_csv(pad_csv, ["__anarci_bucket_pad__|H", "K1|A"])
+    write_anarci_csv(pad_csv, ["__anarci_bucket_pad__|H", "K1|IGHeavy"])
     pad_out = os.path.join(work, "pad_out.tsv")
     run(os.path.join(SRC, "main.py"), "--input_tsv", in_tsv, "--key_column", "variantKey",
         "--scheme", "imgt", "--h_csv", pad_csv, "--out_tsv", pad_out)

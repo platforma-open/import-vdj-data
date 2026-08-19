@@ -28,7 +28,7 @@ describe("upgradeLegacyData", () => {
         customMapping: { "cdr3-aa": "CDR3" },
         primaryCountType: "umi",
         secondaryCountType: "read",
-        bareSet: { identity: "id", sequences: { A: "VH" }, scheme: "kabat" },
+        bareSet: { identity: "id", sequences: { IGHeavy: "VH" }, scheme: "kabat" },
       },
       uiState: { settingsOpen: false, mixcrColumnsPresent: true },
     });
