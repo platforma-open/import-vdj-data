@@ -18,7 +18,6 @@
 // frame. That is the whole difference from the per-chain path the other formats take.
 
 maps := import("@platforma-sdk/workflow-tengo:maps")
-json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 strings := import("@platforma-sdk/workflow-tengo:strings")
 
@@ -469,90 +468,53 @@ propertyCollisions := func(properties) {
  * annotation: how many records were placed, how many the input could not support an answer for,
  * and how many the instrument could not resolve. `chainDisagreed` is the measurement the
  * declared-versus-inferred question is deferred for want of.
+ *
+ * The chain rides in each column's domain, not on an axis, so the table has no axis of its own
+ * beyond the sample. That is what the block's bulk path does with its own statistics
+ * (process-utils.lib.tengo `buildStatsColumns`, chain in `pl7.app/vdj/chain`), and what the
+ * region columns here already do. With one chain the domain is omitted and the shape matches
+ * bulk's exactly.
  */
-statsColumns := func(blockId) {
+statsColumns := func(chains, blockId) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+	paired := len(chains) > 1
+
 	cols := []
 	entries := [
-		{ column: "annotated", name: "annotatedCount", label: "Annotated", order: "90000" },
-		{ column: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000" },
-		{ column: "failed", name: "failedCount", label: "Failed", order: "88000" },
-		{ column: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain", order: "87000" }
+		{ suffix: "annotated", name: "annotatedCount", label: "Annotated", order: "90000" },
+		{ suffix: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000" },
+		{ suffix: "failed", name: "failedCount", label: "Failed", order: "88000" },
+		{ suffix: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain", order: "87000" }
 	]
-	for e in entries {
-		// No allowNA: TsvContent columns validate against a narrower schema than the Xsv ones,
-		// accepting only column, id and spec.
-		cols = append(cols, {
-			id: e.column,
-			column: e.column,
-			spec: {
-				name: "pl7.app/vdj/stat/regionAnnotation/" + e.name,
-				valueType: "Int",
-				domain: {
-					"pl7.app/vdj/clonotypingRunId": blockId
-				},
-				annotations: a(e.order, "default", {
-					"pl7.app/label": e.label
-				})
-			}
-		})
+
+	for chain in chains {
+		validateChain(chain)
+		for e in entries {
+			label := e.label
+			if paired { label = CHAIN_LABELS[chain] + " " + e.label }
+
+			// No allowNA: TsvContent columns validate against a narrower schema than the Xsv
+			// ones, accepting only column, id and spec.
+			cols = append(cols, {
+				id: chain + "-" + e.suffix,
+				column: chain + "_" + e.suffix,
+				spec: {
+					name: "pl7.app/vdj/stat/regionAnnotation/" + e.name,
+					valueType: "Int",
+					domain: maps.merge(
+						{ "pl7.app/vdj/clonotypingRunId": blockId },
+						paired ? { "pl7.app/vdj/scClonotypeChain": chain } : {}
+					),
+					annotations: a(e.order, "default", {
+						"pl7.app/label": label
+					})
+				}
+			})
+		}
 	}
 	return cols
 }
 
-/**
- * The axis the statistics table is keyed on: one row per declared chain.
- *
- * No `naRegex` here, unlike the Xsv axes: TsvContent validates its axis entries against a
- * narrower schema that accepts only `column` and `spec`.
- */
-statsAxis := func() {
-	return {
-		column: "chain",
-		spec: {
-			type: "String",
-			name: "pl7.app/vdj/scClonotypeChain",
-			annotations: {
-				"pl7.app/label": "Chain"
-			}
-		}
-	}
-}
-
-/**
- * The readable name of each mapped chain, keyed on the chain axis alone.
- *
- * The axis values stay `A` / `B` because that is the `pl7.app/vdj/scClonotypeChain` vocabulary
- * every other producer uses, and an axis whose values disagreed with the same-named column
- * domain would be a second meaning for one name. So the letter stays and this column carries
- * the word, the same split the record axis uses for its opaque hash.
- *
- * On the axis alone, not on `[sampleId, chain]`: a `pl7.app/label` column only names an axis
- * when it sits on that axis by itself. Which is why this is built here rather than added to the
- * per-sample statistics TSV.
- */
-chainLabelColumn := func(chains) {
-	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
-
-	data := {}
-	for chain in chains {
-		validateChain(chain)
-		data[string(json.encode([chain]))] = CHAIN_LABELS[chain]
-	}
-
-	return {
-		spec: {
-			kind: "PColumn",
-			name: "pl7.app/label",
-			valueType: "String",
-			annotations: {
-				"pl7.app/label": "Chain",
-				"pl7.app/isLabel": "true"
-			},
-			axesSpec: [statsAxis().spec]
-		},
-		data: { keyLength: 1, data: data }
-	}
-}
 
 // --- assembly -----------------------------------------------------------------------------
 
@@ -648,8 +610,6 @@ export {
 	keyAxis: keyAxis,
 	sampleAxis: sampleAxis,
 	statsColumns: statsColumns,
-	chainLabelColumn: chainLabelColumn,
-	statsAxis: statsAxis,
 	mainSequenceColumn: mainSequenceColumn,
 	regionColumnSpec: regionColumnSpec,
 	statusColumnSpec: statusColumnSpec,

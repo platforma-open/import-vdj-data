@@ -460,3 +460,26 @@ Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
 	// Two main sequences, two statuses, seven regions each.
 	test.isEqual(18, stamped, "both chains stamped when paired")
 }
+
+
+// The statistics table carries the chain in each column's domain, not on an axis — the shape the
+// block's bulk path already uses. So a one-chain set's statistics are shaped exactly like bulk's.
+Test_statsColumns_carryTheChainInTheDomain := func() {
+	paired := specs.statsColumns(["A", "B"], "b1")
+	test.isEqual(8, len(paired), "four statistics per chain")
+	test.isEqual("A_annotated", paired[0].column, "TSV header is chain-prefixed")
+	test.isEqual("A", paired[0].spec.domain["pl7.app/vdj/scClonotypeChain"], "chain in the domain")
+	test.isEqual("Heavy Annotated", paired[0].spec.annotations["pl7.app/label"], "chain in the label")
+
+	one := specs.statsColumns(["A"], "b1")
+	test.isEqual(4, len(one), "four statistics, one chain")
+	test.isTrue(
+		one[0].spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined,
+		"one chain is bulk-shaped: no chain key"
+	)
+	test.isEqual("Annotated", one[0].spec.annotations["pl7.app/label"], "and no chain in the label")
+
+	// Both chains' columns must be distinct specs or they would dedupe into one.
+	test.isTrue(paired[0].spec.domain != paired[4].spec.domain, "chains do not share a domain")
+	test.isTrue(paired[0].column != paired[4].column, "chains do not share a TSV column")
+}

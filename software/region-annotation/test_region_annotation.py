@@ -151,17 +151,24 @@ def main():
             assert row[f"{chain}_regionAnnotationStatus"], f"{key} {chain}: empty status"
     print("  status is never empty")
 
-    stats = {r["chain"]: r for r in csv.DictReader(open(stats_tsv), delimiter="\t")}
-    assert list(stats) == ["A", "B"], list(stats)
+    # One wide row, one column per chain per statistic: the workflow reads this with no axes and
+    # carries the chain in each column's domain, as the block's bulk path does.
+    stats_rows = list(csv.DictReader(open(stats_tsv), delimiter="\t"))
+    assert len(stats_rows) == 1, stats_rows
+    stats = stats_rows[0]
+    assert list(stats) == [
+        "A_annotated", "A_notApplicable", "A_failed", "A_chainDisagreed",
+        "B_annotated", "B_notApplicable", "B_failed", "B_chainDisagreed",
+    ], list(stats)
     # A: K1 K2 K5 annotated, K3 K4 failed, none unsupplied.
-    assert stats["A"] == {"chain": "A", "annotated": "3", "notApplicable": "0",
-                          "failed": "2", "chainDisagreed": "1"}, stats["A"]
+    assert (stats["A_annotated"], stats["A_notApplicable"], stats["A_failed"],
+            stats["A_chainDisagreed"]) == ("3", "0", "2", "1"), stats
     # B: only K1 supplied and annotated; K2..K5 unsupplied. K1|B is in KL, which is where a
     # declared B belongs, so nothing disagrees.
-    assert stats["B"] == {"chain": "B", "annotated": "1", "notApplicable": "4",
-                          "failed": "0", "chainDisagreed": "0"}, stats["B"]
-    print("  stats: per-chain counts correct; K5 is the one chainDisagreed, and it is"
-          " counted without changing its status or its values")
+    assert (stats["B_annotated"], stats["B_notApplicable"], stats["B_failed"],
+            stats["B_chainDisagreed"]) == ("1", "4", "0", "0"), stats
+    print("  stats: one wide row, per-chain counts correct; K5 is the one chainDisagreed, and it"
+          " is counted without changing its status or its values")
 
     # The count must not leak into the dataset — K5 is a normal Annotated record.
     assert by_key["K5"]["A_regionAnnotationStatus"] == "Annotated"
