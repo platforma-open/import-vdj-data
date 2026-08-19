@@ -37,6 +37,29 @@ export type FileSource = {
  */
 export type BareSetChain = "IGHeavy" | "IGLight";
 
+/**
+ * What the scientist declares they are importing — a receptor, or one of its chains.
+ *
+ * The declaration decides how many sequence columns the panel asks for, and it is a statement
+ * rather than an inference. Before this, "paired or single-chain" was read off how many slots
+ * happened to be filled, so a paired panel with the light column not yet mapped was
+ * indistinguishable from a deliberately heavy-only one — and the two emit different shapes.
+ */
+export type ChainSelection = "IG" | "IGHeavy" | "IGLight";
+
+/** The sequence columns each selection asks for, in emission order. */
+export const CHAIN_SLOTS: Record<ChainSelection, BareSetChain[]> = {
+  IG: ["IGHeavy", "IGLight"],
+  IGHeavy: ["IGHeavy"],
+  IGLight: ["IGLight"],
+};
+
+/** What to call each slot in front of the scientist. */
+export const CHAIN_SLOT_LABELS: Record<BareSetChain, string> = {
+  IGHeavy: "Heavy chain variable domain (aa)",
+  IGLight: "Light chain variable domain (aa)",
+};
+
 /** What a column can hold, decided by profiling every row of the file. */
 export type ColumnValueType = "Long" | "Double" | "String";
 
@@ -70,9 +93,14 @@ export type BareSetMapping = {
    */
   identity: string;
   /**
-   * Amino-acid variable domain per chain. The chain comes from the
-   * slot the column was assigned to, so the file needs no chain column and nothing is matched
-   * against a locus map. A row carrying both is unpivoted into one record, not split into two.
+   * What is being imported. Decides which sequence slots the panel offers, and therefore
+   * whether the emitted set is paired or bulk-shaped.
+   */
+  chainSelection: ChainSelection;
+  /**
+   * Amino-acid variable domain per chain, keyed by the slot the column was assigned to — so the
+   * file needs no chain column and nothing is matched against a locus map. A row carrying both
+   * chains is unpivoted into one record, not split into two.
    */
   sequences: Partial<Record<BareSetChain, string>>;
   /** The numbering convention ANARCI is asked for, and the one recorded on every region. */
@@ -212,7 +240,13 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
 export function bareSetValid(bare: BareSetMapping | undefined): boolean {
   if (bare === undefined) return false;
   if (!bare.identity) return false;
-  if (!bare.sequences?.IGHeavy && !bare.sequences?.IGLight) return false;
+  if (!bare.chainSelection) return false;
+  // Every slot the declaration asks for must be filled. Declaring IG and mapping only the heavy
+  // column is an unfinished mapping, not a heavy-only set: the scientist said there are two
+  // chains, and emitting one of them instead would be answering a question they did not ask.
+  const slots = CHAIN_SLOTS[bare.chainSelection] ?? [];
+  if (slots.length === 0) return false;
+  if (slots.some((slot) => !bare.sequences?.[slot])) return false;
   if (!bare.scheme) return false;
   // Two headers that sanitize alike would produce identical specs and dedupe into one column,
   // losing a column the scientist explicitly chose. Refused rather than disambiguated: a

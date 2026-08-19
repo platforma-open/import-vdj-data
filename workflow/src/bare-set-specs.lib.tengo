@@ -46,6 +46,14 @@ PAIRED_CHAIN_DOMAIN := {
 	"IGLight": "B"
 }
 
+// The receptor each locus belongs to, stamped on the key axis. Derived rather than assumed, so
+// the axis says IG because the chains are IG chains — and so a TCR set, when the region tables
+// exist for one, says what it is without another place needing to change.
+CHAIN_RECEPTOR := {
+	"IGHeavy": "IG",
+	"IGLight": "IG"
+}
+
 // Seven regions. Order here is emission order and is fixed so the assembled column list is
 // canonical across runs.
 REGIONS := ["FR1", "CDR1", "CDR2", "FR2", "FR3", "FR4", "CDR3"]
@@ -160,6 +168,18 @@ keyAxis := func(blockId, chains) {
 		chainDom = { "pl7.app/vdj/chain": chains[0] }
 	}
 
+	// Derived, not assumed. One set holds one receptor's chains — the A/B vocabulary cannot
+	// express more — and saying so here means a TCR set will stamp its own receptor without
+	// another place needing to change.
+	receptor := CHAIN_RECEPTOR[chains[0]]
+	ll.assert(receptor != undefined, "bare-set-specs: no receptor known for chain %v", chains[0])
+	for chain in chains {
+		ll.assert(
+			CHAIN_RECEPTOR[chain] == receptor,
+			"bare-set-specs: chains from two receptors in one set (%v and %v)", chains[0], chain
+		)
+	}
+
 	return {
 		column: keyColumn,
 		naRegex: "",
@@ -167,7 +187,7 @@ keyAxis := func(blockId, chains) {
 			type: "String",
 			name: "pl7.app/variantKey",
 			domain: maps.merge({
-				"pl7.app/vdj/receptor": "IG",
+				"pl7.app/vdj/receptor": receptor,
 				"pl7.app/vdj/clonotypingRunId": blockId
 			}, chainDom),
 			annotations: {

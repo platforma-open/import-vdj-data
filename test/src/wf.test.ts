@@ -106,6 +106,7 @@ blockTest(
         chains: ["IGHeavy", "IGLight"],
         bareSet: {
           identity: "mAb ID",
+          chainSelection: "IG",
           sequences: { IGHeavy: "VH", IGLight: "VL" },
           scheme: SCHEME,
           // A column the canonical vocabulary never anticipated — offered, not dropped.
@@ -301,6 +302,7 @@ blockTest(
         chains: ["IGHeavy", "IGLight"],
         bareSet: {
           identity: "mAb ID",
+          chainSelection: "IG",
           sequences: { IGHeavy: "VH", IGLight: "VL" },
           scheme: SCHEME,
         },
@@ -388,7 +390,12 @@ blockTest(
         datasetRef: datasetOptions[0].ref,
         format: "custom",
         chains: ["IGHeavy"],
-        bareSet: { identity: "mAb ID", sequences: { IGHeavy: "VH" }, scheme: SCHEME },
+        bareSet: {
+          identity: "mAb ID",
+          chainSelection: "IGHeavy",
+          sequences: { IGHeavy: "VH" },
+          scheme: SCHEME,
+        },
       }),
     });
 
@@ -456,6 +463,7 @@ blockTest(
         },
         bareSet: {
           identity: "mAb ID",
+          chainSelection: "IG",
           sequences: { IGHeavy: "VH", IGLight: "VL" },
           scheme: SCHEME,
         },
@@ -538,6 +546,7 @@ blockTest(
         },
         bareSet: {
           identity: "mAb ID",
+          chainSelection: "IG",
           sequences: { IGHeavy: "VH", IGLight: "VL" },
           scheme: SCHEME,
         },
@@ -598,6 +607,7 @@ blockTest(
         },
         bareSet: {
           identity: "mAb ID",
+          chainSelection: "IG",
           sequences: { IGHeavy: "VH", IGLight: "VL" },
           scheme: SCHEME,
         },

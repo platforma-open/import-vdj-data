@@ -2,8 +2,10 @@
 import type {
   BareSetChain,
   BlockData,
+  ChainSelection,
   ImportedProperty,
 } from "@platforma-open/milaboratories.import-vdj.model";
+import { CHAIN_SLOT_LABELS, CHAIN_SLOTS } from "@platforma-open/milaboratories.import-vdj.model";
 import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
@@ -108,6 +110,53 @@ function getBare(): BareSetArgs | undefined {
   return app.model.data.bareSet;
 }
 
+/**
+ * What is being imported. Receptors expand to both their chains; a single chain is its own
+ * entry, which is how a heavy-only panel is declared rather than inferred from an unfilled slot.
+ *
+ * TCR entries are absent, not disabled-and-hidden: ANARCI numbers TCR happily (its HMM library
+ * ships human_A/B/G/D), but this block has no region-boundary table for those chains and reads
+ * only ANARCI's H and KL output files, so a TCR import would annotate nothing. They arrive with
+ * the tables.
+ */
+const chainSelectionOptions = [
+  { label: "IG (heavy + light)", value: "IG" },
+  { label: "IG Heavy only", value: "IGHeavy" },
+  { label: "IG Light only", value: "IGLight" },
+];
+
+/** The slots the current declaration asks for, in emission order. */
+const chainSlots = computed<BareSetChain[]>(() => {
+  const selection = app.model.data.bareSet?.chainSelection;
+  return selection ? (CHAIN_SLOTS[selection] ?? []) : [];
+});
+
+function slotLabel(slot: BareSetChain): string {
+  return CHAIN_SLOT_LABELS[slot];
+}
+
+function setChainSelection(value: string | undefined) {
+  const a = app.model.data;
+  const current: BareSetArgs = a.bareSet ?? {
+    identity: "",
+    chainSelection: "IG",
+    sequences: {},
+    scheme: "imgt",
+  };
+  if (!value) return;
+
+  const selection = value as ChainSelection;
+  // Columns mapped to a slot the new declaration does not ask for are dropped. Keeping them
+  // would leave the block emitting a chain the scientist just said they were not importing.
+  const kept: Partial<Record<BareSetChain, string>> = {};
+  for (const slot of CHAIN_SLOTS[selection] ?? []) {
+    const existing = current.sequences?.[slot];
+    if (existing) kept[slot] = existing;
+  }
+
+  a.bareSet = { ...current, chainSelection: selection, sequences: kept };
+}
+
 function bareField(field: "identity" | BareSetChain): string | undefined {
   const bare = getBare();
   if (!bare) return undefined;
@@ -117,9 +166,15 @@ function bareField(field: "identity" | BareSetChain): string | undefined {
 /** Written on user gesture only, never from a watcher on an output. */
 function setBareField(field: "identity" | BareSetChain, value: string | undefined) {
   const a = app.model.data;
-  const current: BareSetArgs = a.bareSet ?? { identity: "", sequences: {}, scheme: "imgt" };
+  const current: BareSetArgs = a.bareSet ?? {
+    identity: "",
+    chainSelection: "IG",
+    sequences: {},
+    scheme: "imgt",
+  };
   const next: BareSetArgs = {
     identity: field === "identity" ? (value ?? "") : current.identity,
+    chainSelection: current.chainSelection,
     sequences: { ...current.sequences },
     scheme: current.scheme,
   };
@@ -594,18 +649,21 @@ watch(
               @update:model-value="(v: string | undefined) => setBareField('identity', v)"
             />
             <PlDropdown
-              :model-value="bareField('IGHeavy')"
-              :options="sequenceOptions"
-              label="Heavy chain variable domain (aa)"
-              clearable
-              @update:model-value="(v: string | undefined) => setBareField('IGHeavy', v)"
+              :model-value="app.model.data.bareSet?.chainSelection"
+              :options="chainSelectionOptions"
+              label="Receptor / chain"
+              required
+              @update:model-value="(v: string | undefined) => setChainSelection(v)"
             />
             <PlDropdown
-              :model-value="bareField('IGLight')"
+              v-for="slot in chainSlots"
+              :key="slot"
+              :model-value="bareField(slot)"
               :options="sequenceOptions"
-              label="Light chain variable domain (aa)"
+              :label="slotLabel(slot)"
               clearable
-              @update:model-value="(v: string | undefined) => setBareField('IGLight', v)"
+              required
+              @update:model-value="(v: string | undefined) => setBareField(slot, v)"
             />
             <template v-if="isBareSet">
               <PlDropdownMulti

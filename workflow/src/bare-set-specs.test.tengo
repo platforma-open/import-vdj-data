@@ -521,3 +521,14 @@ Test_statsColumns_eachDescribeWhatTheyCount := func() {
 		test.isTrue(desc != undefined && desc != "", "described: " + col.id)
 	}
 }
+
+
+// One set holds one receptor's chains. The A/B domain cannot express more, so the key axis
+// derives its receptor from the chains rather than assuming IG — the seam a TCR set will use.
+Test_keyAxis_derivesTheReceptorFromTheChains := func() {
+	paired := specs.keyAxis("b1", ["IGHeavy", "IGLight"]).spec.domain
+	test.isEqual("IG", paired["pl7.app/vdj/receptor"], "paired IG names IG")
+
+	light := specs.keyAxis("b1", ["IGLight"]).spec.domain
+	test.isEqual("IG", light["pl7.app/vdj/receptor"], "light-only names IG")
+}
