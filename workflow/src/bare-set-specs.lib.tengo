@@ -322,7 +322,16 @@ statusColumnSpec := func(chain, scheme, paired) {
 			annotations: a("46895", "default", {
 				"pl7.app/label": CHAIN_LABELS[chain] + " region annotation status",
 				"pl7.app/isDiscreteFilter": "true",
-				"pl7.app/discreteValues": "[\"Annotated\",\"Not applicable\",\"Failed\"]"
+				"pl7.app/discreteValues": "[\"Annotated\",\"Not applicable\",\"Failed\"]",
+				// The three values are terse and one of them reads as a diagnosis when it is not,
+				// so the column says what it means. `Not applicable` is expected on any panel
+				// where a chain is only partly filled in, and is the value most likely to be
+				// misread as a problem.
+				"pl7.app/description": "Whether this chain's FR and CDR boundaries could be located. " +
+					"Annotated: located, and the region columns hold them. " +
+					"Not applicable: no sequence was supplied for this chain on this record — nothing to locate. " +
+					"Failed: a sequence was supplied but could not be numbered, which usually means the column " +
+					"mapped to this chain does not hold amino-acid variable domains."
 			})
 		}
 	}
@@ -507,10 +516,27 @@ statsColumns := func(chains, blockId) {
 
 	cols := []
 	entries := [
-		{ suffix: "annotated", name: "annotatedCount", label: "Annotated", order: "90000" },
-		{ suffix: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000" },
-		{ suffix: "failed", name: "failedCount", label: "Failed", order: "88000" },
-		{ suffix: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain", order: "87000" }
+		{
+			suffix: "annotated", name: "annotatedCount", label: "Annotated", order: "90000",
+			description: "Records whose FR and CDR boundaries were located for this chain."
+		},
+		{
+			suffix: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000",
+			description: "Records with no sequence supplied for this chain. Expected on a panel where " +
+				"one chain is only partly filled in; not a failure."
+		},
+		{
+			suffix: "failed", name: "failedCount", label: "Failed", order: "88000",
+			description: "Records whose supplied sequence could not be numbered. A count much above zero " +
+				"usually means the mapped column does not hold amino-acid variable domains."
+		},
+		{
+			suffix: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain",
+			order: "87000",
+			description: "Records ANARCI numbered as the opposite chain to the slot they were mapped to. " +
+				"Reported only — the regions are recorded under the mapped chain either way. Nearly all " +
+				"records on both chains means the two sequence columns were mapped the wrong way round."
+		}
 	]
 
 	for chain in chains {
@@ -532,7 +558,8 @@ statsColumns := func(chains, blockId) {
 						paired ? { "pl7.app/vdj/scClonotypeChain": PAIRED_CHAIN_DOMAIN[chain] } : {}
 					),
 					annotations: a(e.order, "default", {
-						"pl7.app/label": label
+						"pl7.app/label": label,
+						"pl7.app/description": e.description
 					})
 				}
 			})

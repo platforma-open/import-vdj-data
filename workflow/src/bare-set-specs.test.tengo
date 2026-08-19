@@ -1,4 +1,5 @@
 test := import("@platforma-sdk/workflow-tengo:test")
+text := import("text")
 specs := import(":bare-set-specs")
 
 byId := func(columns, id) {
@@ -498,4 +499,25 @@ Test_statsColumns_carryTheChainInTheDomain := func() {
 	// Both chains' columns must be distinct specs or they would dedupe into one.
 	test.isTrue(paired[0].spec.domain != paired[4].spec.domain, "chains do not share a domain")
 	test.isTrue(paired[0].column != paired[4].column, "chains do not share a TSV column")
+}
+
+
+// The status values are terse and "Not applicable" reads as a diagnosis when it only means the
+// cell was empty, so the column describes all three.
+Test_status_describesEachOfItsValues := func() {
+	desc := specs.statusColumnSpec("IGHeavy", "imgt", true).spec.annotations["pl7.app/description"]
+	test.isTrue(desc != undefined && desc != "", "status column has a description")
+
+	for value in ["Annotated", "Not applicable", "Failed"] {
+		test.isTrue(text.contains(desc, value + ":"), "description explains " + value)
+	}
+}
+
+// Every statistic explains what it counts — the four labels repeat the status vocabulary, so a
+// reader hovering either place gets the same answer.
+Test_statsColumns_eachDescribeWhatTheyCount := func() {
+	for col in specs.statsColumns(["IGHeavy", "IGLight"], "b1") {
+		desc := col.spec.annotations["pl7.app/description"]
+		test.isTrue(desc != undefined && desc != "", "described: " + col.id)
+	}
 }
