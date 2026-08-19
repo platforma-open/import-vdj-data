@@ -165,9 +165,15 @@ const acceptedProperties = computed<string[]>({
   set: (headers) => {
     const a = app.model.data;
     if (!a.bareSet) return;
+    // The type is written here, on the accept gesture, from the profile prerun produced by
+    // reading every row. The panel asks no type question — see ColumnProfile — and taking a
+    // snapshot at the gesture keeps the args projection a pure function of `data`.
+    const types = app.model.outputs.columnProfile?.types ?? {};
     a.bareSet = {
       ...a.bareSet,
-      properties: headers.map((h): ImportedProperty => ({ header: h })),
+      properties: headers.map(
+        (h): ImportedProperty => ({ header: h, valueType: types[h] ?? "String" }),
+      ),
     };
   },
 });
@@ -523,14 +529,14 @@ watch(
         <template v-if="headerOptions.length > 0">
           <PlSectionSeparator>Columns to import</PlSectionSeparator>
           <PlAlert v-if="identityCollisionMessage" type="warn" :style="{ width: '100%' }">
-            <template #title>Record identity is not unique</template>
+            <template #title>Id column is not unique</template>
             {{ identityCollisionMessage }}
           </PlAlert>
           <div class="field-col">
             <PlDropdown
               :model-value="bareField('identity')"
               :options="headerOptions"
-              label="Record identity"
+              label="Select id column"
               clearable
               required
               @update:model-value="(v: string | undefined) => setBareField('identity', v)"

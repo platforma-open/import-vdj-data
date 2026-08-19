@@ -1,0 +1,41 @@
+// Profile every column of the scientist's file: value type, and whether it holds amino-acid
+// variable domains.
+//
+// Runs at prerun, over the WHOLE file. The mapping panel needs both answers before anything is
+// imported — which columns to offer as chain slots, and what type a record property will be
+// emitted as — and both are wrong if taken from a sample. A column that is numeric for twenty
+// rows and holds "N/A" further down must come out String, and only a full pass can say so.
+//
+// The result is one JSON blob rather than three outputs because the model has to parse it
+// anyway: an exec's file content is a future value here, not something tengo can decode while
+// building the plan.
+
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+
+profileSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.column-profile:main")
+
+self.defineOutputs("profile")
+
+self.body(func(inputs) {
+	ll.assert(inputs.file != undefined, "profile-columns: file is required")
+	ll.assert(inputs.separator != undefined, "profile-columns: separator is required")
+
+	cmd := exec.builder().
+		software(profileSw).
+		cpu(1).
+		mem("2GiB").
+		addFile("input.txt", inputs.file).
+		arg("--input").arg("input.txt").
+		arg("--separator").arg(inputs.separator).
+		arg("--output").arg("profile.json").
+		saveFileContent("profile.json").
+		printErrStreamToStdout().
+		run()
+
+	return {
+		profile: cmd.getFileContent("profile.json")
+	}
+})

@@ -110,7 +110,8 @@ blockTest(
           sequences: { IGHeavy: "VH", IGLight: "VL" },
           scheme: SCHEME,
           // A column the canonical vocabulary never anticipated — offered, not dropped.
-          properties: [{ header: "Affinity (nM)" }],
+          // The UI attaches the type the profile detected; this is what it would write.
+          properties: [{ header: "Affinity (nM)", valueType: "Double" }],
         },
       }),
     });
@@ -235,8 +236,9 @@ blockTest(
     expect(affinity).toBeDefined();
     expect(affinity!.name).toBe("pl7.app/vdj/importedProperty/Affinity_nM_");
     expect(affinity!.annotations["pl7.app/label"]).toBe("Affinity (nM)");
-    // Always String: the panel asks for no type, and nothing samples the file to guess one.
-    expect(affinity!.valueType).toBe("String");
+    // The detected type reaches the emitted column. The panel asks no type question — prerun
+    // profiles every row and the UI records the answer when the column is accepted.
+    expect(affinity!.valueType).toBe("Double");
     expect(Object.keys(affinity!.domain)).toHaveLength(0);
   },
 );
@@ -480,6 +482,18 @@ blockTest(
     // cleanly and every record comes back Failed after ANARCI declines to number it.
     const aminoAcid = (state.outputs?.aminoAcidColumns as { value?: string[] } | undefined)?.value;
     expect(aminoAcid).toEqual(["VH", "VL"]);
+
+    // The same pass types every column, over the whole file rather than a sample. "Affinity (nM)"
+    // holds 0.8 / 1.4 / 12.0 / 3.1 / 0.9, so it is Double; the identity and the domains are text.
+    const profile = (
+      state.outputs?.columnProfile as { value?: { types: Record<string, string> } } | undefined
+    )?.value;
+    expect(profile?.types).toEqual({
+      "mAb ID": "String",
+      VH: "String",
+      VL: "String",
+      "Affinity (nM)": "Double",
+    });
 
     // Indistinguishable from the pool door: same axes, same key, same columns — abundance
     // alone on [sampleId, variantKey], every property of the record on the record axis.

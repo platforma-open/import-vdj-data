@@ -1,7 +1,7 @@
 import type { InferOutputsType, PColumn, PColumnDataUniversal } from "@platforma-sdk/model";
 import { BlockModelV3, createPlDataTableV2, PColumnCollection } from "@platforma-sdk/model";
 import { blockDataModel } from "./data-model";
-import type { BlockArgs, BlockData, ColumnDescription } from "./types";
+import type { BlockArgs, BlockData, ColumnDescription, ColumnProfile } from "./types";
 import { bareSetValid } from "./types";
 
 export * from "./types";
@@ -200,23 +200,51 @@ export const platforma = BlockModelV3.create(blockDataModel)
       ?.getDataAsJson<ColumnDescription[]>();
   })
 
-  /** Headers whose sampled values actually look like amino-acid variable domains. The chain
-   *  dropdowns offer only these, so an identifier column cannot be mapped into a sequence slot.
-   *  Empty means "not determined" — the UI falls back to offering every header rather than
-   *  presenting an empty dropdown. */
+  /** Every column of a directly-loaded file, profiled over the WHOLE file: its value type, and
+   *  whether it holds amino-acid variable domains. Absent on the dataset door, where the pool
+   *  supplies the headers instead. */
+  .retentiveOutput("columnProfile", (ctx) => {
+    const raw = ctx.prerun
+      ?.resolve({ field: "columnProfile", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (raw === undefined) return undefined;
+    try {
+      return JSON.parse(raw) as ColumnProfile;
+    } catch {
+      return undefined;
+    }
+  })
+
+  /** Headers whose values actually read as amino-acid variable domains. The chain dropdowns
+   *  offer only these, so an identifier column cannot be mapped into a sequence slot. Empty
+   *  means "not determined" — the UI falls back to every header rather than an empty dropdown. */
   .retentiveOutput("aminoAcidColumns", (ctx) => {
-    const cols = ctx.prerun
-      ?.resolve({
-        field: "aminoAcidColumns",
-        allowPermanentAbsence: true,
-      })
-      ?.getDataAsJson<string[]>();
-    if (cols === undefined) return undefined;
-    return cols.filter((h) => h.trim().length > 0);
+    const raw = ctx.prerun
+      ?.resolve({ field: "columnProfile", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (raw === undefined) return undefined;
+    try {
+      return (JSON.parse(raw) as ColumnProfile).aminoAcid ?? [];
+    } catch {
+      return undefined;
+    }
   })
 
   .retentiveOutput("headerColumns", (ctx) => {
-    const headers = ctx.prerun
+    // The direct door profiles the file and takes its headers from there; the dataset door has
+    // them from the pool's own inference.
+    const raw = ctx.prerun
+      ?.resolve({ field: "columnProfile", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    let headers: string[] | undefined;
+    if (raw !== undefined) {
+      try {
+        headers = (JSON.parse(raw) as ColumnProfile).headers;
+      } catch {
+        headers = undefined;
+      }
+    }
+    headers ??= ctx.prerun
       ?.resolve({
         field: "headerColumns",
         allowPermanentAbsence: true,

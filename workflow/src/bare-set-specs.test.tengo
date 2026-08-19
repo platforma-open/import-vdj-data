@@ -305,17 +305,17 @@ Test_allColumns_sourceColumnsAreUnique := func() {
 // A raw header in a name would put spaces and punctuation into an identifier every downstream
 // query matches on.
 Test_importedProperty_sanitizesTheNameAndKeepsTheLabelRaw := func() {
-	col := specs.importedPropertyColumn({ header: "Target (nM)" }, 0)
+	col := specs.importedPropertyColumn({ header: "Target (nM)", valueType: "Double" }, 0)
 
 	test.isEqual("pl7.app/vdj/importedProperty/Target_nM_", col.spec.name, "sanitized name")
 	test.isEqual("Target (nM)", col.spec.annotations["pl7.app/label"], "label is the raw header")
-	test.isEqual("String", col.spec.valueType, "always String — no type is asked for or guessed")
+	test.isEqual("Double", col.spec.valueType, "the detected type is emitted")
 	test.isEqual(0, len(col.spec.domain), "no domain key")
 }
 
 // Visible by default: the scientist turns off what they do not want to see.
 Test_importedProperty_isVisibleAndSitsBelowTheIdentifier := func() {
-	col := specs.importedPropertyColumn({ header: "Clone" }, 0)
+	col := specs.importedPropertyColumn({ header: "Clone", valueType: "String" }, 0)
 
 	test.isEqual("default", col.spec.annotations["pl7.app/table/visibility"], "visible by default")
 	// Below the label column (109000) and the key axis (110000), above the regions.
@@ -377,7 +377,7 @@ Test_recordLabel_followsTheAxisLabelConvention := func() {
 
 	test.isEqual("pl7.app/label", col.spec.name, "name")
 	test.isEqual("true", col.spec.annotations["pl7.app/isLabel"], "isLabel")
-	test.isEqual("Record ID", col.spec.annotations["pl7.app/label"], "display name")
+	test.isEqual("Variant Id", col.spec.annotations["pl7.app/label"], "display name")
 	test.isTrue(
 		col.spec.annotations["pl7.app/table/visibility"] == undefined,
 		"a label column is not also a column of its own"

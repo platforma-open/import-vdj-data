@@ -1,6 +1,7 @@
 packages:
   - block
   - model
+  - software/column-profile
   - software/region-annotation
   - software/xlsx-to-csv
   - test

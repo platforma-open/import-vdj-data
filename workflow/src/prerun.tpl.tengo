@@ -10,8 +10,7 @@ assets := import("@platforma-sdk/workflow-tengo:assets")
 file := import("@platforma-sdk/workflow-tengo:file")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
-splitHeaderTpl := assets.importTemplate(":split-header")
-txt := import("@platforma-sdk/workflow-tengo:txt")
+profileColumnsTpl := assets.importTemplate(":profile-columns")
 collisionsTpl := assets.importTemplate(":bare-set-collisions")
 workbook := import(":workbook")
 specs := import(":bare-set-specs")
@@ -31,18 +30,18 @@ wf.body(func(args) {
 		// supplies them. The separator comes from what the UI read out of the file's own first
 		// line rather than from the filename, which may not match the content.
 		separator := readable.extension == "csv" ? "," : "\t"
-		// More than one line, because the mapping dropdowns need to know which columns hold
-		// amino-acid sequences and a header cannot say. See split-header for the reasoning.
-		split := render.create(splitHeaderTpl, {
-			header: txt.head(readable.file, { lines: 21 }),
+		// The whole file, not a head: the panel needs each column's value type and whether it
+		// holds amino-acid domains, and both are wrong if taken from a sample. See
+		// profile-columns.
+		profile := render.create(profileColumnsTpl, {
+			file: readable.file,
 			separator: separator
 		})
 
 		outputs := {
 			// getImportProgress on this is what starts the upload.
 			fileImports: imported.handle,
-			headerColumns: split.output("result"),
-			aminoAcidColumns: split.output("aminoAcidColumns")
+			columnProfile: profile.output("profile")
 		}
 
 		if args.bareSet != undefined {

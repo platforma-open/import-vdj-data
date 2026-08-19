@@ -149,6 +149,15 @@ importers:
         specifier: 'catalog:'
         version: 2.13.0(@types/node@25.0.1)
 
+  software/column-profile:
+    devDependencies:
+      '@platforma-open/milaboratories.runenv-python-3':
+        specifier: 'catalog:'
+        version: 1.11.6
+      '@platforma-sdk/package-builder':
+        specifier: 'catalog:'
+        version: 3.15.0
+
   software/region-annotation:
     devDependencies:
       '@platforma-open/milaboratories.runenv-python-3':
@@ -231,6 +240,9 @@ importers:
 
   workflow:
     dependencies:
+      '@platforma-open/milaboratories.import-vdj.column-profile':
+        specifier: workspace:*
+        version: link:../software/column-profile
       '@platforma-open/milaboratories.import-vdj.region-annotation':
         specifier: workspace:*
         version: link:../software/region-annotation

@@ -37,9 +37,30 @@ export type FileSource = {
  */
 export type BareSetChain = "IGHeavy" | "IGLight";
 
+/** What a column can hold, decided by profiling every row of the file. */
+export type ColumnValueType = "Long" | "Double" | "String";
+
+/**
+ * Every column of a directly-loaded file, profiled over the whole file.
+ *
+ * `types` widens monotonically as rows are read, so one non-numeric value anywhere settles the
+ * column as `String` — the same rule samples-and-data applies to an imported metadata table.
+ */
+export type ColumnProfile = {
+  headers: string[];
+  types: Record<string, ColumnValueType>;
+  aminoAcid: string[];
+};
+
 export type ImportedProperty = {
   /** The source header, exactly as the file wrote it. It becomes the column's label. */
   header: string;
+  /**
+   * Detected, never chosen. Written when the scientist accepts the column, from the profile the
+   * whole-file scan produced — so the panel asks no type question and the answer cannot be
+   * wrong about a value it never saw.
+   */
+  valueType: ColumnValueType;
 };
 
 export type BareSetMapping = {
@@ -61,8 +82,7 @@ export type BareSetMapping = {
    * discarded: a column holding anything the canonical vocabulary never anticipated has no slot
    * to be given, however ordinary the value is.
    *
-   * Emitted as String columns. The panel used to ask for a type per column, which asked the
-   * scientist to declare something nothing checks.
+   * Each carries the type the whole-file profile detected for it.
    */
   properties?: ImportedProperty[];
 };
