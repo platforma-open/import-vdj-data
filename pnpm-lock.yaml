@@ -51,6 +51,9 @@ catalogs:
     '@platforma-sdk/workflow-tengo':
       specifier: 6.8.2
       version: 6.8.2
+    canonicalize:
+      specifier: ~2.1.0
+      version: 2.1.0
     shx:
       specifier: ^0.4.0
       version: 0.4.0
@@ -221,6 +224,9 @@ importers:
       '@types/node':
         specifier: '*'
         version: 25.0.1
+      canonicalize:
+        specifier: 'catalog:'
+        version: 2.1.0
       typescript:
         specifier: '*'
         version: 5.9.3

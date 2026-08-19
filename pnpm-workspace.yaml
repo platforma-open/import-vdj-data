@@ -9,6 +9,7 @@ packages:
   - workflow
 
 catalog:
+  canonicalize: ~2.1.0
   "@platforma-sdk/model": 1.81.1
   "@platforma-sdk/ui-vue": 1.81.1
   "@platforma-sdk/workflow-tengo": 6.8.2

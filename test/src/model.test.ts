@@ -62,10 +62,9 @@ describe("upgradeLegacyData", () => {
     expect(data.chains.length).toBe(6);
   });
 
-  test("reopens a file-door project on the file door", () => {
-    // loadFromFile postdates the direct door, so a project saved between the two has a
-    // fileSource and no flag. Defaulting it to false would show the dataset door with a file
-    // configured behind it and nothing on screen to say so.
+  test("carries a fileSource across without a door flag", () => {
+    // V1 stored which door the panel showed. It is gone: the panel derives that from whether a
+    // file is loaded, so a stored flag could only disagree with the data.
     const data = upgradeLegacyData({
       args: {
         fileSource: {
@@ -78,12 +77,8 @@ describe("upgradeLegacyData", () => {
       uiState: {},
     });
 
-    expect(data.loadFromFile).toBe(true);
-  });
-
-  test("an explicit flag wins over the fileSource default", () => {
-    const data = upgradeLegacyData({ args: { datasetRef: ref }, uiState: { loadFromFile: true } });
-    expect(data.loadFromFile).toBe(true);
+    expect(data.fileSource?.label).toBe("panel");
+    expect("loadFromFile" in data).toBe(false);
   });
 
   test("survives a project with neither bucket populated", () => {

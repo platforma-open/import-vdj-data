@@ -15,7 +15,6 @@ const DEFAULT_CHAINS = ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta",
 const viewStateDefaults = () => ({
   tableState: createPlDataTableStateV2(),
   settingsOpen: true,
-  loadFromFile: false,
   qiagenColumnsPresent: false,
   immunoSeqColumnsPresent: false,
   mixcrColumnsPresent: false,
@@ -33,11 +32,8 @@ const viewStateDefaults = () => ({
  * the secondary count type stop being projected into args, which is the whole point of the
  * migration for this block. See `index.ts`.
  *
- * `loadFromFile` is the one field worth reading twice. V1 introduced it alongside the direct
- * file door, so a project saved before that has no value for it — but it may well have a
- * `fileSource`, since a project saved *during* that work would. Defaulting it from whether a
- * file is set reopens such a project on the door it was actually configured with, rather than
- * on the dataset door with a file it does not show.
+ * V1's `loadFromFile` is dropped rather than carried: the panel now derives which door it is
+ * showing from whether a file is loaded, so a stored flag could only disagree with the data.
  */
 export function upgradeLegacyData({
   args,
@@ -49,8 +45,6 @@ export function upgradeLegacyData({
   return {
     ...viewStateDefaults(),
     ...(uiState ?? {}),
-
-    loadFromFile: uiState?.loadFromFile ?? args?.fileSource !== undefined,
 
     defaultBlockLabel: args?.defaultBlockLabel ?? "",
     customBlockLabel: args?.customBlockLabel ?? "",

@@ -7,8 +7,8 @@ import type {
 import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
+import canonicalize from "canonicalize";
 import { plRefsEqual } from "@platforma-sdk/model";
-import { PlCheckbox, PlFileInput } from "@platforma-sdk/ui-vue";
 import {
   PlAccordion,
   PlAccordionSection,
@@ -18,13 +18,14 @@ import {
   PlBtnGhost,
   PlDropdown,
   PlDropdownMulti,
-  PlDropdownRef,
+  PlFileDialog,
   PlElementList,
   PlMaskIcon24,
   PlSectionSeparator,
   PlSlideModal,
   usePlDataTableSettingsV2,
 } from "@platforma-sdk/ui-vue";
+import type { ImportedFiles } from "@platforma-sdk/ui-vue";
 import { computed, ref, watch, watchEffect } from "vue";
 import { useApp } from "../app";
 
@@ -226,41 +227,85 @@ const setDataset = (datasetRef: PlRef | undefined) => {
 
 const fileSourceError = ref("");
 
-/** Which door the panel shows. Switching clears the other one, so exactly one is ever set. */
-const loadFromFile = computed({
-  // Falls back to whichever door is actually in use. A block created before this field existed
-  // has no value for it — V1 ui state does not backfill new defaults into existing blocks — and
-  // without the fallback such a block shows the dataset door while holding a loaded file.
-  get: () => app.model.data.loadFromFile ?? app.model.data.fileSource !== undefined,
-  set: (on) => {
-    app.model.data.loadFromFile = on;
-    const a = app.model.data;
-    if (on) {
-      a.datasetRef = undefined;
-    } else {
-      a.fileSource = undefined;
-      a.bareSet = undefined;
-      // The two doors are independent, so the dataset door opens on a clean format choice
-      // rather than inheriting one. Without this a block that had been on the file door shows
-      // the whole per-format mapping unfurled under a format nobody picked — including any
-      // block carrying a "custom" left by an earlier build. customMapping is deliberately kept:
-      // re-picking a format brings the scientist's own mapping back with it.
-      a.format = undefined;
-    }
-    fileSourceError.value = "";
-  },
+/**
+ * What the block is reading: a dataset from the pool, or a file this block loads itself.
+ *
+ * One dropdown rather than a checkbox plus a dropdown. The two doors are alternatives, and a
+ * checkbox made that a second question — the scientist had to know they were on the right door
+ * before the dropdown in front of them meant anything.
+ *
+ * Values are strings because the list mixes two kinds of entry: a canonicalised PlRef per pool
+ * dataset, and one sentinel that opens a file dialog instead of selecting anything. `PlDropdownRef`
+ * cannot express the sentinel — its value is a PlRef — so this is a plain dropdown that maps back.
+ */
+const LOAD_FROM_FILE = "__load_from_file__";
+
+const datasetOptions = computed(() => app.model.outputs.datasetOptions ?? []);
+
+const sourceOptions = computed(() => {
+  const opts = datasetOptions.value.map((o) => ({
+    label: o.label,
+    value: canonicalize(o.ref) as string,
+  }));
+  // The loaded file appears as a selected entry of its own, so the dropdown always shows what
+  // the block is actually reading rather than going blank on the file door.
+  const file = app.model.data.fileSource;
+  if (file) opts.push({ label: file.label, value: LOAD_FROM_FILE });
+  return [...opts, { label: "Load from file…", value: LOAD_FROM_FILE }].filter(
+    (o, i, all) => all.findIndex((x) => x.value === o.value) === i,
+  );
+});
+
+const selectedSource = computed<string | undefined>(() => {
+  if (app.model.data.fileSource !== undefined) return LOAD_FROM_FILE;
+  const ref = app.model.data.datasetRef;
+  return ref ? (canonicalize(ref) as string) : undefined;
 });
 
 /**
- * The file's own first line decides the delimiter. The declared extension is not trusted —
- * a .txt holding tabs and a .csv holding tabs are both things scientists actually have.
+ * The platform's own file browser, not the OS one — the same dialog PlFileInput opens.
+ *
+ * It lists every storage the scientist has, remote ones included, so a file on S3 can be loaded
+ * the same way as one on the desktop. `lsDriver.showOpenSingleFileDialog` opens the operating
+ * system's picker instead, which can only see the local disk.
  */
-function detectExtension(firstLine: string): "csv" | "tsv" | undefined {
-  const tabs = (firstLine.match(/\t/g) ?? []).length;
-  const commas = (firstLine.match(/,/g) ?? []).length;
-  if (tabs === 0 && commas === 0) return undefined;
-  return tabs >= commas ? "tsv" : "csv";
+const fileDialogOpen = ref(false);
+
+function onFilesImported(imported: ImportedFiles) {
+  // Cancelling emits nothing, and nothing was cleared on the way in, so the previous selection
+  // simply stands.
+  if (imported.files.length > 0) void setFile(imported.files[0]);
 }
+
+function setSource(value: string | undefined) {
+  const a = app.model.data;
+
+  if (value === LOAD_FROM_FILE) {
+    // Re-selecting the entry for an already-loaded file reopens the dialog, which is how the
+    // scientist swaps the file without first clearing it.
+    fileDialogOpen.value = true;
+    return;
+  }
+
+  fileSourceError.value = "";
+  a.fileSource = undefined;
+  a.bareSet = undefined;
+  // The dataset door opens on a clean format choice rather than inheriting one. Without this a
+  // block that had been on the file door shows the whole per-format mapping unfurled under a
+  // format nobody picked. customMapping is deliberately kept: re-picking a format brings the
+  // scientist's own mapping back with it.
+  a.format = undefined;
+
+  if (value === undefined) {
+    a.datasetRef = undefined;
+    return;
+  }
+  const picked = datasetOptions.value.find((o) => canonicalize(o.ref) === value);
+  setDataset(picked?.ref);
+}
+
+/** The file door is showing exactly when a file is loaded. No stored flag decides it. */
+const loadFromFile = computed(() => app.model.data.fileSource !== undefined);
 
 async function setFile(handle: ImportFileHandle | undefined) {
   fileSourceError.value = "";
@@ -512,16 +557,23 @@ watch(
     <PlSlideModal v-model="app.model.data.settingsOpen">
       <template #title>Settings</template>
 
-      <PlCheckbox v-model="loadFromFile">Load from file</PlCheckbox>
+      <PlDropdown
+        :model-value="selectedSource"
+        :options="sourceOptions"
+        label="Select dataset"
+        clearable
+        required
+        @update:model-value="(v: string | undefined) => setSource(v)"
+      />
+
+      <PlFileDialog
+        v-model="fileDialogOpen"
+        :extensions="['csv', 'tsv', 'txt', 'xlsx']"
+        title="Load sequences from file"
+        @import:files="onFilesImported"
+      />
 
       <template v-if="loadFromFile">
-        <PlFileInput
-          :model-value="app.model.data.fileSource?.handle"
-          :extensions="['csv', 'tsv', 'txt', 'xlsx']"
-          label="File"
-          clearable
-          @update:model-value="(v: ImportFileHandle | undefined) => setFile(v)"
-        />
         <PlAlert v-if="fileSourceError" type="warn" :style="{ width: '100%' }">
           {{ fileSourceError }}
         </PlAlert>
@@ -587,15 +639,6 @@ watch(
       </template>
 
       <template v-else>
-        <PlDropdownRef
-          v-model="app.model.data.datasetRef"
-          :options="app.model.outputs.datasetOptions"
-          label="Select dataset"
-          clearable
-          required
-          @update:model-value="setDataset"
-        />
-
         <PlDropdown
           v-model="app.model.data.format"
           :options="formatOptions"

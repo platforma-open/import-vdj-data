@@ -147,12 +147,6 @@ export type BlockData = {
   // --- view state. None of this is projected anywhere.
   tableState: PlDataTableStateV2;
   settingsOpen: boolean;
-  /**
-   * Which door the panel is showing. The block already knows which door is in use from whether
-   * `fileSource` or `datasetRef` is set; this exists so the panel can show one door's controls
-   * before either is filled in.
-   */
-  loadFromFile: boolean;
   qiagenColumnsPresent: boolean;
   immunoSeqColumnsPresent: boolean;
   mixcrColumnsPresent: boolean;
@@ -178,7 +172,6 @@ export type LegacyBlockArgs = {
 export type LegacyUiState = {
   tableState?: PlDataTableStateV2;
   settingsOpen?: boolean;
-  loadFromFile?: boolean;
   qiagenColumnsPresent?: boolean;
   immunoSeqColumnsPresent?: boolean;
   mixcrColumnsPresent?: boolean;

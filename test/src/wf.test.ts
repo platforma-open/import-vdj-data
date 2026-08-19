@@ -34,7 +34,6 @@ function blockData(fields: Record<string, unknown>): Record<string, unknown> {
     chains: [],
     tableState: createPlDataTableStateV2(),
     settingsOpen: true,
-    loadFromFile: false,
     qiagenColumnsPresent: false,
     immunoSeqColumnsPresent: false,
     mixcrColumnsPresent: false,
