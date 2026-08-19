@@ -94,14 +94,13 @@ def main():
               "--key_column", "variantKey", "--output_fasta", fasta))
 
     ids = [line[1:].strip() for line in open(fasta) if line.startswith(">")]
-    record_ids = [i for i in ids if not i.startswith("__anarci_bucket_pad__")]
-    pad_ids = [i for i in ids if i.startswith("__anarci_bucket_pad__")]
-    assert record_ids == ["K1|IGHeavy", "K1|IGLight", "K2|IGHeavy", "K3|IGHeavy", "K4|IGHeavy", "K5|IGHeavy"], record_ids
+    assert ids == ["K1|IGHeavy", "K1|IGLight", "K2|IGHeavy", "K3|IGHeavy", "K4|IGHeavy", "K5|IGHeavy"], ids
     print("  fasta: chain is in the id, unsupplied chains skipped, blank key dropped")
 
-    # Without these, a single-bucket set leaves one CSV unwritten and the workflow cannot save it.
-    assert pad_ids == ["__anarci_bucket_pad__|H", "__anarci_bucket_pad__|KL"], pad_ids
-    print("  fasta: one padding reference per ANARCI bucket, always")
+    # Only records. A bucket ANARCI never fills is handled by the workflow, which pre-creates
+    # both CSVs as writable header-only placeholders — nothing synthetic enters the FASTA.
+    assert not any(i.startswith("__") for i in ids), ids
+    print("  fasta: nothing but the scientist's own records")
 
     out_tsv = os.path.join(work, "out.tsv")
     stats_tsv = os.path.join(work, "stats.tsv")
@@ -190,17 +189,17 @@ def main():
     assert single[0]["IGHeavy_regionAnnotationStatus"] == "Failed"  # S1 is not in the H csv
     print("  single-chain set: only that chain's columns emitted, header-only bucket tolerated")
 
-    # The padding must be invisible downstream: its ids name buckets, not chains, so the
-    # id parser rejects them and no record is ever emitted for them.
+    # An id whose suffix is not a mapped slot must never become a record. Nothing writes such
+    # ids today, but the parser is what keeps a stray one out of the dataset.
     pad_csv = os.path.join(work, "pad_H.csv")
-    write_anarci_csv(pad_csv, ["__anarci_bucket_pad__|H", "K1|IGHeavy"])
+    write_anarci_csv(pad_csv, ["K9|H", "K1|IGHeavy"])
     pad_out = os.path.join(work, "pad_out.tsv")
     run(os.path.join(SRC, "main.py"), "--input_tsv", in_tsv, "--key_column", "variantKey",
         "--scheme", "imgt", "--h_csv", pad_csv, "--out_tsv", pad_out)
     padded = list(csv.DictReader(open(pad_out), delimiter="\t"))
-    assert all(r["variantKey"] != "__anarci_bucket_pad__" for r in padded)
+    assert all(r["variantKey"] != "K9" for r in padded)
     assert [r["variantKey"] for r in padded] == ["K1", "K2", "K3", "K4", "K5"]
-    print("  padding references never become records")
+    print("  ids whose suffix is not a mapped slot never become records")
 
     print("\nALL ASSERTIONS PASSED")
     return 0

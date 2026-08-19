@@ -4,7 +4,7 @@ import type {
   BlockData,
   ImportedProperty,
 } from "@platforma-open/milaboratories.import-vdj.model";
-import { bareSetValid, propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
+import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
 import { plRefsEqual } from "@platforma-sdk/model";
@@ -396,24 +396,6 @@ function setMapping(key: string, value: string | undefined) {
   else a.customMapping[key] = value;
 }
 
-const mappingComplete = computed(() => {
-  if (loadFromFile.value) return bareSetValid(app.model.data.bareSet);
-
-  const a = app.model.data as {
-    customMapping?: Record<string, string | undefined>;
-    primaryCountType?: "read" | "umi";
-  };
-  const m = a.customMapping ?? {};
-  const hasAA = !!m["cdr3-aa"];
-  const hasNT = !!m["cdr3-nt"];
-  const hasV = !!m["v-gene"];
-  const hasJ = !!m["j-gene"];
-  const pct = a.primaryCountType ?? "read";
-  const hasPrimary = pct === "umi" ? !!m["umi-count"] : !!m["read-count"];
-  const hasOneSeq = hasAA || hasNT;
-  return hasOneSeq && hasV && hasJ && hasPrimary;
-});
-
 const validationResult = computed(() => {
   // Access format to create dependency and ensure reactivity when format changes
   const format = app.model.data.format;
@@ -504,23 +486,10 @@ watch(
   { immediate: true, deep: true },
 );
 
-function mappingIncomplete(): boolean {
-  if (loadFromFile.value) return !mappingComplete.value;
-  return app.model.data.format === "custom" && !mappingComplete.value;
-}
-
-const forceSettingsOpen = computed(() => {
-  return app.model.data.settingsOpen || mappingIncomplete();
-});
-
-function onModalUpdate(val: boolean) {
-  const mustStayOpen = mappingIncomplete();
-  if (mustStayOpen) {
-    app.model.data.settingsOpen = true;
-    return;
-  }
-  app.model.data.settingsOpen = val;
-}
+// The panel closes whenever the scientist closes it, finished or not. It used to refuse while
+// the mapping was incomplete, which left no way to look at the table, re-read the file or check
+// an upstream block without finishing first. Nothing needs the refusal: the args projection
+// already keeps Run disabled until the mapping is valid, and Settings reopens the panel.
 </script>
 
 <template>
@@ -534,7 +503,7 @@ function onModalUpdate(val: boolean) {
       </PlBtnGhost>
     </template>
 
-    <PlSlideModal :model-value="forceSettingsOpen" @update:model-value="onModalUpdate">
+    <PlSlideModal v-model="app.model.data.settingsOpen">
       <template #title>Settings</template>
 
       <PlCheckbox v-model="loadFromFile">Load from file</PlCheckbox>

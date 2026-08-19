@@ -80,14 +80,15 @@ self.body(func(inputs) {
 		cache(CACHE_MILLIS).
 		run()
 
-	// ANARCI decides for itself whether each sequence is H or KL and writes one CSV per bucket
-	// it found, so both are saved unconditionally only because the FASTA step guarantees both
-	// exist: it appends one reference domain per bucket. A heavy-only set would otherwise
-	// leave no `_KL.csv` and fail the save.
+	// ANARCI writes one CSV per bucket it actually found, so a heavy-only set leaves no
+	// `_KL.csv` and saving a file the run never wrote fails the step. Both are pre-created as
+	// header-only placeholders, which ANARCI overwrites for the buckets it does find and leaves
+	// alone for the others — so both saves always have a file.
 	//
-	// Pre-creating placeholders here is what antibody-tcr-lead-selection does and it does not
-	// work: a file the builder writes into the workdir is read-only, and ANARCI dies with
-	// "Permission denied: anarci.csv_H.csv" trying to overwrite it.
+	// `writable: true` is the whole trick. Workdir inputs land 0o400 by default so the backend
+	// can hardlink them from the archive cache; without it ANARCI dies on
+	// "Permission denied: anarci.csv_H.csv". Same pattern as
+	// peptide-extraction/workflow/src/parse.tpl.tengo:28.
 	//
 	// Both buckets are always read, whichever chains were mapped: the chain a column was
 	// assigned to is *declared*, ANARCI's bucket is *inferred*, and the two can disagree.
@@ -96,6 +97,8 @@ self.body(func(inputs) {
 	anarciCmd := exec.builder().
 		software(anarciSw).
 		addFile("input.fasta", fastaCmd.getFile("input.fasta")).
+		writeFile("anarci.csv_H.csv", "Id\n", { writable: true }).
+		writeFile("anarci.csv_KL.csv", "Id\n", { writable: true }).
 		arg("-i").arg("input.fasta").
 		arg("--scheme").arg(scheme).
 		arg("--ncpu").argWithVar("{system.cpu}").
