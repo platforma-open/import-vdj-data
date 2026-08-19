@@ -18,6 +18,7 @@
 // frame. That is the whole difference from the per-chain path the other formats take.
 
 maps := import("@platforma-sdk/workflow-tengo:maps")
+json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 strings := import("@platforma-sdk/workflow-tengo:strings")
 
@@ -517,6 +518,42 @@ statsAxis := func() {
 	}
 }
 
+/**
+ * The readable name of each mapped chain, keyed on the chain axis alone.
+ *
+ * The axis values stay `A` / `B` because that is the `pl7.app/vdj/scClonotypeChain` vocabulary
+ * every other producer uses, and an axis whose values disagreed with the same-named column
+ * domain would be a second meaning for one name. So the letter stays and this column carries
+ * the word, the same split the record axis uses for its opaque hash.
+ *
+ * On the axis alone, not on `[sampleId, chain]`: a `pl7.app/label` column only names an axis
+ * when it sits on that axis by itself. Which is why this is built here rather than added to the
+ * per-sample statistics TSV.
+ */
+chainLabelColumn := func(chains) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+
+	data := {}
+	for chain in chains {
+		validateChain(chain)
+		data[string(json.encode([chain]))] = CHAIN_LABELS[chain]
+	}
+
+	return {
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/label",
+			valueType: "String",
+			annotations: {
+				"pl7.app/label": "Chain",
+				"pl7.app/isLabel": "true"
+			},
+			axesSpec: [statsAxis().spec]
+		},
+		data: { keyLength: 1, data: data }
+	}
+}
+
 // --- assembly -----------------------------------------------------------------------------
 
 /**
@@ -611,6 +648,7 @@ export {
 	keyAxis: keyAxis,
 	sampleAxis: sampleAxis,
 	statsColumns: statsColumns,
+	chainLabelColumn: chainLabelColumn,
 	statsAxis: statsAxis,
 	mainSequenceColumn: mainSequenceColumn,
 	regionColumnSpec: regionColumnSpec,

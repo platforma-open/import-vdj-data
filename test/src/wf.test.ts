@@ -394,19 +394,33 @@ blockTest(
       outputs?: Record<string, unknown>;
     };
     const wrapped = state.outputs?.importedColumns as
-      | { value?: { name: string; domain: Record<string, string> }[] }
+      | {
+          value?: {
+            name: string;
+            domain: Record<string, string>;
+            annotations: Record<string, string>;
+          }[];
+        }
       | undefined;
     const columns = wrapped?.value ?? [];
     expect(columns.length).toBeGreaterThan(0);
 
-    // Only the mapped chain is emitted — no empty B columns invented for a chain the file
+    // One mapped chain is a bulk shape, so no column carries pl7.app/vdj/scClonotypeChain at all.
+    // That key is how clonotype-clustering and antibody-sequence-liabilities recognise a dataset
+    // holding paired chains in one frame; stamping it here would make both treat this as paired.
+    expect(
+      columns.filter((c) => c.domain["pl7.app/vdj/scClonotypeChain"] !== undefined),
+    ).toHaveLength(0);
+
+    // Seven regions plus the variable domain itself, and nothing invented for the chain the file
     // never had.
-    expect(columns.filter((c) => c.domain["pl7.app/vdj/scClonotypeChain"] === "B")).toHaveLength(0);
-    const heavyRegions = columns.filter(
-      (c) => c.name === "pl7.app/vdj/sequence" && c.domain["pl7.app/vdj/scClonotypeChain"] === "A",
-    );
-    // Seven regions plus the variable domain itself.
-    expect(heavyRegions).toHaveLength(8);
+    const sequences = columns.filter((c) => c.name === "pl7.app/vdj/sequence");
+    expect(sequences).toHaveLength(8);
+
+    // The chain is still named for the reader, on the labels.
+    expect(
+      sequences.filter((c) => (c.annotations["pl7.app/label"] ?? "").startsWith("Heavy ")),
+    ).toHaveLength(8);
 
     // And the padding references never became records of their own.
     expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();

@@ -29,6 +29,9 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 processUtils := import(":process-utils")
 specs := import(":bare-set-specs")
+json := import("json")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+smart := import("@platforma-sdk/workflow-tengo:smart")
 
 importTpl := assets.importTemplate(":import-bare-set")
 annotateTpl := assets.importTemplate(":annotate-regions")
@@ -209,6 +212,14 @@ self.body(func(inputs) {
 
 	stats := pframes.pFrameBuilder()
 	annotated.addXsvOutputToBuilder(stats, "regionStats", "regionStats")
+
+	// Names the chain axis, whose values are the A / B vocabulary. Static, on the axis alone.
+	chainLabel := specs.chainLabelColumn(chains)
+	stats.add(
+		"chainLabel",
+		chainLabel.spec,
+		smart.createValueResource(pConstants.RTYPE_P_COLUMN_DATA_JSON, json.encode(chainLabel.data))
+	)
 
 	return {
 		result: result.build(),
