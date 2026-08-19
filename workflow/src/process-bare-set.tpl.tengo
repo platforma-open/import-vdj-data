@@ -52,7 +52,7 @@ self.body(func(inputs) {
 
 	ll.assert(len(chains) > 0, "process-bare-set: at least one chain must be mapped")
 
-	keyAxis := specs.keyAxis(blockId)
+	keyAxis := specs.keyAxis(blockId, chains)
 	bySource := specs.columnsBySource(chains, scheme, properties)
 
 	// Pass 1. The Xsv output declares the abundance column only; the record TSV it also emits

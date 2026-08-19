@@ -21,7 +21,7 @@ ids := func(columns) {
 // --- key axis ---------------------------------------------------------------------------
 
 Test_keyAxis_isVariantKeyWithRunIdAndReceptor := func() {
-	axis := specs.keyAxis("block-42")
+	axis := specs.keyAxis("block-42", ["A", "B"])
 
 	test.isEqual("pl7.app/variantKey", axis.spec.name, "key axis name")
 	test.isEqual("String", axis.spec.type, "key axis type")
@@ -34,7 +34,7 @@ Test_keyAxis_isVariantKeyWithRunIdAndReceptor := func() {
 // The run-id key is what makes a set on this shared axis antibody rather than peptide or
 // amplicon. A reader that takes modality from the axis *name* is wrong; this is the carrier.
 Test_keyAxis_carriesTheVdjRunIdAndNotAnotherModalitys := func() {
-	domain := specs.keyAxis("b1").spec.domain
+	domain := specs.keyAxis("b1", ["A", "B"]).spec.domain
 
 	test.isEqual("b1", domain["pl7.app/vdj/clonotypingRunId"], "vdj run id")
 	test.isTrue(domain["pl7.app/peptide/extractionRunId"] == undefined, "must not claim peptide")
@@ -44,10 +44,26 @@ Test_keyAxis_carriesTheVdjRunIdAndNotAnotherModalitys := func() {
 // `scClonotypeKey/structure` belongs to the vocabulary this axis no longer uses, and no
 // variantKey producer in the workspace emits a structure key.
 Test_keyAxis_carriesNoStructureKey := func() {
-	domain := specs.keyAxis("b1").spec.domain
+	domain := specs.keyAxis("b1", ["A", "B"]).spec.domain
 
 	test.isTrue(domain["pl7.app/vdj/scClonotypeKey/structure"] == undefined, "no structure key")
-	test.isEqual(2, len(domain), "exactly two domain keys")
+	test.isEqual(2, len(domain), "exactly two domain keys when paired")
+}
+
+// With one chain the record IS that chain, so the axis says which — the same key and the same
+// vocabulary the block's bulk path puts on its clonotypeKey axis. It is the only machine-readable
+// statement of the chain on a single-chain set, since the columns carry none.
+Test_keyAxis_namesTheChainWhenThereIsOnlyOne := func() {
+	heavy := specs.keyAxis("b1", ["A"]).spec.domain
+	test.isEqual("IGHeavy", heavy["pl7.app/vdj/chain"], "heavy-only names its locus")
+	test.isEqual(3, len(heavy), "run id, receptor and chain")
+
+	light := specs.keyAxis("b1", ["B"]).spec.domain
+	test.isEqual("IGLight", light["pl7.app/vdj/chain"], "light-only names its locus")
+
+	// A paired record holds both chains, so no single value applies.
+	paired := specs.keyAxis("b1", ["A", "B"]).spec.domain
+	test.isTrue(paired["pl7.app/vdj/chain"] == undefined, "paired names no chain")
 }
 
 // --- main sequence ----------------------------------------------------------------------

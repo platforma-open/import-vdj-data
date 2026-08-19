@@ -35,6 +35,13 @@ CHAIN_LABELS := {
 	"B": "Light"
 }
 
+// The `pl7.app/vdj/chain` vocabulary, which is the block's own bulk vocabulary rather than the
+// A/B slot names. Stamped on the key axis of a single-chain set — see `keyAxis`.
+CHAIN_LOCI := {
+	"A": "IGHeavy",
+	"B": "IGLight"
+}
+
 // Seven regions. Order here is emission order and is fixed so the assembled column list is
 // canonical across runs.
 REGIONS := ["FR1", "CDR1", "CDR2", "FR2", "FR3", "FR4", "CDR3"]
@@ -133,17 +140,32 @@ validateScheme := func(scheme) {
  * (blocks/peptide-extraction/workflow/src/column-specs.lib.tengo:15-35) with the peptide run
  * id exchanged for the VDJ one.
  */
-keyAxis := func(blockId) {
+keyAxis := func(blockId, chains) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+
+	// With one mapped chain the record IS that chain, so the axis says which — the same key,
+	// with the same vocabulary, that the block's bulk path puts on its clonotypeKey axis
+	// (process-bulk.tpl.tengo:128). It is the only machine-readable statement of the chain on a
+	// single-chain set, now that the columns carry none.
+	//
+	// A paired record holds both chains, so there is no single value and the key is absent.
+	// Chain is a property of the column there, not of the record.
+	chainDom := {}
+	if len(chains) == 1 {
+		validateChain(chains[0])
+		chainDom = { "pl7.app/vdj/chain": CHAIN_LOCI[chains[0]] }
+	}
+
 	return {
 		column: keyColumn,
 		naRegex: "",
 		spec: {
 			type: "String",
 			name: "pl7.app/variantKey",
-			domain: {
+			domain: maps.merge({
 				"pl7.app/vdj/receptor": "IG",
 				"pl7.app/vdj/clonotypingRunId": blockId
-			},
+			}, chainDom),
 			annotations: {
 				"pl7.app/label": "Record ID",
 				"pl7.app/table/fontFamily": "monospace",
