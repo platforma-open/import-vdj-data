@@ -479,26 +479,25 @@ Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
 }
 
 
-// The statistics table carries the chain in each column's domain, not on an axis — the shape the
-// block's bulk path already uses. So a one-chain set's statistics are shaped exactly like bulk's.
-Test_statsColumns_carryTheChainInTheDomain := func() {
-	paired := specs.statsColumns(["IGHeavy", "IGLight"], "b1")
-	test.isEqual(8, len(paired), "four statistics per chain")
-	test.isEqual("IGHeavy_annotated", paired[0].column, "TSV header is chain-prefixed")
-	test.isEqual("A", paired[0].spec.domain["pl7.app/vdj/scClonotypeChain"], "chain in the domain")
-	test.isEqual("Heavy Annotated", paired[0].spec.annotations["pl7.app/label"], "chain in the label")
-
-	one := specs.statsColumns(["IGHeavy"], "b1")
-	test.isEqual(4, len(one), "four statistics, one chain")
+// One row per declared chain, keyed on the locus. The counts say nothing about the chain — the
+// axis does — and a label column carries the panel's own words for it.
+Test_statsColumns_areKeyedOnTheChainAxis := func() {
+	cols := specs.statsColumns("b1")
+	test.isEqual(4, len(cols), "four statistics, whatever the chains")
+	test.isEqual("annotated", cols[0].column, "TSV header is not chain-prefixed")
 	test.isTrue(
-		one[0].spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined,
-		"one chain is bulk-shaped: no chain key"
+		cols[0].spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined,
+		"the chain is the axis, not a column domain"
 	)
-	test.isEqual("Annotated", one[0].spec.annotations["pl7.app/label"], "and no chain in the label")
 
-	// Both chains' columns must be distinct specs or they would dedupe into one.
-	test.isTrue(paired[0].spec.domain != paired[4].spec.domain, "chains do not share a domain")
-	test.isTrue(paired[0].column != paired[4].column, "chains do not share a TSV column")
+	axis := specs.statsAxis()
+	test.isEqual("pl7.app/vdj/chain", axis.spec.name, "locus vocabulary, not the A/B one")
+
+	labels := specs.chainLabelColumn(["TCRBeta", "TCRAlpha"])
+	test.isEqual("pl7.app/label", labels.spec.name, "a label column names the axis")
+	test.isEqual("true", labels.spec.annotations["pl7.app/isLabel"], "isLabel")
+	test.isEqual(1, len(labels.spec.axesSpec), "on the chain axis alone")
+	test.isEqual(2, len(labels.data.data), "one label per mapped chain")
 }
 
 
@@ -516,7 +515,7 @@ Test_status_describesEachOfItsValues := func() {
 // Every statistic explains what it counts — the four labels repeat the status vocabulary, so a
 // reader hovering either place gets the same answer.
 Test_statsColumns_eachDescribeWhatTheyCount := func() {
-	for col in specs.statsColumns(["IGHeavy", "IGLight"], "b1") {
+	for col in specs.statsColumns("b1") {
 		desc := col.spec.annotations["pl7.app/description"]
 		test.isTrue(desc != undefined && desc != "", "described: " + col.id)
 	}

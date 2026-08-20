@@ -29,6 +29,9 @@ pframes := import("@platforma-sdk/workflow-tengo:pframes")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 processUtils := import(":process-utils")
 specs := import(":bare-set-specs")
+smart := import("@platforma-sdk/workflow-tengo:smart")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+json := import("json")
 
 importTpl := assets.importTemplate(":import-bare-set")
 annotateTpl := assets.importTemplate(":annotate-regions")
@@ -139,10 +142,10 @@ self.body(func(inputs) {
 		}, {
 			type: "TsvContent",
 			settings: {
-				// No axes: the chain rides in each stat column's domain, as it does on the bulk
-				// path and on the region columns.
-				axes: [],
-				columns: specs.statsColumns(chains, blockId)
+				// One row per declared chain, so a paired set's two chains can be read against
+				// one another rather than laid end to end across the header.
+				axes: [specs.statsAxis()],
+				columns: specs.statsColumns(blockId)
 			},
 			name: "regionStats",
 			path: ["stats", "main"]
@@ -211,6 +214,15 @@ self.body(func(inputs) {
 
 	stats := pframes.pFrameBuilder()
 	annotated.addXsvOutputToBuilder(stats, "regionStats", "regionStats")
+
+	// Names the chain axis, whose values are the locus vocabulary. Static, and on the axis alone
+	// so it acts as that axis's label rather than as one more property of it.
+	chainLabel := specs.chainLabelColumn(chains)
+	stats.add(
+		"chainLabel",
+		chainLabel.spec,
+		smart.createValueResource(pConstants.RTYPE_P_COLUMN_DATA_JSON, json.encode(chainLabel.data))
+	)
 
 
 	return {

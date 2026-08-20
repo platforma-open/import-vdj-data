@@ -115,23 +115,22 @@ def write_stats(path: str, chains: List[str], tally: Dict[str, Dict[str, int]]) 
     every record is annotated consistently and labelled wrongly, and no other signal in the
     output would show it.
 
-    One wide row, one column per chain per statistic: `<chain>_annotated` and friends. Not a
-    `chain` column with a row each, because the workflow reads this as a table with no axes and
-    carries the chain in each column's domain — the same way it carries the chain on the region
-    columns, and the same way the block's bulk path reports its own statistics.
+    One row per declared chain, keyed on the chain. A scientist reading a paired set wants the
+    two chains side by side to compare them, which is a row each; folding them into one wide row
+    puts the same four numbers twice across the header instead.
     """
-    header: list[str] = []
-    row: list[str] = []
-    for chain in chains:
-        for suffix, value in (
-            ("annotated", tally[chain][STATUS_ANNOTATED]),
-            ("notApplicable", tally[chain][STATUS_NOT_APPLICABLE]),
-            ("failed", tally[chain][STATUS_FAILED]),
-            ("chainDisagreed", tally[chain]["chainDisagreed"]),
-        ):
-            header.append(f"{chain}_{suffix}")
-            row.append(str(value))
-    pl.DataFrame([row], schema=header, orient="row").write_csv(path, separator="\t")
+    header = ["chain", "annotated", "notApplicable", "failed", "chainDisagreed"]
+    rows = [
+        [
+            chain,
+            str(tally[chain][STATUS_ANNOTATED]),
+            str(tally[chain][STATUS_NOT_APPLICABLE]),
+            str(tally[chain][STATUS_FAILED]),
+            str(tally[chain]["chainDisagreed"]),
+        ]
+        for chain in chains
+    ]
+    pl.DataFrame(rows, schema=header, orient="row").write_csv(path, separator="\t")
 
 
 def main() -> None:

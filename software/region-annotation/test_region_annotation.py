@@ -150,24 +150,18 @@ def main():
             assert row[f"{chain}_regionAnnotationStatus"], f"{key} {chain}: empty status"
     print("  status is never empty")
 
-    # One wide row, one column per chain per statistic: the workflow reads this with no axes and
-    # carries the chain in each column's domain, as the block's bulk path does.
-    stats_rows = list(csv.DictReader(open(stats_tsv), delimiter="\t"))
-    assert len(stats_rows) == 1, stats_rows
-    stats = stats_rows[0]
-    assert list(stats) == [
-        "IGHeavy_annotated", "IGHeavy_notApplicable", "IGHeavy_failed", "IGHeavy_chainDisagreed",
-        "IGLight_annotated", "IGLight_notApplicable", "IGLight_failed", "IGLight_chainDisagreed",
-    ], list(stats)
-    # A: K1 K2 K5 annotated, K3 K4 failed, none unsupplied.
-    assert (stats["IGHeavy_annotated"], stats["IGHeavy_notApplicable"], stats["IGHeavy_failed"],
-            stats["IGHeavy_chainDisagreed"]) == ("3", "0", "2", "1"), stats
-    # B: only K1 supplied and annotated; K2..K5 unsupplied. K1|IGLight is in KL, which is where a
-    # declared B belongs, so nothing disagrees.
-    assert (stats["IGLight_annotated"], stats["IGLight_notApplicable"], stats["IGLight_failed"],
-            stats["IGLight_chainDisagreed"]) == ("1", "4", "0", "0"), stats
-    print("  stats: one wide row, per-chain counts correct; K5 is the one chainDisagreed, and it"
-          " is counted without changing its status or its values")
+    # One row per declared chain, keyed on the locus — the workflow reads this with a chain axis.
+    stats = {r["chain"]: r for r in csv.DictReader(open(stats_tsv), delimiter="\t")}
+    assert list(stats) == ["IGHeavy", "IGLight"], list(stats)
+    # IGHeavy: K1 K2 K5 annotated, K3 K4 failed, none unsupplied.
+    assert stats["IGHeavy"] == {"chain": "IGHeavy", "annotated": "3", "notApplicable": "0",
+                                "failed": "2", "chainDisagreed": "1"}, stats["IGHeavy"]
+    # IGLight: only K1 supplied and annotated; K2..K5 unsupplied. K1's light chain is in KL,
+    # which is where a declared IGLight belongs, so nothing disagrees.
+    assert stats["IGLight"] == {"chain": "IGLight", "annotated": "1", "notApplicable": "4",
+                                "failed": "0", "chainDisagreed": "0"}, stats["IGLight"]
+    print("  stats: a row per chain, counts correct; K5 is the one chainDisagreed, and it is"
+          " counted without changing its status or its values")
 
     # The count must not leak into the dataset — K5 is a normal Annotated record.
     assert by_key["K5"]["IGHeavy_regionAnnotationStatus"] == "Annotated"

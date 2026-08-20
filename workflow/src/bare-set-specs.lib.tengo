@@ -18,6 +18,7 @@
 // frame. That is the whole difference from the per-chain path the other formats take.
 
 maps := import("@platforma-sdk/workflow-tengo:maps")
+json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 strings := import("@platforma-sdk/workflow-tengo:strings")
 
@@ -30,6 +31,17 @@ CHAINS := ["IGHeavy", "IGLight", "TCRBeta", "TCRAlpha", "TCRDelta", "TCRGamma"]
 // "Heavy CDR3 aa" and keeps A/B for the domain
 // (blocks/mixcr-scfv-clonotyping/workflow/src/mixcr-exports.lib.tengo:173-178,271).
 // Following it: a literal reading would put "A CDR3 aa" in front of the scientist.
+// What the mapping panel calls each locus, mirrored from the UI's receptor/chain list so the
+// statistics table and the dropdown that produced it use one vocabulary.
+CHAIN_DISPLAY := {
+	"IGHeavy": "IG Heavy",
+	"IGLight": "IG Light",
+	"TCRBeta": "TCR-β",
+	"TCRAlpha": "TCR-α",
+	"TCRDelta": "TCR-δ",
+	"TCRGamma": "TCR-ɣ"
+}
+
 CHAIN_LABELS := {
 	"IGHeavy": "Heavy",
 	"IGLight": "Light",
@@ -539,7 +551,7 @@ propertyCollisions := func(properties) {
 }
 
 /**
- * Per-chain import statistics, shown in the block's own table.
+ * Per-chain import statistics, shown in the block's own table. One row per declared chain.
  *
  * A bare set has nothing to count in the usual sense — no reads, no UMIs, and its cross-sample
  * aggregates are deliberately not emitted — so what it reports instead is the outcome of the
@@ -547,70 +559,112 @@ propertyCollisions := func(properties) {
  * and how many the instrument could not resolve. `chainDisagreed` is the measurement the
  * declared-versus-inferred question is deferred for want of.
  *
- * The chain rides in each column's domain, not on an axis, so the table has no axis of its own
- * beyond the sample. That is what the block's bulk path does with its own statistics
- * (process-utils.lib.tengo `buildStatsColumns`, chain in `pl7.app/vdj/chain`), and what the
- * region columns here already do. With one chain the domain is omitted and the shape matches
- * bulk's exactly.
+ * A row each rather than a column each, so the two chains of a paired set can be read against
+ * one another. The chain is the axis; these columns say nothing about it.
  */
-statsColumns := func(chains, blockId) {
-	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
-	paired := len(chains) > 1
-
+statsColumns := func(blockId) {
 	cols := []
 	entries := [
 		{
-			suffix: "annotated", name: "annotatedCount", label: "Annotated", order: "90000",
+			column: "annotated", name: "annotatedCount", label: "Annotated", order: "90000",
 			description: "Records whose FR and CDR boundaries were located for this chain."
 		},
 		{
-			suffix: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000",
+			column: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000",
 			description: "Records with no sequence supplied for this chain. Expected on a panel where " +
 				"one chain is only partly filled in; not a failure."
 		},
 		{
-			suffix: "failed", name: "failedCount", label: "Failed", order: "88000",
+			column: "failed", name: "failedCount", label: "Failed", order: "88000",
 			description: "Records whose supplied sequence could not be numbered. A count much above zero " +
 				"usually means the mapped column does not hold amino-acid variable domains."
 		},
 		{
-			suffix: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain",
+			column: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain",
 			order: "87000",
-			description: "Records ANARCI numbered as the opposite chain to the slot they were mapped to. " +
+			description: "Records ANARCI numbered as a different chain to the slot they were mapped to. " +
 				"Reported only — the regions are recorded under the mapped chain either way. Nearly all " +
-				"records on both chains means the two sequence columns were mapped the wrong way round."
+				"records on both chains means the sequence columns were mapped the wrong way round."
 		}
 	]
-
-	for chain in chains {
-		validateChain(chain)
-		for e in entries {
-			label := e.label
-			if paired { label = CHAIN_LABELS[chain] + " " + e.label }
-
-			// No allowNA: TsvContent columns validate against a narrower schema than the Xsv
-			// ones, accepting only column, id and spec.
-			cols = append(cols, {
-				id: chain + "-" + e.suffix,
-				column: chain + "_" + e.suffix,
-				spec: {
-					name: "pl7.app/vdj/stat/regionAnnotation/" + e.name,
-					valueType: "Int",
-					domain: maps.merge(
-						{ "pl7.app/vdj/clonotypingRunId": blockId },
-						paired ? { "pl7.app/vdj/scClonotypeChain": PAIRED_CHAIN_DOMAIN[chain] } : {}
-					),
-					annotations: a(e.order, "default", {
-						"pl7.app/label": label,
-						"pl7.app/description": e.description
-					})
-				}
-			})
-		}
+	for e in entries {
+		// No allowNA: TsvContent columns validate against a narrower schema than the Xsv ones,
+		// accepting only column, id and spec.
+		cols = append(cols, {
+			id: e.column,
+			column: e.column,
+			spec: {
+				name: "pl7.app/vdj/stat/regionAnnotation/" + e.name,
+				valueType: "Int",
+				domain: {
+					"pl7.app/vdj/clonotypingRunId": blockId
+				},
+				annotations: a(e.order, "default", {
+					"pl7.app/label": e.label,
+					"pl7.app/description": e.description
+				})
+			}
+		})
 	}
 	return cols
 }
 
+/**
+ * The axis the statistics table is keyed on: one row per declared chain.
+ *
+ * `pl7.app/vdj/chain` rather than `pl7.app/vdj/scClonotypeChain`, because the value is the locus
+ * the scientist mapped — IGHeavy, TCRBeta — not the A/B position within a pair. That is the same
+ * vocabulary the key axis of a single-chain set carries.
+ *
+ * No `naRegex`: TsvContent validates its axis entries against a narrower schema that accepts
+ * only `column` and `spec`.
+ */
+statsAxis := func() {
+	return {
+		column: "chain",
+		spec: {
+			type: "String",
+			name: "pl7.app/vdj/chain",
+			annotations: {
+				"pl7.app/label": "Chain"
+			}
+		}
+	}
+}
+
+/**
+ * The readable name of each mapped chain, keyed on the chain axis alone.
+ *
+ * The axis values are the locus vocabulary, which is machine-readable but not what the panel
+ * calls them. This column carries the panel's own words, so a scientist reads "TCR-β" in the
+ * statistics table and in the mapping dropdown that produced it.
+ *
+ * On the axis alone, not on `[sampleId, chain]`: a `pl7.app/label` column only names an axis
+ * when it sits on that axis by itself.
+ */
+chainLabelColumn := func(chains) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+
+	data := {}
+	for chain in chains {
+		validateChain(chain)
+		data[string(json.encode([chain]))] = CHAIN_DISPLAY[chain]
+	}
+
+	return {
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/label",
+			valueType: "String",
+			annotations: {
+				"pl7.app/label": "Chain",
+				"pl7.app/isLabel": "true"
+			},
+			axesSpec: [statsAxis().spec]
+		},
+		data: { keyLength: 1, data: data }
+	}
+}
 
 // --- assembly -----------------------------------------------------------------------------
 
@@ -706,6 +760,8 @@ export {
 	keyAxis: keyAxis,
 	sampleAxis: sampleAxis,
 	statsColumns: statsColumns,
+	statsAxis: statsAxis,
+	chainLabelColumn: chainLabelColumn,
 	mainSequenceColumn: mainSequenceColumn,
 	regionColumnSpec: regionColumnSpec,
 	statusColumnSpec: statusColumnSpec,
