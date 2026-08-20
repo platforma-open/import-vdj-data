@@ -137,15 +137,17 @@ function getBare(): BareSetArgs | undefined {
  * dropdown narrows itself from the selection.
  */
 const chainSelectionOptions = [
-  { label: "IG (heavy + light)", value: "IG" },
-  { label: "IG Heavy only", value: "IGHeavy" },
-  { label: "IG Light only", value: "IGLight" },
-  { label: "TCR-αβ (beta + alpha)", value: "TCRAB" },
-  { label: "TCR beta only", value: "TCRBeta" },
-  { label: "TCR alpha only", value: "TCRAlpha" },
-  { label: "TCR-γδ (delta + gamma)", value: "TCRGD" },
-  { label: "TCR delta only", value: "TCRDelta" },
-  { label: "TCR gamma only", value: "TCRGamma" },
+  // Receptors then chains, with the labels mixcr-clonotyping's combined receptor-or-chain list
+  // uses (SettingsPanel.vue:288-301) — the same control, so the same words.
+  { label: "IG", value: "IG" },
+  { label: "TCR-αβ", value: "TCRAB" },
+  { label: "TCR-ɣδ", value: "TCRGD" },
+  { label: "IG Heavy", value: "IGHeavy" },
+  { label: "IG Light", value: "IGLight" },
+  { label: "TCR-α", value: "TCRAlpha" },
+  { label: "TCR-β", value: "TCRBeta" },
+  { label: "TCR-ɣ", value: "TCRGamma" },
+  { label: "TCR-δ", value: "TCRDelta" },
 ];
 
 /** The slots the current declaration asks for, in emission order. */
