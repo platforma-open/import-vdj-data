@@ -45,6 +45,11 @@ REGION_RANGES: Dict[str, Dict[str, Dict[str, Tuple[int, int]]]] = {
             "CDR3": (105, 117),
             "FR4": (118, 129),
         },
+        # TCR buckets share the IG table verbatim, filled in below. IMGT numbering does not vary
+        # by chain — ANARCI's `number_imgt(state_vector, sequence)` takes no chain type at all —
+        # which is why H and KL above are already identical. Only imgt has TCR entries: ANARCI
+        # implements kabat and chothia for H/K/L only and raises for a TCR chain, so those
+        # schemes are never reached with a TCR bucket.
     },
     "kabat": {
         "H": {
@@ -87,6 +92,9 @@ REGION_RANGES: Dict[str, Dict[str, Dict[str, Tuple[int, int]]]] = {
         },
     },
 }
+
+for _tcr_bucket in ("A", "B", "G", "D"):
+    REGION_RANGES["imgt"][_tcr_bucket] = dict(REGION_RANGES["imgt"]["H"])
 
 SCHEMES = sorted(REGION_RANGES.keys())
 

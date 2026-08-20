@@ -35,7 +35,7 @@ export type FileSource = {
  * the A/B of `pl7.app/vdj/scClonotypeChain`: a mapped chain is a locus, and one mapped chain is
  * a bulk shape. The workflow translates to A/B where the paired-chain domain needs it.
  */
-export type BareSetChain = "IGHeavy" | "IGLight";
+export type BareSetChain = "IGHeavy" | "IGLight" | "TCRBeta" | "TCRAlpha" | "TCRDelta" | "TCRGamma";
 
 /**
  * What the scientist declares they are importing — a receptor, or one of its chains.
@@ -45,7 +45,16 @@ export type BareSetChain = "IGHeavy" | "IGLight";
  * happened to be filled, so a paired panel with the light column not yet mapped was
  * indistinguishable from a deliberately heavy-only one — and the two emit different shapes.
  */
-export type ChainSelection = "IG" | "IGHeavy" | "IGLight";
+export type ChainSelection =
+  | "IG"
+  | "IGHeavy"
+  | "IGLight"
+  | "TCRAB"
+  | "TCRBeta"
+  | "TCRAlpha"
+  | "TCRGD"
+  | "TCRDelta"
+  | "TCRGamma";
 
 /** Numbering conventions the block offers. */
 export type BareSetScheme = "imgt" | "kabat" | "chothia";
@@ -55,6 +64,13 @@ export const CHAIN_SLOTS: Record<ChainSelection, BareSetChain[]> = {
   IG: ["IGHeavy", "IGLight"],
   IGHeavy: ["IGHeavy"],
   IGLight: ["IGLight"],
+  // The more diverse chain first, matching MiXCR's receptorInfos order.
+  TCRAB: ["TCRBeta", "TCRAlpha"],
+  TCRBeta: ["TCRBeta"],
+  TCRAlpha: ["TCRAlpha"],
+  TCRGD: ["TCRDelta", "TCRGamma"],
+  TCRDelta: ["TCRDelta"],
+  TCRGamma: ["TCRGamma"],
 };
 
 /**
@@ -70,12 +86,22 @@ export const SCHEMES_FOR_SELECTION: Record<ChainSelection, BareSetScheme[]> = {
   IG: ["imgt", "kabat", "chothia"],
   IGHeavy: ["imgt", "kabat", "chothia"],
   IGLight: ["imgt", "kabat", "chothia"],
+  TCRAB: ["imgt"],
+  TCRBeta: ["imgt"],
+  TCRAlpha: ["imgt"],
+  TCRGD: ["imgt"],
+  TCRDelta: ["imgt"],
+  TCRGamma: ["imgt"],
 };
 
 /** What to call each slot in front of the scientist. */
 export const CHAIN_SLOT_LABELS: Record<BareSetChain, string> = {
   IGHeavy: "Heavy chain variable domain (aa)",
   IGLight: "Light chain variable domain (aa)",
+  TCRBeta: "Beta chain variable domain (aa)",
+  TCRAlpha: "Alpha chain variable domain (aa)",
+  TCRDelta: "Delta chain variable domain (aa)",
+  TCRGamma: "Gamma chain variable domain (aa)",
 };
 
 /** What a column can hold, decided by profiling every row of the file. */

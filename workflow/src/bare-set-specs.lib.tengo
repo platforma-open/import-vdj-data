@@ -23,7 +23,7 @@ strings := import("@platforma-sdk/workflow-tengo:strings")
 
 // Declared chains, in emission order. `A` heavy, `B` light — the vocabulary of
 // `pl7.app/vdj/scClonotypeChain`, which `sequence-properties` already reads.
-CHAINS := ["IGHeavy", "IGLight"]
+CHAINS := ["IGHeavy", "IGLight", "TCRBeta", "TCRAlpha", "TCRDelta", "TCRGamma"]
 
 // Labels use Heavy/Light while domains use A/B. The atoms write `<chain>` in both
 // positions, but the workspace's one shipped paired producer renders labels as
@@ -32,7 +32,11 @@ CHAINS := ["IGHeavy", "IGLight"]
 // Following it: a literal reading would put "A CDR3 aa" in front of the scientist.
 CHAIN_LABELS := {
 	"IGHeavy": "Heavy",
-	"IGLight": "Light"
+	"IGLight": "Light",
+	"TCRBeta": "Beta",
+	"TCRAlpha": "Alpha",
+	"TCRDelta": "Delta",
+	"TCRGamma": "Gamma"
 }
 
 // The value `pl7.app/vdj/scClonotypeChain` takes for each slot, emitted only on a paired set.
@@ -41,9 +45,17 @@ CHAIN_LABELS := {
 // block's bulk path uses, because a mapped chain is a locus and one chain is a bulk shape.
 // `scClonotypeChain` is the separate, positional vocabulary for chains sharing one frame, and
 // A/B is what every producer puts in it — so the slot name does not belong there.
+// A is the more diverse chain — the one that recombines a D segment. That is MiXCR's rule,
+// stated at mixcr-clonotyping process.tpl.tengo:695 ("A" chain is always the one that is more
+// diverse) and encoded in its receptorInfos chain order: IGHeavy/IGLight, TCRBeta/TCRAlpha,
+// TCRDelta/TCRGamma. This block's own single-cell path already follows it.
 PAIRED_CHAIN_DOMAIN := {
 	"IGHeavy": "A",
-	"IGLight": "B"
+	"IGLight": "B",
+	"TCRBeta": "A",
+	"TCRAlpha": "B",
+	"TCRDelta": "A",
+	"TCRGamma": "B"
 }
 
 // The receptor each locus belongs to, stamped on the key axis. Derived rather than assumed, so
@@ -51,7 +63,11 @@ PAIRED_CHAIN_DOMAIN := {
 // exist for one, says what it is without another place needing to change.
 CHAIN_RECEPTOR := {
 	"IGHeavy": "IG",
-	"IGLight": "IG"
+	"IGLight": "IG",
+	"TCRBeta": "TCRAB",
+	"TCRAlpha": "TCRAB",
+	"TCRDelta": "TCRGD",
+	"TCRGamma": "TCRGD"
 }
 
 // Seven regions. Order here is emission order and is fixed so the assembled column list is
@@ -100,8 +116,8 @@ a := func(order, visibility, spec) {
 
 validateChain := func(chain) {
 	ll.assert(
-		chain == "IGHeavy" || chain == "IGLight",
-		"bare-set-specs: unknown chain %v (expected A or B)", chain
+		!is_undefined(CHAIN_RECEPTOR[chain]),
+		"bare-set-specs: unknown chain %v (expected one of %v)", chain, CHAINS
 	)
 }
 

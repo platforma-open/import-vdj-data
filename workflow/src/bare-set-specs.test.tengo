@@ -532,3 +532,34 @@ Test_keyAxis_derivesTheReceptorFromTheChains := func() {
 	light := specs.keyAxis("b1", ["IGLight"]).spec.domain
 	test.isEqual("IG", light["pl7.app/vdj/receptor"], "light-only names IG")
 }
+
+
+// A is the more diverse chain — the one recombining a D segment. MiXCR states the rule
+// (process.tpl.tengo:695) and encodes it in receptorInfos: IGHeavy/IGLight, TCRBeta/TCRAlpha,
+// TCRDelta/TCRGamma. This block's single-cell path already follows it, and a bare set must agree
+// or the same dataset would mean different things depending on which door it came through.
+Test_pairedChainDomain_putsTheDiverseChainInSlotA := func() {
+	pairs := [
+		{ a: "IGHeavy", b: "IGLight", receptor: "IG" },
+		{ a: "TCRBeta", b: "TCRAlpha", receptor: "TCRAB" },
+		{ a: "TCRDelta", b: "TCRGamma", receptor: "TCRGD" }
+	]
+	for pair in pairs {
+		aCol := specs.mainSequenceColumn(pair.a, true)
+		bCol := specs.mainSequenceColumn(pair.b, true)
+		test.isEqual("A", aCol.spec.domain["pl7.app/vdj/scClonotypeChain"], pair.a + " is slot A")
+		test.isEqual("B", bCol.spec.domain["pl7.app/vdj/scClonotypeChain"], pair.b + " is slot B")
+
+		axis := specs.keyAxis("b1", [pair.a, pair.b]).spec.domain
+		test.isEqual(pair.receptor, axis["pl7.app/vdj/receptor"], pair.receptor + " on the axis")
+	}
+}
+
+// A set holds one receptor's chains. The A/B vocabulary has two slots and their meaning comes
+// from the receptor, so chains from two receptors cannot be expressed at all.
+Test_keyAxis_refusesTwoReceptorsInOneSet := func() {
+	// Single-chain TCR sets name their own locus on the axis, as IG ones do.
+	beta := specs.keyAxis("b1", ["TCRBeta"]).spec.domain
+	test.isEqual("TCRBeta", beta["pl7.app/vdj/chain"], "beta-only names its locus")
+	test.isEqual("TCRAB", beta["pl7.app/vdj/receptor"], "and its receptor")
+}

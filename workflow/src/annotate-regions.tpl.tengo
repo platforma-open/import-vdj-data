@@ -31,6 +31,7 @@ self := import("@platforma-sdk/workflow-tengo:tpl.light")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 maps := import("@platforma-sdk/workflow-tengo:maps")
+text := import("text")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 
@@ -41,6 +42,13 @@ regionsSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.re
 // One day in ms. Region annotation of a given set of sequences under a given scheme is
 // deterministic, so the result is worth holding on to.
 CACHE_MILLIS := 24 * 60 * 60 * 1000
+
+// ANARCI writes one CSV per chain type it found, over exactly this list (anarci.py:263). Kappa
+// and lambda share KL. Every bucket is pre-created and saved whichever chains the set declares:
+// the step must name its saves before ANARCI has run.
+BUCKETS := ["H", "KL", "A", "B", "G", "D"]
+
+bucketCsv := func(bucket) { return "anarci.csv_" + bucket + ".csv" }
 
 self.defineOutputs("regions", "stats")
 
@@ -94,35 +102,45 @@ self.body(func(inputs) {
 	// assigned to is *declared*, ANARCI's bucket is *inferred*, and the two can disagree.
 	// Reconciling them is out of scope, so the numbering step resolves each record by its
 	// full `key|chain` id across both buckets rather than assuming they agree.
-	anarciCmd := exec.builder().
+	anarciBuilder := exec.builder().
 		software(anarciSw).
 		addFile("input.fasta", fastaCmd.getFile("input.fasta")).
-		writeFile("anarci.csv_H.csv", "Id\n", { writable: true }).
-		writeFile("anarci.csv_KL.csv", "Id\n", { writable: true }).
 		arg("-i").arg("input.fasta").
 		arg("--scheme").arg(scheme).
 		arg("--ncpu").argWithVar("{system.cpu}").
-		arg("-o").arg("anarci.csv").arg("--csv").
-		saveFile("anarci.csv_H.csv").
-		saveFile("anarci.csv_KL.csv").
+		arg("-o").arg("anarci.csv").arg("--csv")
+
+	// One placeholder and one save per bucket ANARCI can write. Which ones it fills depends on
+	// the chains in the set, and the step must declare its saves before knowing that.
+	for bucket in BUCKETS {
+		anarciBuilder = anarciBuilder.
+			writeFile(bucketCsv(bucket), "Id\n", { writable: true }).
+			saveFile(bucketCsv(bucket))
+	}
+
+	anarciCmd := anarciBuilder.
 		printErrStreamToStdout().
 		cache(CACHE_MILLIS).
 		run()
 
-	regionsCmd := exec.builder().
+	regionsBuilder := exec.builder().
 		software(regionsSw).
 		cpu(1).
 		mem("4GiB").
 		addFile("input.tsv", inputTsv).
-		addFile("anarci.csv_H.csv", anarciCmd.getFile("anarci.csv_H.csv")).
-		addFile("anarci.csv_KL.csv", anarciCmd.getFile("anarci.csv_KL.csv")).
 		arg("--input_tsv").arg("input.tsv").
 		arg("--key_column").arg(keyColumn).
 		arg("--scheme").arg(scheme).
-		arg("--h_csv").arg("anarci.csv_H.csv").
-		arg("--kl_csv").arg("anarci.csv_KL.csv").
 		arg("--out_tsv").arg("regions.tsv").
-		arg("--out_stats").arg("region-stats.tsv").
+		arg("--out_stats").arg("region-stats.tsv")
+
+	for bucket in BUCKETS {
+		regionsBuilder = regionsBuilder.
+			addFile(bucketCsv(bucket), anarciCmd.getFile(bucketCsv(bucket))).
+			arg("--csv_" + text.to_lower(bucket)).arg(bucketCsv(bucket))
+	}
+
+	regionsCmd := regionsBuilder.
 		saveFile("regions.tsv").
 		saveFileContent("region-stats.tsv").
 		printErrStreamToStdout().

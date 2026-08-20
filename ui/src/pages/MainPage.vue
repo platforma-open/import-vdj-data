@@ -132,15 +132,20 @@ function getBare(): BareSetArgs | undefined {
  * What is being imported. Receptors expand to both their chains; a single chain is its own
  * entry, which is how a heavy-only panel is declared rather than inferred from an unfilled slot.
  *
- * TCR entries are absent, not disabled-and-hidden: ANARCI numbers TCR happily (its HMM library
- * ships human_A/B/G/D), but this block has no region-boundary table for those chains and reads
- * only ANARCI's H and KL output files, so a TCR import would annotate nothing. They arrive with
- * the tables.
+ * The more diverse chain — the one recombining a D segment — comes first in every pair, which is
+ * MiXCR's rule and the order its receptorInfos uses. TCR is numbered under IMGT only; the scheme
+ * dropdown narrows itself from the selection.
  */
 const chainSelectionOptions = [
   { label: "IG (heavy + light)", value: "IG" },
   { label: "IG Heavy only", value: "IGHeavy" },
   { label: "IG Light only", value: "IGLight" },
+  { label: "TCR-αβ (beta + alpha)", value: "TCRAB" },
+  { label: "TCR beta only", value: "TCRBeta" },
+  { label: "TCR alpha only", value: "TCRAlpha" },
+  { label: "TCR-γδ (delta + gamma)", value: "TCRGD" },
+  { label: "TCR delta only", value: "TCRDelta" },
+  { label: "TCR gamma only", value: "TCRGamma" },
 ];
 
 /** The slots the current declaration asks for, in emission order. */

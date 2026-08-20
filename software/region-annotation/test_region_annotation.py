@@ -105,7 +105,7 @@ def main():
     out_tsv = os.path.join(work, "out.tsv")
     stats_tsv = os.path.join(work, "stats.tsv")
     print(run(os.path.join(SRC, "main.py"), "--input_tsv", in_tsv, "--key_column", "variantKey",
-              "--scheme", "kabat", "--h_csv", h_csv, "--kl_csv", kl_csv,
+              "--scheme", "kabat", "--csv_h", h_csv, "--csv_kl", kl_csv,
               "--out_tsv", out_tsv, "--out_stats", stats_tsv))
 
     rows = list(csv.DictReader(open(out_tsv), delimiter="\t"))
@@ -183,7 +183,7 @@ def main():
     write_header_only_csv(empty_kl)
     single_out = os.path.join(work, "single_out.tsv")
     print(run(os.path.join(SRC, "main.py"), "--input_tsv", single_tsv, "--key_column", "variantKey",
-              "--scheme", "imgt", "--h_csv", h_csv, "--kl_csv", empty_kl, "--out_tsv", single_out))
+              "--scheme", "imgt", "--csv_h", h_csv, "--csv_kl", empty_kl, "--out_tsv", single_out))
     single = list(csv.DictReader(open(single_out), delimiter="\t"))
     assert list(single[0].keys()) == ["variantKey"] + [f"IGHeavy_{r}_aa" for r in REGIONS] + ["IGHeavy_regionAnnotationStatus"]
     assert single[0]["IGHeavy_regionAnnotationStatus"] == "Failed"  # S1 is not in the H csv
@@ -195,7 +195,7 @@ def main():
     write_anarci_csv(pad_csv, ["K9|H", "K1|IGHeavy"])
     pad_out = os.path.join(work, "pad_out.tsv")
     run(os.path.join(SRC, "main.py"), "--input_tsv", in_tsv, "--key_column", "variantKey",
-        "--scheme", "imgt", "--h_csv", pad_csv, "--out_tsv", pad_out)
+        "--scheme", "imgt", "--csv_h", pad_csv, "--out_tsv", pad_out)
     padded = list(csv.DictReader(open(pad_out), delimiter="\t"))
     assert all(r["variantKey"] != "K9" for r in padded)
     assert [r["variantKey"] for r in padded] == ["K1", "K2", "K3", "K4", "K5"]

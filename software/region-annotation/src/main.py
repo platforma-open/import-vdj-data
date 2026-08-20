@@ -3,7 +3,7 @@
 Input:
   --input_tsv   the same per-record TSV `fasta.py` consumed: key column plus one
                 `<chain>_sequence` column per mapped chain.
-  --h_csv/--kl_csv  ANARCI's `<out>_H.csv` / `<out>_KL.csv`. Either may be absent.
+  --csv_<bucket>    ANARCI's `<out>_<BUCKET>.csv`, one flag per bucket. Any may be absent.
   --scheme      imgt | kabat | chothia — the convention the scientist chose.
 
 Output: one row per record, and for each mapped chain seven `<chain>_<region>_aa` columns
@@ -12,7 +12,7 @@ any chain whose status is not `Annotated`.
 
 Why the lookup keys on `key|chain` rather than on the record key
 ---------------------------------------------------------------
-ANARCI decides for itself whether a sequence is H or KL and writes it to that bucket's CSV.
+ANARCI decides for itself which chain type a sequence is and writes it to that bucket's CSV.
 The chain this block emits under is the one the scientist *declared* by assigning a column
 to a slot. Those can disagree, and reconciling them is out of scope for this spec — there
 is no status value for it and no threshold has been agreed for how much disagreement should
@@ -139,8 +139,14 @@ def main() -> None:
     p.add_argument("--input_tsv", required=True, help="Per-record TSV: key column + <chain>_sequence columns")
     p.add_argument("--key_column", required=True, help="Name of the record key column")
     p.add_argument("--scheme", required=True, choices=SCHEMES, help="Numbering scheme")
-    p.add_argument("--h_csv", required=False, help="ANARCI H-bucket CSV")
-    p.add_argument("--kl_csv", required=False, help="ANARCI KL-bucket CSV")
+    # One flag per bucket rather than a directory: the workflow declares which files it saves
+    # up front, and naming them here keeps that list and this one impossible to disagree about.
+    for bucket in ANARCI_BUCKETS:
+        p.add_argument(
+            f"--csv_{bucket.lower()}",
+            required=False,
+            help=f"ANARCI {bucket}-bucket CSV",
+        )
     p.add_argument("--out_tsv", required=True, help="Output TSV path")
     p.add_argument("--out_stats", required=False, help="Optional per-chain outcome counts TSV")
     args = p.parse_args()
@@ -158,8 +164,8 @@ def main() -> None:
 
     numbering: Numbering = {}
     positions: Dict[str, List[str]] = {}
-    for bucket, path in zip(ANARCI_BUCKETS, [args.h_csv, args.kl_csv]):
-        load_anarci_csv(path, bucket, numbering, positions)
+    for bucket in ANARCI_BUCKETS:
+        load_anarci_csv(getattr(args, f"csv_{bucket.lower()}"), bucket, numbering, positions)
 
     columns = [args.key_column]
     for chain in chains:

@@ -16,17 +16,44 @@ actually put the sequence in. See `regions.py` for why.
 """
 
 # Declared chains, in emission order.
-CHAINS = ["IGHeavy", "IGLight"]
+# Every locus a set can declare, in emission order per receptor. One set holds one receptor's
+# chains — the A/B slot vocabulary cannot express more — but listing them all here costs nothing:
+# only the ones with a sequence column present are processed.
+CHAINS = [
+    "IGHeavy",
+    "IGLight",
+    "TCRBeta",
+    "TCRAlpha",
+    "TCRDelta",
+    "TCRGamma",
+]
 
-CHAIN_LABELS = {"IGHeavy": "heavy", "IGLight": "light"}
+CHAIN_LABELS = {
+    "IGHeavy": "heavy",
+    "IGLight": "light",
+    "TCRBeta": "beta",
+    "TCRAlpha": "alpha",
+    "TCRDelta": "delta",
+    "TCRGamma": "gamma",
+}
 
 # ANARCI's own buckets. It writes `<out>_H.csv` and `<out>_KL.csv`.
-ANARCI_BUCKETS = ["H", "KL"]
+# ANARCI writes one CSV per chain type it found, named `<out>_<bucket>.csv`, over exactly this
+# list — anarci.py:263. Kappa and lambda are written together as KL (`_lc = {'K':'KL','L':'KL'}`),
+# which is why a light chain cannot be resolved to one or the other from the numbering.
+ANARCI_BUCKETS = ["H", "KL", "A", "B", "G", "D"]
 
 # The bucket a declared chain is expected to land in, used *only* to count disagreements —
 # never to choose a range table, and never to stop a run. ANARCI merges kappa and lambda into
 # one KL bucket, and IGLight is light regardless of which, so the pairing is total.
-EXPECTED_BUCKET = {"IGHeavy": "H", "IGLight": "KL"}
+EXPECTED_BUCKET = {
+    "IGHeavy": "H",
+    "IGLight": "KL",
+    "TCRBeta": "B",
+    "TCRAlpha": "A",
+    "TCRDelta": "D",
+    "TCRGamma": "G",
+}
 
 
 def sequence_column(chain: str) -> str:
