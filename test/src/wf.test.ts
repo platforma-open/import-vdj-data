@@ -490,6 +490,14 @@ blockTest(
     const aminoAcid = (state.outputs?.aminoAcidColumns as { value?: string[] } | undefined)?.value;
     expect(aminoAcid).toEqual(["VH", "VL"]);
 
+    // The file door's own column list, separate from the dataset door's, so neither offers
+    // columns discovered for the other.
+    const fileColumns = (state.outputs?.fileColumns as { value?: string[] } | undefined)?.value;
+    expect(fileColumns).toEqual(["mAb ID", "VH", "VL", "Affinity (nM)"]);
+    expect(
+      (state.outputs?.datasetColumns as { value?: string[] } | undefined)?.value,
+    ).toBeUndefined();
+
     // The same pass types every column, over the whole file rather than a sample. "Affinity (nM)"
     // holds 0.8 / 1.4 / 12.0 / 3.1 / 0.9, so it is Double; the identity and the domains are text.
     const profile = (

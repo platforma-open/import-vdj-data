@@ -243,7 +243,8 @@ const propertyCandidates = computed(() => {
       Boolean,
     ) as string[],
   );
-  return (app.model.outputs.headerColumns ?? []).filter((h) => !taken.has(h));
+  // File door only — record properties exist only for a bare set.
+  return (app.model.outputs.fileColumns ?? []).filter((h) => !taken.has(h));
 });
 
 const acceptedProperties = computed<string[]>({
@@ -503,9 +504,17 @@ const optionalMutations = [
   { key: "nt-mutations-rate-j", label: "NT mutations rate (J)" },
 ];
 
-const headerOptions = computed(() =>
-  (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })),
-);
+/**
+ * The columns of whatever this block is reading. Each door has its own output — the file door
+ * profiles a file we hold, the dataset door takes the pool's inference — so a door never offers
+ * columns discovered for the other one.
+ */
+const headerOptions = computed(() => {
+  const columns = loadFromFile.value
+    ? app.model.outputs.fileColumns
+    : app.model.outputs.datasetColumns;
+  return (columns ?? []).map((h) => ({ label: h, value: h }));
+});
 
 /** Headers whose sampled values actually read as amino-acid variable domains. The workflow
  *  works this out at prerun by reading a few rows — a header cannot say it, and offering every

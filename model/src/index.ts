@@ -230,21 +230,29 @@ export const platforma = BlockModelV3.create(blockDataModel)
     }
   })
 
-  .retentiveOutput("headerColumns", (ctx) => {
-    // The direct door profiles the file and takes its headers from there; the dataset door has
-    // them from the pool's own inference.
+  /**
+   * Headers of the file this block loaded itself. Absent on the dataset door.
+   *
+   * Separate from {@link datasetColumns} rather than one output answering for both doors. The
+   * two are discovered differently — a full profile of a file we hold, versus the pool's own
+   * inference over a dataset somebody else produced — and a single output made each door's
+   * mapping dropdowns read a value the other door could have written.
+   */
+  .retentiveOutput("fileColumns", (ctx) => {
     const raw = ctx.prerun
       ?.resolve({ field: "columnProfile", allowPermanentAbsence: true })
       ?.getDataAsString();
-    let headers: string[] | undefined;
-    if (raw !== undefined) {
-      try {
-        headers = (JSON.parse(raw) as ColumnProfile).headers;
-      } catch {
-        headers = undefined;
-      }
+    if (raw === undefined) return undefined;
+    try {
+      return ((JSON.parse(raw) as ColumnProfile).headers ?? []).filter((h) => h.trim().length > 0);
+    } catch {
+      return undefined;
     }
-    headers ??= ctx.prerun
+  })
+
+  /** Headers of the dataset selected from the pool. Absent on the file door. */
+  .retentiveOutput("datasetColumns", (ctx) => {
+    const headers = ctx.prerun
       ?.resolve({
         field: "headerColumns",
         allowPermanentAbsence: true,
