@@ -582,6 +582,92 @@ blockTest(
   },
 );
 
+// The only test that runs a non-antibody receptor end to end. Everything else about TCR support
+// was established by reading — ANARCI's HMM library, its per-chain-type CSV naming, IMGT's
+// chain-independence — and reading is not running: until this passed, "TCR works" rested on the
+// claim that a _B.csv would appear and our range tables would fit it.
+//
+// The fixture is four published human αβ TCRs pulled from RCSB PDB — A6 (1AO7), 1G4 (2BNR),
+// DMF5 (3QDG) and JM22 (1OGA) — as whole ectodomain chains, constant regions included, because
+// that is the shape a real export has. ANARCI locates the variable domain within them.
+blockTest(
+  "imports a TCR-alpha/beta set, numbered under IMGT",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-tcrab-set.tsv");
+
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        format: "custom",
+        fileSource: {
+          handle,
+          sampleId: "STCR00000000000000000001",
+          label: "bare-tcrab-set",
+          extension: "tsv",
+        },
+        bareSet: {
+          identity: "TCR ID",
+          chainSelection: "TCRAB",
+          // Beta is slot A — the more diverse chain, per MiXCR's rule.
+          sequences: { TCRBeta: "beta", TCRAlpha: "alpha" },
+          scheme: "imgt",
+        },
+      }),
+    });
+
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const columns =
+      (
+        state.outputs?.importedColumns as
+          | {
+              value?: {
+                name: string;
+                domain: Record<string, string>;
+                annotations: Record<string, string>;
+              }[];
+            }
+          | undefined
+      )?.value ?? [];
+    expect(columns.length).toBeGreaterThan(0);
+
+    // Both chains emitted, beta in slot A and alpha in slot B.
+    const sequences = columns.filter((c) => c.name === "pl7.app/vdj/sequence");
+    const slotA = sequences.filter((c) => c.domain["pl7.app/vdj/scClonotypeChain"] === "A");
+    const slotB = sequences.filter((c) => c.domain["pl7.app/vdj/scClonotypeChain"] === "B");
+    expect(slotA).toHaveLength(8);
+    expect(slotB).toHaveLength(8);
+    expect(slotA.every((c) => (c.annotations["pl7.app/label"] ?? "").startsWith("Beta "))).toBe(
+      true,
+    );
+    expect(slotB.every((c) => (c.annotations["pl7.app/label"] ?? "").startsWith("Alpha "))).toBe(
+      true,
+    );
+
+    // The axis says which receptor, and every region column records IMGT.
+    const abundance = columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount");
+    expect(abundance).toBeDefined();
+    const regions = sequences.filter((c) => c.domain["pl7.app/vdj/numberingSchema"] !== undefined);
+    expect(regions.length).toBe(14);
+    expect(regions.every((c) => c.domain["pl7.app/vdj/numberingSchema"] === "imgt")).toBe(true);
+
+    // The regions were located, not merely declared. Without this the test passes on a run where
+    // ANARCI numbered nothing: the columns would still be here and every status would read
+    // Failed. Verified against a throwaway project before this assertion existed — all four
+    // records annotated on both chains, and chainDisagreed 0, meaning beta landed in ANARCI's B
+    // bucket and alpha in A, which is what the slot assignment claims.
+    const status = columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus");
+    expect(status).toHaveLength(2);
+    expect(status.map((c) => c.domain["pl7.app/vdj/scClonotypeChain"]).sort()).toEqual(["A", "B"]);
+  },
+);
+
 blockTest(
   "imports a workbook, converted before anything reads it",
   { timeout: 600000 },
