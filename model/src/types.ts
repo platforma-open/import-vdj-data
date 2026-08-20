@@ -94,14 +94,20 @@ export const SCHEMES_FOR_SELECTION: Record<ChainSelection, BareSetScheme[]> = {
   TCRGamma: ["imgt"],
 };
 
-/** What to call each slot in front of the scientist. */
+/**
+ * What to call each slot in front of the scientist — the same words the receptor/chain list
+ * uses, so the slot that appears after a choice is named the way the choice was.
+ *
+ * No alphabet in the name. Every sequence a bare set takes is amino acid today, and when that
+ * stops being true it will be a control of its own rather than a suffix on six labels.
+ */
 export const CHAIN_SLOT_LABELS: Record<BareSetChain, string> = {
-  IGHeavy: "Heavy chain variable domain (aa)",
-  IGLight: "Light chain variable domain (aa)",
-  TCRBeta: "Beta chain variable domain (aa)",
-  TCRAlpha: "Alpha chain variable domain (aa)",
-  TCRDelta: "Delta chain variable domain (aa)",
-  TCRGamma: "Gamma chain variable domain (aa)",
+  IGHeavy: "IG Heavy",
+  IGLight: "IG Light",
+  TCRBeta: "TCR-β",
+  TCRAlpha: "TCR-α",
+  TCRDelta: "TCR-δ",
+  TCRGamma: "TCR-ɣ",
 };
 
 /** What a column can hold, decided by profiling every row of the file. */
