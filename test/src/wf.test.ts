@@ -521,6 +521,55 @@ blockTest(
     }
     expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
     expect(columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toHaveLength(2);
+
+    // A sort saved against a column the current run does not emit must not take the stats
+    // output down with it. createPlDataTableV2 throws on the stale reference — the block sees
+    // a failed output where a display preference should simply be ignored, and the scientist
+    // has no way to clear it from the UI. Reachable whenever the emitted column set changes
+    // under a saved sort, which is how the per-chain stats columns broke when the chain became
+    // an axis. The table state is view state, so writing it neither invalidates the run nor
+    // discards what was already imported.
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "direct",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        tableState: {
+          ...createPlDataTableStateV2(),
+          pTableParams: {
+            ...createPlDataTableStateV2().pTableParams,
+            sorting: [
+              {
+                column: { type: "column", id: "no-such-column" },
+                ascending: true,
+                naAndAbsentAreLeastValues: true,
+              },
+            ],
+          },
+        },
+        fileSource: {
+          handle,
+          sampleId: "SDIRECT000000000000000001",
+          label: "bare-paired-set",
+          extension: "tsv",
+        },
+        bareSet: {
+          identity: "mAb ID",
+          chainSelection: "IG",
+          sequences: { IGHeavy: "VH", IGLight: "VL" },
+          scheme: SCHEME,
+        },
+      }),
+    });
+
+    const withStaleSort = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const stats = withStaleSort.outputs?.stats as { ok?: boolean; value?: unknown } | undefined;
+    expect(stats?.ok).toBe(true);
+    expect(stats?.value).toBeDefined();
   },
 );
 

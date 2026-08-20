@@ -1,5 +1,10 @@
 import type { InferOutputsType, PColumn, PColumnDataUniversal } from "@platforma-sdk/model";
-import { BlockModelV3, createPlDataTableV2, PColumnCollection } from "@platforma-sdk/model";
+import {
+  BlockModelV3,
+  createPlDataTableStateV2,
+  createPlDataTableV2,
+  PColumnCollection,
+} from "@platforma-sdk/model";
 import { blockDataModel } from "./data-model";
 import type { BlockArgs, BlockData, ColumnDescription, ColumnProfile } from "./types";
 import { bareSetValid } from "./types";
@@ -447,7 +452,21 @@ export const platforma = BlockModelV3.create(blockDataModel)
       new PColumnCollection().addColumns(pCols).getColumns(() => true) ?? []
     ).filter((c): c is PColumn<PColumnDataUniversal> => c.data !== undefined);
 
-    return createPlDataTableV2(ctx, withLabels, ctx.data.tableState);
+    try {
+      return createPlDataTableV2(ctx, withLabels, ctx.data.tableState);
+    } catch {
+      // createPlDataTableV2 throws when saved sorting or a saved filter names a column the
+      // current run does not emit — the whole output fails over a display preference, and the
+      // scientist's recovery would be a new project. Any change to the emitted column set can
+      // do it: the stats columns lost their per-chain names when the chain became an axis, so a
+      // sort saved before that change refers to a column id nothing produces any more.
+      //
+      // Fall back to a clean state rather than editing the stored one, which may predate the
+      // current state version and is normalized inside the call. The next sort or filter
+      // gesture overwrites it. (createPlDataTableV3 filters stale references itself; when this
+      // block moves to it, this guard goes.)
+      return createPlDataTableV2(ctx, withLabels, createPlDataTableStateV2());
+    }
   })
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])

@@ -690,7 +690,7 @@ watch(
             <PlDropdown
               :model-value="app.model.data.bareSet?.chainSelection"
               :options="chainSelectionOptions"
-              label="Receptor / chain"
+              label="Receptors"
               required
               @update:model-value="(v: string | undefined) => setChainSelection(v)"
             />
