@@ -1,10 +1,5 @@
-import type { InferOutputsType, PColumn, PColumnDataUniversal } from "@platforma-sdk/model";
-import {
-  BlockModelV3,
-  createPlDataTableStateV2,
-  createPlDataTableV2,
-  PColumnCollection,
-} from "@platforma-sdk/model";
+import type { InferOutputsType } from "@platforma-sdk/model";
+import { BlockModelV3, DataColumn, createPlDataTableV3 } from "@platforma-sdk/model";
 import { blockDataModel } from "./data-model";
 import type { BlockArgs, BlockData, ColumnDescription, ColumnProfile } from "./types";
 import { bareSetValid } from "./types";
@@ -443,30 +438,23 @@ export const platforma = BlockModelV3.create(blockDataModel)
       return undefined;
     }
 
-    // SDK 1.81: getColumns() is typed PColumn<PColumnDataUniversal | undefined>[].
-    // Without `dontWaitAllData` it returns undefined for the whole request when any
-    // column's data is incomplete, so a returned array already has data everywhere —
-    // the filter narrows the type and is a runtime no-op. Behaviour is unchanged from
-    // the previous `?? []`.
-    const withLabels = (
-      new PColumnCollection().addColumns(pCols).getColumns(() => true) ?? []
-    ).filter((c): c is PColumn<PColumnDataUniversal> => c.data !== undefined);
-
-    try {
-      return createPlDataTableV2(ctx, withLabels, ctx.data.tableState);
-    } catch {
-      // createPlDataTableV2 throws when saved sorting or a saved filter names a column the
-      // current run does not emit — the whole output fails over a display preference, and the
-      // scientist's recovery would be a new project. Any change to the emitted column set can
-      // do it: the stats columns lost their per-chain names when the chain became an axis, so a
-      // sort saved before that change refers to a column id nothing produces any more.
-      //
-      // Fall back to a clean state rather than editing the stored one, which may predate the
-      // current state version and is normalized inside the call. The next sort or filter
-      // gesture overwrites it. (createPlDataTableV3 filters stale references itself; when this
-      // block moves to it, this guard goes.)
-      return createPlDataTableV2(ctx, withLabels, createPlDataTableStateV2());
+    // Anchor on the annotated count. Every column here — the four counts and the chain label —
+    // keys on the single chain axis, so the choice does not affect the join; it decides what V3
+    // discovers labels against and what stays permanently visible, since visibility rules are
+    // never applied to primary columns. The annotated count is emitted for every run.
+    const primary = pCols.find((c) => c.spec.name.endsWith("/annotatedCount"));
+    if (primary === undefined) {
+      return undefined;
     }
+
+    // V3 rather than V2 because it filters a saved sort or filter that names a column the
+    // current run does not emit, where V2 threw and failed the whole output. Changing the
+    // receptor set changes the emitted columns, so that state is reachable by ordinary use.
+    return createPlDataTableV3(ctx, {
+      primaryColumns: [DataColumn.fromColumn(primary)],
+      columns: pCols.filter((c) => c.id !== primary.id).map((c) => DataColumn.fromColumn(c)),
+      tableState: ctx.data.tableState,
+    });
   })
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])

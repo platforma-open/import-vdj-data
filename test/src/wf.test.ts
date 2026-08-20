@@ -16,6 +16,7 @@
 
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
 import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
+import type { PTableHandle } from "@platforma-sdk/model";
 import { createPlDataTableStateV2, uniquePlId } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
 import { ImportVdjBlockPointer } from "this-block";
@@ -442,7 +443,7 @@ blockTest(
 blockTest(
   "imports a file through the direct door, minting the sample itself",
   { timeout: 600000 },
-  async ({ rawPrj: project, helpers, expect }) => {
+  async ({ rawPrj: project, helpers, expect, ml }) => {
     // No Samples & Data at all. The block takes the file, mints pl7.app/sampleId for it and
     // labels it with the filename stem, so the emitted shape is the same as through the pool.
     const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
@@ -542,7 +543,14 @@ blockTest(
             ...createPlDataTableStateV2().pTableParams,
             sorting: [
               {
-                column: { type: "column", id: "no-such-column" },
+                // The real id a project carries after the stats columns stopped being named per
+                // chain. It parses as a canonical column id and resolves to nothing, which is
+                // the case that must be tolerated. A malformed id is a different matter: V3
+                // throws on one, and no gesture in the interface can produce it.
+                column: {
+                  type: "column",
+                  id: '{"name":"regionStatsIGHeavy-notApplicable","resolvePath":["main","stats"]}',
+                },
                 ascending: true,
                 naAndAbsentAreLeastValues: true,
               },
@@ -567,6 +575,15 @@ blockTest(
     const withStaleSort = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
       outputs?: Record<string, unknown>;
     };
+    // One row per mapped chain, which is what the chain axis is for — before it existed the
+    // counts were per-chain columns on a single row. Measured through the driver rather than
+    // asserted on the model, because the model only carries handles and a table that renders
+    // no rows produces exactly the same ones.
+    const statsHandle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
+      ?.value?.fullTableHandle;
+    expect(statsHandle, "statistics table handle").toBeDefined();
+    const shape = await ml.driverKit.pFrameDriver.getShape(statsHandle!);
+    expect(shape.rows, "a row per mapped chain").toBe(2);
     const stats = withStaleSort.outputs?.stats as { ok?: boolean; value?: unknown } | undefined;
     expect(stats?.ok).toBe(true);
     expect(stats?.value).toBeDefined();
