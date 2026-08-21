@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.column-profile",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Profile a csv/tsv's columns: value type and whether they hold amino-acid variable domains",
   "scripts": {
     "build": "pl-pkg build",

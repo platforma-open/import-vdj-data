@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.region-annotation",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Locate FR/CDR region boundaries in amino-acid antibody variable domains from ANARCI numbering",
   "scripts": {
     "build": "pl-pkg build",
