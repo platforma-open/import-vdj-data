@@ -1,0 +1,96 @@
+// Find identity values that appear on rows which are not identical.
+//
+// Runs in prerun, before the import, because the answer decides whether the run may start at
+// all. The record key is the hash of the identity column, so a repeated identity is a repeated
+// key: two different antibodies would collapse into one and the scientist would never see it.
+// That silent loss is the whole reason the check exists — on the acceptance panel it is 119 of
+// 1,243 records.
+//
+// The line is exact, and it is not "identity repeats":
+//
+//   - same identity, any other mapped cell differing  -> a collision, the run is refused
+//   - identical in every mapped cell                  -> not a collision, the rows state the
+//                                                        same record twice and collapse to one
+//
+// So whole-row duplicates are removed first, and only then are identities counted. What
+// survives with a count above one is a genuine conflict.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+specs := import(":bare-set-specs")
+
+COUNT_COLUMN := "rowCount"
+
+self.defineOutputs("collisions")
+
+self.body(func(inputs) {
+	dataset := inputs.dataset
+	mapping := inputs.mapping
+	chains := inputs.chains
+
+	ll.assert(mapping != undefined, "bare-set-collisions: mapping is required")
+	ll.assert(
+		mapping.identity != undefined && mapping.identity != "",
+		"bare-set-collisions: an identity column must be selected"
+	)
+
+	fileExtension := dataset.spec.domain["pl7.app/fileExtension"]
+	xsvType := "tsv"
+	if fileExtension == "csv" || fileExtension == "csv.gz" {
+		xsvType = "csv"
+	}
+
+	wf := pt.workflow().mem("4GiB").cpu(2)
+
+	frames := []
+	inputMap := dataset.data.inputs()
+	for key in maps.getKeys(inputMap) {
+		frames = append(frames, wf.frame(inputMap[key], {
+			xsvType: xsvType,
+			id: "table_" + key,
+			inferSchema: false
+		}))
+	}
+	ll.assert(len(frames) > 0, "bare-set-collisions: no input files found")
+
+	df := pt.concat(frames)
+
+	renames := []
+	addRename := func(source, canonical) {
+		if source != undefined && source != "" && source != canonical {
+			renames = append(renames, pt.col(source).alias(canonical))
+		}
+	}
+	addRename(mapping.identity, specs.labelColumn)
+	for chain in chains {
+		addRename(mapping.sequences[chain], specs.sequenceColumn(chain))
+	}
+	if len(renames) > 0 {
+		df = df.withColumns(renames...)
+	}
+
+	mapped := [specs.labelColumn]
+	for chain in chains {
+		mapped = append(mapped, specs.sequenceColumn(chain))
+	}
+
+	// keep and maintainOrder are pinned rather than left to default: the default keep is
+	// order-dependent, which makes the polars plan non-reproducible and silently breaks dedup
+	// of everything downstream of it.
+	df = df.select(mapped...).unique({ keep: "first", maintainOrder: true })
+
+	df = df.groupBy(specs.labelColumn).agg(
+		pt.col(specs.labelColumn).count().alias(COUNT_COLUMN)
+	)
+	df = df.filter(pt.col(COUNT_COLUMN).gt(pt.lit(1)))
+	df = df.select(specs.labelColumn)
+
+	df.saveContent("collisions.tsv")
+	wf = wf.run()
+
+	return {
+		collisions: wf.getFileContent("collisions.tsv")
+	}
+})

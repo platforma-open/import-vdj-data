@@ -1,6 +1,7 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.ui",
   "version": "1.11.3",
+  "private": true,
   "type": "module",
   "scripts": {
     "dev": "ts-builder serve --target block-ui",
@@ -14,6 +15,7 @@
     "@platforma-open/milaboratories.import-vdj.model": "workspace:*",
     "@platforma-sdk/model": "catalog:",
     "@platforma-sdk/ui-vue": "catalog:",
+    "canonicalize": "catalog:",
     "vue": "catalog:"
   },
   "devDependencies": {

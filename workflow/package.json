@@ -1,14 +1,20 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.workflow",
   "version": "1.15.4",
+  "private": true,
   "description": "Block Workflow",
   "type": "module",
   "scripts": {
     "build": "shx rm -rf dist && pl-tengo build",
     "format": "/usr/bin/env emacs --script ./format.el || echo 'No emacs.'",
-    "check": "pl-tengo check"
+    "check": "pl-tengo check",
+    "test": "pl-tengo test"
   },
   "dependencies": {
+    "@platforma-open/milaboratories.import-vdj.column-profile": "workspace:*",
+    "@platforma-open/milaboratories.import-vdj.region-annotation": "workspace:*",
+    "@platforma-open/milaboratories.import-vdj.xlsx-to-csv": "workspace:*",
+    "@platforma-open/milaboratories.software-anarci": "catalog:",
     "@platforma-sdk/workflow-tengo": "catalog:"
   },
   "devDependencies": {

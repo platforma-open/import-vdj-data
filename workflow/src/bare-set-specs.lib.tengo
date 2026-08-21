@@ -1,0 +1,776 @@
+// Column and axis specs for a bare imported set — one paired record per row, keyed on the
+// scientist's own identifier, annotated at import.
+//
+// This library is a transcription, not a design. Every spec here is fixed verbatim by the
+// spec corpus at docs/text/work/projects/imported-vdj-sequence-annotations; the atom that
+// fixes each one is named above it. If you are tempted to adjust a domain key, an
+// annotation or an order priority, the atom is the thing to change first.
+//
+// Shape, in one paragraph: the abundance column alone sits on
+// `[pl7.app/sampleId, pl7.app/variantKey]`; every other column is a property of the record
+// and sits on `[pl7.app/variantKey]`. This is MiXCR's split — clonotype properties are
+// aggregated onto the key and only abundance stays per sample
+// (blocks/mixcr-clonotyping/workflow/src/aggregate-by-clonotype-key.tpl.tengo) — and matching
+// it is what lets every downstream consumer read a bare set with no change: their sequence
+// selectors match axes positionally, so the record key has to be axis 0. There is ONE frame,
+// not one per chain — the two chains of a paired record are separated by the
+// `pl7.app/vdj/scClonotypeChain` **column** domain, never by an axis and never by a separate
+// frame. That is the whole difference from the per-chain path the other formats take.
+
+maps := import("@platforma-sdk/workflow-tengo:maps")
+json := import("json")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+strings := import("@platforma-sdk/workflow-tengo:strings")
+
+// Declared chains, in emission order. `A` heavy, `B` light — the vocabulary of
+// `pl7.app/vdj/scClonotypeChain`, which `sequence-properties` already reads.
+CHAINS := ["IGHeavy", "IGLight", "TCRBeta", "TCRAlpha", "TCRDelta", "TCRGamma"]
+
+// Labels use Heavy/Light while domains use A/B. The atoms write `<chain>` in both
+// positions, but the workspace's one shipped paired producer renders labels as
+// "Heavy CDR3 aa" and keeps A/B for the domain
+// (blocks/mixcr-scfv-clonotyping/workflow/src/mixcr-exports.lib.tengo:173-178,271).
+// Following it: a literal reading would put "A CDR3 aa" in front of the scientist.
+// What the mapping panel calls each locus, mirrored from the UI's receptor/chain list so the
+// statistics table and the dropdown that produced it use one vocabulary.
+CHAIN_DISPLAY := {
+	"IGHeavy": "IG Heavy",
+	"IGLight": "IG Light",
+	"TCRBeta": "TCR-β",
+	"TCRAlpha": "TCR-α",
+	"TCRDelta": "TCR-δ",
+	"TCRGamma": "TCR-ɣ"
+}
+
+CHAIN_LABELS := {
+	"IGHeavy": "Heavy",
+	"IGLight": "Light",
+	"TCRBeta": "Beta",
+	"TCRAlpha": "Alpha",
+	"TCRDelta": "Delta",
+	"TCRGamma": "Gamma"
+}
+
+// The value `pl7.app/vdj/scClonotypeChain` takes for each slot, emitted only on a paired set.
+//
+// Two vocabularies, deliberately. A slot is named in the `pl7.app/vdj/chain` vocabulary the
+// block's bulk path uses, because a mapped chain is a locus and one chain is a bulk shape.
+// `scClonotypeChain` is the separate, positional vocabulary for chains sharing one frame, and
+// A/B is what every producer puts in it — so the slot name does not belong there.
+// A is the more diverse chain — the one that recombines a D segment. That is MiXCR's rule,
+// stated at mixcr-clonotyping process.tpl.tengo:695 ("A" chain is always the one that is more
+// diverse) and encoded in its receptorInfos chain order: IGHeavy/IGLight, TCRBeta/TCRAlpha,
+// TCRDelta/TCRGamma. This block's own single-cell path already follows it.
+PAIRED_CHAIN_DOMAIN := {
+	"IGHeavy": "A",
+	"IGLight": "B",
+	"TCRBeta": "A",
+	"TCRAlpha": "B",
+	"TCRDelta": "A",
+	"TCRGamma": "B"
+}
+
+// The receptor each locus belongs to, stamped on the key axis. Derived rather than assumed, so
+// the axis says IG because the chains are IG chains — and so a TCR set, when the region tables
+// exist for one, says what it is without another place needing to change.
+CHAIN_RECEPTOR := {
+	"IGHeavy": "IG",
+	"IGLight": "IG",
+	"TCRBeta": "TCRAB",
+	"TCRAlpha": "TCRAB",
+	"TCRDelta": "TCRGD",
+	"TCRGamma": "TCRGD"
+}
+
+// Seven regions. Order here is emission order and is fixed so the assembled column list is
+// canonical across runs.
+REGIONS := ["FR1", "CDR1", "CDR2", "FR2", "FR3", "FR4", "CDR3"]
+
+// [[bare-set-region-columns]] fixes these. Two inherited quirks are carried verbatim
+// rather than silently corrected, because both belong to the shared spec map every reader
+// draws from: CDR2 sorts ahead of FR2, inverting the biological order, and CDR3 sits four
+// orders of magnitude above the rest so it lands beside the identity columns.
+REGION_TABLE := {
+	"FR1":  { order: "46950", visibility: "optional" },
+	"CDR1": { order: "46940", visibility: "optional" },
+	"CDR2": { order: "46935", visibility: "optional" },
+	"FR2":  { order: "46930", visibility: "optional" },
+	"FR3":  { order: "46910", visibility: "optional" },
+	"FR4":  { order: "46900", visibility: "optional" },
+	"CDR3": { order: "99000", visibility: "default" }
+}
+
+SCHEMES := ["imgt", "kabat", "chothia"]
+
+// --- TSV column names -------------------------------------------------------------------
+// Single source of truth shared with software/region-annotation, whose output these specs
+// are imported from. Changing one without the other silently produces empty columns.
+
+keyColumn := "variantKey"
+labelColumn := "recordLabel"
+abundanceColumn := "umi-count"
+propertyColumn := func(token) { return "prop_" + token }
+sanitize := func(header) { return strings.substituteSpecialCharacters(header) }
+
+sequenceColumn := func(chain) { return chain + "_sequence" }
+regionColumn := func(chain, region) { return chain + "_" + region + "_aa" }
+statusColumn := func(chain) { return chain + "_regionAnnotationStatus" }
+
+// --- helpers ----------------------------------------------------------------------------
+
+// Matches the block's existing convention for table-view annotations.
+a := func(order, visibility, spec) {
+	return maps.merge(spec, {
+		"pl7.app/table/orderPriority": order,
+		"pl7.app/table/visibility": visibility
+	})
+}
+
+validateChain := func(chain) {
+	ll.assert(
+		!is_undefined(CHAIN_RECEPTOR[chain]),
+		"bare-set-specs: unknown chain %v (expected one of %v)", chain, CHAINS
+	)
+}
+
+/**
+ * The chain domain keys a column carries, or nothing when only one chain was mapped.
+ *
+ * `pl7.app/vdj/scClonotypeChain` is the marker consumers use to decide a dataset holds paired
+ * chains in one frame — clonotype-clustering probes for it, antibody-sequence-liabilities scans
+ * for it. A single-chain set is bulk-shaped, so stamping it there would make those blocks treat
+ * a one-chain import as paired.
+ *
+ * The chain is still named in the column's label. Nothing machine-readable states it, which
+ * matches bulk: sequence-properties defaults an absent chain to `A` and names its properties VH
+ * accordingly, exactly as it already does for a bulk MiXCR light-chain dataset.
+ */
+chainDomain := func(chain, paired) {
+	if !paired { return {} }
+	return {
+		"pl7.app/vdj/scClonotypeChain": PAIRED_CHAIN_DOMAIN[chain],
+		"pl7.app/vdj/scClonotypeChain/index": "primary"
+	}
+}
+
+validateScheme := func(scheme) {
+	ll.assert(
+		scheme == "imgt" || scheme == "kabat" || scheme == "chothia",
+		"bare-set-specs: unknown numbering scheme %v (expected imgt, kabat or chothia)", scheme
+	)
+}
+
+// --- the key axis -------------------------------------------------------------------------
+
+/**
+ * The single key axis, identical on every emitted table. [[bare-set-key-axis]].
+ *
+ * The value is a sha256 of the identity column the scientist selected, so it is opaque; the
+ * readable name rides on the label column instead ([[record-label-is-the-identifier]]).
+ *
+ * `pl7.app/vdj/clonotypingRunId` is load-bearing, not decoration: it is what makes a set on
+ * this shared axis antibody rather than peptide or amplicon ([[modality-from-run-id-key]]).
+ * Stamping another modality's run-id key does not mislabel the dataset — it *makes* it that
+ * modality, to every reader.
+ *
+ * No `…/structure` domain key: that belongs to the `scClonotypeKey` vocabulary this axis no
+ * longer uses, and no `variantKey` producer in the workspace emits one.
+ *
+ * The annotation set mirrors peptide-extraction's `variantKey` axis
+ * (blocks/peptide-extraction/workflow/src/column-specs.lib.tengo:15-35) with the peptide run
+ * id exchanged for the VDJ one.
+ */
+keyAxis := func(blockId, chains) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+
+	// With one mapped chain the record IS that chain, so the axis says which — the same key,
+	// with the same vocabulary, that the block's bulk path puts on its clonotypeKey axis
+	// (process-bulk.tpl.tengo:128). It is the only machine-readable statement of the chain on a
+	// single-chain set, now that the columns carry none.
+	//
+	// A paired record holds both chains, so there is no single value and the key is absent.
+	// Chain is a property of the column there, not of the record.
+	chainDom := {}
+	if len(chains) == 1 {
+		validateChain(chains[0])
+		chainDom = { "pl7.app/vdj/chain": chains[0] }
+	}
+
+	// Derived, not assumed. One set holds one receptor's chains — the A/B vocabulary cannot
+	// express more — and saying so here means a TCR set will stamp its own receptor without
+	// another place needing to change.
+	receptor := CHAIN_RECEPTOR[chains[0]]
+	ll.assert(receptor != undefined, "bare-set-specs: no receptor known for chain %v", chains[0])
+	for chain in chains {
+		ll.assert(
+			CHAIN_RECEPTOR[chain] == receptor,
+			"bare-set-specs: chains from two receptors in one set (%v and %v)", chains[0], chain
+		)
+	}
+
+	return {
+		column: keyColumn,
+		naRegex: "",
+		spec: {
+			type: "String",
+			name: "pl7.app/variantKey",
+			domain: maps.merge({
+				"pl7.app/vdj/receptor": receptor,
+				"pl7.app/vdj/clonotypingRunId": blockId
+			}, chainDom),
+			annotations: {
+				"pl7.app/label": "Variant Id",
+				"pl7.app/table/fontFamily": "monospace",
+				"pl7.app/table/visibility": "default",
+				"pl7.app/table/orderPriority": "110000",
+				"pl7.app/segmentedBy": "[\"pl7.app/vdj/clonotypingRunId\"]"
+			}
+		}
+	}
+}
+
+/**
+ * The sample axis the direct door mints. [[import-mints-the-sample]].
+ *
+ * One sample per file, labelled with the filename stem — exactly what samples-and-data
+ * produces, which is what makes the two doors agree rather than merely coexist.
+ *
+ * Note the blockId in the domain: this is a *different axis instance* from the one
+ * samples-and-data mints, so a directly-loaded set will not join against sample metadata
+ * managed there. That costs nothing for a bare set, which carries no metadata, and it is the
+ * price of not depending on another block to exist.
+ */
+sampleAxis := func(blockId) {
+	return {
+		type: "String",
+		name: "pl7.app/sampleId",
+		domain: {
+			"pl7.app/blockId": blockId
+		},
+		annotations: {
+			"pl7.app/label": "Sample"
+		}
+	}
+}
+
+// --- the columns ---------------------------------------------------------------------------
+
+/**
+ * The amino-acid variable domain, one column per mapped chain. [[bare-set-main-sequence-column]].
+ *
+ * Name, alphabet, feature and the table annotations are the block's existing `vdj-aa` spec,
+ * unchanged. The chain domain key and the two `pl7.app/vdj/…` annotations are the whole delta.
+ *
+ * The chain key is what makes the two columns distinct specs — two columns whose specs were
+ * identical would dedupe into one, and the heavy and light sequences would stop being
+ * separately addressable.
+ *
+ * `/index` is `"primary"` because a mapping assigning two columns to one chain is refused
+ * ([[two-variants-of-a-chain-refused]]), so it is a constant rather than a dimension.
+ *
+ * No convention key: a convention describes a located boundary, and a whole variable domain
+ * has none ([[convention-travels-in-the-domain]]).
+ */
+mainSequenceColumn := func(chain, paired) {
+	validateChain(chain)
+	return {
+		id: "main-sequence-" + chain,
+		column: sequenceColumn(chain),
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: maps.merge({
+				"pl7.app/alphabet": "aminoacid",
+				"pl7.app/vdj/feature": "VDJRegionInFrame"
+			}, chainDomain(chain, paired)),
+			annotations: a("46870", "optional", {
+				"pl7.app/label": CHAIN_LABELS[chain] + " VDJRegionInFrame aa",
+				"pl7.app/table/fontFamily": "monospace",
+				"pl7.app/vdj/isMainSequence": "true",
+				"pl7.app/vdj/isAssemblingFeature": "true"
+			})
+		}
+	}
+}
+
+/**
+ * One located region of one chain. Seven per chain, fourteen in all.
+ * [[bare-set-region-columns]].
+ *
+ * The convention is emitted **twice** — as a domain key for identity and as the existing
+ * annotation for the one consumer that reads it ([[region-convention-key-and-annotation]]).
+ * Dropping the annotation is the tidier option and it silently degrades a downstream result:
+ * Sequence Liabilities collects the convention by string-comparing the annotation across its
+ * input sequences and forwards it as `--numbering-schema`; absent, it agrees on the empty
+ * string, omits the flag, and scores FR3 and CDR3 against scheme-blind coordinates. The
+ * liabilities are still computed, and computed against the wrong positions.
+ *
+ * A chain with no located boundaries carries **no value** in any of its seven — not an empty
+ * string ([[unnumberable-record-is-identified]]); its state is read from the status column.
+ * That is what `allowNA` is for here.
+ */
+regionColumnSpec := func(chain, region, scheme, paired) {
+	validateChain(chain)
+	validateScheme(scheme)
+	entry := REGION_TABLE[region]
+	ll.assert(entry != undefined, "bare-set-specs: unknown region %v", region)
+
+	return {
+		id: "region-" + chain + "-" + region,
+		column: regionColumn(chain, region),
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: maps.merge({
+				"pl7.app/alphabet": "aminoacid",
+				"pl7.app/vdj/feature": region,
+				"pl7.app/vdj/numberingSchema": scheme
+			}, chainDomain(chain, paired)),
+			annotations: a(entry.order, entry.visibility, {
+				"pl7.app/label": CHAIN_LABELS[chain] + " " + region + " aa",
+				"pl7.app/table/fontFamily": "monospace",
+				"pl7.app/vdj/numberingSchema": scheme
+			})
+		}
+	}
+}
+
+/**
+ * Whether this chain's boundaries could be located, one column per chain per record.
+ * [[bare-set-region-status-column]].
+ *
+ * Per chain rather than per record because the two chains are annotated independently: one
+ * status per record could not express a heavy chain located and a light chain failed, and
+ * would have to pick one outcome to report.
+ *
+ * Never null — it carries the success member too, so absence of a verdict is not a state.
+ * `String` is not a preference: `xsv.importFile` rejects `Boolean`.
+ *
+ * `46895` puts it between FR4 (46900) and `pl7.app/vdj/isotype` (46890), so the verdict sits
+ * with the boundaries it describes rather than among the identity columns.
+ */
+statusColumnSpec := func(chain, scheme, paired) {
+	validateChain(chain)
+	validateScheme(scheme)
+	return {
+		id: "region-status-" + chain,
+		column: statusColumn(chain),
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/regionAnnotationStatus",
+			valueType: "String",
+			// No `/index` key, unlike the sequence columns: the status is a property of the
+			// chain's annotation attempt, not of one of its sequences.
+			domain: maps.merge(
+				{ "pl7.app/vdj/numberingSchema": scheme },
+				paired ? { "pl7.app/vdj/scClonotypeChain": PAIRED_CHAIN_DOMAIN[chain] } : {}
+			),
+			annotations: a("46895", "default", {
+				"pl7.app/label": CHAIN_LABELS[chain] + " region annotation status",
+				"pl7.app/isDiscreteFilter": "true",
+				"pl7.app/discreteValues": "[\"Annotated\",\"Not applicable\",\"Failed\"]",
+				// The three values are terse and one of them reads as a diagnosis when it is not,
+				// so the column says what it means. `Not applicable` is expected on any panel
+				// where a chain is only partly filled in, and is the value most likely to be
+				// misread as a problem.
+				"pl7.app/description": "Whether this chain's FR and CDR boundaries could be located. " +
+					"Annotated: located, and the region columns hold them. " +
+					"Not applicable: no sequence was supplied for this chain on this record — nothing to locate. " +
+					"Failed: a sequence was supplied but could not be numbered, which usually means the column " +
+					"mapped to this chain does not hold amino-acid variable domains."
+			})
+		}
+	}
+}
+
+/**
+ * The synthetic abundance. [[bare-set-synthetic-abundance-column]].
+ *
+ * The value is the literal 1 on every row, never null. One per **record**, not per chain —
+ * presence is a property of the record, and the record is the pair.
+ *
+ * **The spec is the block's own `umi-count` spec, adopted whole** — name, type, unit, label
+ * and order are copied unchanged from `infer-columns-common.lib.tengo:50-66`, with
+ * `abundance/isPrimary` and `isAnchor` stamped as the block already stamps them on whichever
+ * count is primary. The column introduces no vocabulary and nothing for a consumer to have
+ * been taught. The fabrication is confined to the value.
+ *
+ * That annotation set is also exactly what makes Clustering run: its bundle does an
+ * `addSingle` for the triple isAbundance / normalized:"false" / isPrimary:"true", and
+ * `isAnchor` is what makes the dataset selectable at all in the other four consumers.
+ *
+ * **No marker declaring the value synthetic**, by decision: minting one would be a claim on
+ * documented platform vocabulary in service of a column meant to be short-lived. Nothing on
+ * the data distinguishes it from a measured abundance, so if the column outlives the plan
+ * that removes it there is no way to find it by query.
+ *
+ * **The label travels, and that is the cost's real extent.** A panel that was never sequenced
+ * is presented as "Number of UMIs" in every consuming block, and Clustering reads the name off
+ * this spec and carries molecule-named aggregates into its own outputs. The fabrication is
+ * confined to the value; what the value is *called* is not confined to import.
+ */
+abundanceColumnSpec := func() {
+	return {
+		id: "umi-count",
+		column: abundanceColumn,
+		allowNA: false,
+		spec: {
+			name: "pl7.app/vdj/uniqueMoleculeCount",
+			valueType: "Long",
+			domain: {},
+			annotations: a("88000", "default", {
+				"pl7.app/label": "Number of UMIs",
+				"pl7.app/min": "1",
+				"pl7.app/isAbundance": "true",
+				"pl7.app/abundance/unit": "molecules",
+				"pl7.app/abundance/normalized": "false",
+				"pl7.app/abundance/isPrimary": "true",
+				"pl7.app/isAnchor": "true"
+			})
+		}
+	}
+}
+
+/**
+ * The record's readable name — the identity column's value, verbatim.
+ * [[record-label-is-the-identifier]].
+ *
+ * It replaces the `C-XXXXX` label import mints from the key; nothing shows the minted form.
+ * With the key hashed, this is the only place the scientist's own name appears.
+ *
+ * The shape is the workspace's convention for a column that labels an axis: the name
+ * `pl7.app/label`, a display name, and `pl7.app/isLabel` — as `samples-and-data`,
+ * `differential-expression` and `differential-clonotype-abundance` all emit it. Deliberately
+ * NOT the block's existing `clonotypeLabel`, which omits `isLabel` and sets a visibility and an
+ * order priority: those make it a table column of its own, showing the same text a second time
+ * beside the axis it is supposed to be naming.
+ *
+ * It must sit on the record axis ALONE. On `[sampleId, variantKey]` it is a per-record property
+ * and the axis goes on displaying the opaque hash, which is the whole thing the label exists to
+ * prevent — hence the pass that aggregates the sample axis away.
+ *
+ * NOT FIXED BY AN ATOM: the atom settles the value, not the spec — the display name below is
+ * chosen to agree with the key axis's own "Variant Id".
+ */
+labelColumnSpec := func() {
+	return {
+		id: "record-label",
+		column: labelColumn,
+		allowNA: false,
+		spec: {
+			name: "pl7.app/label",
+			valueType: "String",
+			annotations: {
+				"pl7.app/label": "Variant Id",
+				"pl7.app/isLabel": "true"
+			}
+		}
+	}
+}
+
+/**
+ * A non-sequence column the scientist chose to bring in. [[bare-set-imported-property-column]].
+ *
+ * The name carries the header sanitized, the label carries it exactly as the file wrote it.
+ * That split is both workspace precedents' shape rather than a choice made here: a raw header
+ * in a column name would put spaces, slashes and unicode into an identifier every downstream
+ * query matches on.
+ *
+ * The type is detected, not chosen: prerun profiles every row of the file and the panel records
+ * the answer when the scientist accepts the column. Widening monotonically over a full pass is
+ * what makes it safe — one non-numeric value anywhere settles the column as String, so a column
+ * that is numeric for the first rows and holds `N/A` further down cannot be typed numeric.
+ *
+ * `String` when the profile is silent, which is the answer that is never wrong.
+ *
+ * No domain key: the column is a property of the record, distinguished from every other by its
+ * name alone. Which is exactly why two headers that sanitize alike must be refused rather than
+ * disambiguated — see `propertyCollisions`.
+ *
+ * Ordered immediately below the record's own identifier, because a column the scientist asked
+ * for is context for reading the record rather than an afterthought to the annotation.
+ */
+importedPropertyColumn := func(property, index) {
+	ll.assert(
+		property.header != undefined && property.header != "",
+		"bare-set-specs: an imported property needs a header"
+	)
+	valueType := property.valueType
+	if valueType == undefined || valueType == "" { valueType = "String" }
+	ll.assert(
+		valueType == "Long" || valueType == "Double" || valueType == "String",
+		"bare-set-specs: imported property %v has unsupported valueType %v", property.header, valueType
+	)
+
+	token := sanitize(property.header)
+
+	return {
+		id: "imported-property-" + token,
+		column: propertyColumn(token),
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/importedProperty/" + token,
+			valueType: valueType,
+			domain: {},
+			annotations: a(string(108000 - index * 10), "default", {
+				"pl7.app/label": property.header
+			})
+		}
+	}
+}
+
+/**
+ * Headers that sanitize to the same token, grouped by that token.
+ *
+ * Their specs would be identical — same name, same axes, empty domain — so they would dedupe
+ * into one column and silently lose a column the scientist chose to import. `Target (nM)` and
+ * `Target-nM` are such a pair. The mapping is refused rather than disambiguated: a generated
+ * suffix keeps the run going and leaves two columns whose names match nothing in the file.
+ */
+propertyCollisions := func(properties) {
+	byToken := {}
+	for property in properties {
+		token := sanitize(property.header)
+		existing := byToken[token]
+		if existing == undefined {
+			byToken[token] = [property.header]
+		} else {
+			byToken[token] = append(existing, property.header)
+		}
+	}
+
+	collisions := {}
+	for token in maps.getKeys(byToken) {
+		if len(byToken[token]) > 1 {
+			collisions[token] = byToken[token]
+		}
+	}
+	return collisions
+}
+
+/**
+ * Per-chain import statistics, shown in the block's own table. One row per declared chain.
+ *
+ * A bare set has nothing to count in the usual sense — no reads, no UMIs, and its cross-sample
+ * aggregates are deliberately not emitted — so what it reports instead is the outcome of the
+ * annotation: how many records were placed, how many the input could not support an answer for,
+ * and how many the instrument could not resolve. `chainDisagreed` is the measurement the
+ * declared-versus-inferred question is deferred for want of.
+ *
+ * A row each rather than a column each, so the two chains of a paired set can be read against
+ * one another. The chain is the axis; these columns say nothing about it.
+ */
+statsColumns := func(blockId) {
+	cols := []
+	entries := [
+		{
+			column: "annotated", name: "annotatedCount", label: "Annotated", order: "90000",
+			description: "Records whose FR and CDR boundaries were located for this chain."
+		},
+		{
+			column: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000",
+			description: "Records with no sequence supplied for this chain. Expected on a panel where " +
+				"one chain is only partly filled in; not a failure."
+		},
+		{
+			column: "failed", name: "failedCount", label: "Failed", order: "88000",
+			description: "Records whose supplied sequence could not be numbered. A count much above zero " +
+				"usually means the mapped column does not hold amino-acid variable domains."
+		},
+		{
+			column: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain",
+			order: "87000",
+			description: "Records ANARCI numbered as a different chain to the slot they were mapped to. " +
+				"Reported only — the regions are recorded under the mapped chain either way. Nearly all " +
+				"records on both chains means the sequence columns were mapped the wrong way round."
+		}
+	]
+	for e in entries {
+		// No allowNA: TsvContent columns validate against a narrower schema than the Xsv ones,
+		// accepting only column, id and spec.
+		cols = append(cols, {
+			id: e.column,
+			column: e.column,
+			spec: {
+				name: "pl7.app/vdj/stat/regionAnnotation/" + e.name,
+				valueType: "Int",
+				domain: {
+					"pl7.app/vdj/clonotypingRunId": blockId
+				},
+				annotations: a(e.order, "default", {
+					"pl7.app/label": e.label,
+					"pl7.app/description": e.description
+				})
+			}
+		})
+	}
+	return cols
+}
+
+/**
+ * The axis the statistics table is keyed on: one row per declared chain.
+ *
+ * `pl7.app/vdj/chain` rather than `pl7.app/vdj/scClonotypeChain`, because the value is the locus
+ * the scientist mapped — IGHeavy, TCRBeta — not the A/B position within a pair. That is the same
+ * vocabulary the key axis of a single-chain set carries.
+ *
+ * No `naRegex`: TsvContent validates its axis entries against a narrower schema that accepts
+ * only `column` and `spec`.
+ */
+statsAxis := func() {
+	return {
+		column: "chain",
+		spec: {
+			type: "String",
+			name: "pl7.app/vdj/chain",
+			annotations: {
+				"pl7.app/label": "Chain"
+			}
+		}
+	}
+}
+
+/**
+ * The readable name of each mapped chain, keyed on the chain axis alone.
+ *
+ * The axis values are the locus vocabulary, which is machine-readable but not what the panel
+ * calls them. This column carries the panel's own words, so a scientist reads "TCR-β" in the
+ * statistics table and in the mapping dropdown that produced it.
+ *
+ * On the axis alone, not on `[sampleId, chain]`: a `pl7.app/label` column only names an axis
+ * when it sits on that axis by itself.
+ */
+chainLabelColumn := func(chains) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+
+	data := {}
+	for chain in chains {
+		validateChain(chain)
+		data[string(json.encode([chain]))] = CHAIN_DISPLAY[chain]
+	}
+
+	return {
+		spec: {
+			kind: "PColumn",
+			name: "pl7.app/label",
+			valueType: "String",
+			annotations: {
+				"pl7.app/label": "Chain",
+				"pl7.app/isLabel": "true"
+			},
+			axesSpec: [statsAxis().spec]
+		},
+		data: { keyLength: 1, data: data }
+	}
+}
+
+// --- assembly -----------------------------------------------------------------------------
+
+/**
+ * Every property column a bare set emits, in canonical order.
+ *
+ * `chains` is the declared chains actually mapped, a subset of CHAINS in CHAINS order.
+ * Iteration is over arrays throughout, so the assembled list is byte-identical for equal
+ * inputs and the pure templates downstream dedup.
+ */
+allColumns := func(chains, scheme, properties) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+	validateScheme(scheme)
+
+	paired := len(chains) > 1
+	columns := [labelColumnSpec(), abundanceColumnSpec()]
+	for i, property in properties {
+		columns = append(columns, importedPropertyColumn(property, i))
+	}
+
+	for chain in chains {
+		columns = append(columns, mainSequenceColumn(chain, paired))
+	}
+	for chain in chains {
+		for region in REGIONS {
+			columns = append(columns, regionColumnSpec(chain, region, scheme, paired))
+		}
+		columns = append(columns, statusColumnSpec(chain, scheme, paired))
+	}
+
+	return columns
+}
+
+/**
+ * The same columns, split by which pass emits them and on which axes.
+ *
+ * `perSample` lands on `[pl7.app/sampleId, pl7.app/variantKey]`; `perRecord` and `regions`
+ * land on `[pl7.app/variantKey]` alone, emitted by the aggregate pass that collapses the
+ * sample axis. All three land in the same frame — the split is about axes and source file,
+ * not about grouping. It lives here so the process template does not have to infer it from
+ * column names.
+ */
+columnsBySource := func(chains, scheme, properties) {
+	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
+	validateScheme(scheme)
+
+	paired := len(chains) > 1
+
+	// The only column that keeps the sample axis. Its value is the literal 1, so what it
+	// carries is presence: this record was seen in this sample. Everything else below is a
+	// function of the record key and identical in every sample the record appears in.
+	perSample := [abundanceColumnSpec()]
+
+	// Read from the same per-sample record TSV as `perSample`, but emitted by the aggregate
+	// pass that collapses the sample axis, so these land on the record axis alone.
+	perRecord := [labelColumnSpec()]
+	for i, property in properties {
+		perRecord = append(perRecord, importedPropertyColumn(property, i))
+	}
+	for chain in chains {
+		perRecord = append(perRecord, mainSequenceColumn(chain, paired))
+	}
+
+	// Read from the annotation pass's TSV, aggregated the same way.
+	regions := []
+	for chain in chains {
+		for region in REGIONS {
+			regions = append(regions, regionColumnSpec(chain, region, scheme, paired))
+		}
+		regions = append(regions, statusColumnSpec(chain, scheme, paired))
+	}
+
+	return {
+		perSample: perSample,
+		perRecord: perRecord,
+		regions: regions
+	}
+}
+
+export {
+	CHAINS: CHAINS,
+	CHAIN_LABELS: CHAIN_LABELS,
+	REGIONS: REGIONS,
+	SCHEMES: SCHEMES,
+
+	keyColumn: keyColumn,
+	labelColumn: labelColumn,
+	abundanceColumn: abundanceColumn,
+	sequenceColumn: sequenceColumn,
+	regionColumn: regionColumn,
+	statusColumn: statusColumn,
+
+	keyAxis: keyAxis,
+	sampleAxis: sampleAxis,
+	statsColumns: statsColumns,
+	statsAxis: statsAxis,
+	chainLabelColumn: chainLabelColumn,
+	mainSequenceColumn: mainSequenceColumn,
+	regionColumnSpec: regionColumnSpec,
+	statusColumnSpec: statusColumnSpec,
+	abundanceColumnSpec: abundanceColumnSpec,
+	labelColumnSpec: labelColumnSpec,
+	propertyColumn: propertyColumn,
+	sanitize: sanitize,
+	importedPropertyColumn: importedPropertyColumn,
+	propertyCollisions: propertyCollisions,
+	allColumns: allColumns,
+	columnsBySource: columnsBySource
+}

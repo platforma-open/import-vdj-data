@@ -1,6 +1,7 @@
 // pre-run
 
 wf := import("@platforma-sdk/workflow-tengo:workflow")
+pColumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 render := import("@platforma-sdk/workflow-tengo:render")
 ll := import("@platforma-sdk/workflow-tengo:ll")
@@ -9,13 +10,109 @@ assets := import("@platforma-sdk/workflow-tengo:assets")
 file := import("@platforma-sdk/workflow-tengo:file")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns")
+profileColumnsTpl := assets.importTemplate(":profile-columns")
+collisionsTpl := assets.importTemplate(":bare-set-collisions")
+workbook := import(":workbook")
+specs := import(":bare-set-specs")
 
 wf.body(func(args) {
+
+	// The direct door: import the file here so the header and the identity check can be
+	// answered before the run, exactly as they are for a dataset from the pool.
+	if args.fileSource != undefined {
+		imported := file.importFile(args.fileSource.handle)
+		readable := workbook.toXsv(imported.file, args.fileSource.extension)
+
+		builder := pColumn.resourceMapBuilder(1)
+		builder.add([args.fileSource.sampleId], readable.file)
+
+		// The mapping dropdowns need the file's headers, and on this door nothing upstream
+		// supplies them. The separator comes from what the UI read out of the file's own first
+		// line rather than from the filename, which may not match the content.
+		separator := readable.extension == "csv" ? "," : "\t"
+		// The whole file, not a head: the panel needs each column's value type and whether it
+		// holds amino-acid domains, and both are wrong if taken from a sample. See
+		// profile-columns.
+		profile := render.create(profileColumnsTpl, {
+			file: readable.file,
+			separator: separator
+		})
+
+		outputs := {
+			// getImportProgress on this is what starts the upload.
+			fileImports: imported.handle,
+			columnProfile: profile.output("profile")
+		}
+
+		if args.bareSet != undefined {
+			bare := args.bareSet
+			mappedChains := []
+			for chain in specs.CHAINS {
+				source := bare.sequences[chain]
+				if source != undefined && source != "" {
+					mappedChains = append(mappedChains, chain)
+				}
+			}
+
+			if bare.identity != "" && len(mappedChains) > 0 {
+				outputs.identityCollisions = render.create(collisionsTpl, {
+					dataset: {
+						spec: {
+							domain: { "pl7.app/fileExtension": readable.extension }
+						},
+						data: builder.build()
+					},
+					mapping: {
+						identity: bare.identity,
+						sequences: bare.sequences
+					},
+					chains: mappedChains
+				}).output("collisions")
+			}
+		}
+
+		return {
+			outputs: outputs,
+			exports: {}
+		}
+	}
 
 	if args.datasetRef == undefined {
 		return {
 			outputs: {},
 			exports: {}
+		}
+	}
+
+	// A bare set is gated on its identity column being unique, and that must be known before
+	// the run starts rather than reported after it. The check reads the whole file, which is
+	// what prerun is for.
+	if args.bareSet != undefined {
+		bare := args.bareSet
+		mappedChains := []
+		for chain in specs.CHAINS {
+			source := bare.sequences[chain]
+			if source != undefined && source != "" {
+				mappedChains = append(mappedChains, chain)
+			}
+		}
+
+		if bare.identity != "" && len(mappedChains) > 0 {
+			collisions := render.create(collisionsTpl, {
+				dataset: wf.resolve(args.datasetRef),
+				mapping: {
+					identity: bare.identity,
+					sequences: bare.sequences
+				},
+				chains: mappedChains
+			}).output("collisions")
+
+			return {
+				outputs: {
+					identityCollisions: collisions
+				},
+				exports: {}
+			}
 		}
 	}
 

@@ -1,0 +1,70 @@
+// Collapse a per-sample TSV into one row per record.
+//
+// The bare set's shape follows MiXCR's: the abundance column keeps
+// `[pl7.app/sampleId, pl7.app/variantKey]`, and everything else — sequences, imported
+// properties, the label, the located regions and their statuses — is a property of the record
+// and sits on `[pl7.app/variantKey]` alone. See
+// blocks/mixcr-clonotyping/workflow/src/aggregate-by-clonotype-key.tpl.tengo, which does the
+// same thing by grouping on `clonotypeKey`.
+//
+// That split is not cosmetic. Every consumer's sequence selector matches axes *positionally*:
+// a query naming one axis is compared against the candidate column's axis 0
+// (BQueryAxesKeys.Accept, core/pl controllers/shared/resources/block_resolver_request.go:244).
+// Leave the sample axis on a property column and axis 0 is `pl7.app/sampleId`, so the query
+// matches nothing and the consumer reports a missing column rather than a mismatched one.
+// Collapsing here is what makes a bare set readable by `sequence-properties`,
+// `antibody-sequence-liabilities` and the rest without touching any of them.
+//
+// It is also what lets `pl7.app/label` act as the axis's label: a label column only names an
+// axis when it sits on that axis alone. Emitted per sample it is just another property, and
+// the axis goes on showing the opaque hash.
+//
+// Collapsing is lossless because every column here is a function of the record key and
+// identical in every sample the record appears in: `first` over a group of equal values.
+//
+// This template is deliberately generic — it selects nothing. The caller's Xsv output settings
+// decide which of the TSV's columns become p-columns, so one body serves both the record pass
+// and the region pass.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+specs := import(":bare-set-specs")
+
+self.defineOutputs("tsv")
+
+self.body(func(inputs) {
+	inputData := inputs[pConstants.VALUE_FIELD_NAME]
+	inputMap := inputData.inputs()
+	ll.assert(len(inputMap) > 0, "aggregate-by-record: no per-sample TSVs")
+
+	wf := pt.workflow().mem("8GiB").cpu(2)
+
+	frames := []
+	// Sorted iteration: frame order reaches the polars schema and therefore the output bytes.
+	for key in maps.getKeys(inputMap) {
+		frames = append(frames, wf.frame(inputMap[key], {
+			xsvType: "tsv",
+			id: "part_" + key,
+			inferSchema: false
+		}))
+	}
+
+	df := frames[0]
+	if len(frames) > 1 {
+		df = pt.concat(frames)
+	}
+
+	// keep and maintainOrder pinned: the default keep is order-dependent, which makes the plan
+	// non-reproducible and fails the run with a CIDConflictError.
+	df = df.unique({ subset: specs.keyColumn, keep: "first", maintainOrder: true })
+
+	df.save("by-record.tsv")
+	wf = wf.run()
+
+	return {
+		tsv: { main: wf.getFile("by-record.tsv") }
+	}
+})

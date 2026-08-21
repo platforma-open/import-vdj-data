@@ -1,15 +1,89 @@
+// Split a file's first line into column names, and — when data rows are also supplied —
+// work out which of those columns actually hold amino-acid sequences.
+//
+// The second output exists because the header alone cannot tell an identifier from a variable
+// domain. Offering every column in the "Heavy chain variable domain (aa)" dropdown means the
+// scientist can map an antibody's *name* into a sequence slot, and nothing downstream refuses
+// it: ANARCI simply fails to number it and every record comes back Failed. Sampling a few rows
+// and reading the alphabet is the cheapest way to answer that at mapping time.
+//
+// Callers that pass a single line get an empty `aminoAcidColumns`, which the UI reads as
+// "no information" rather than "no sequence columns" — a filter that empties the dropdown
+// would be worse than no filter at all.
+
 self := import("@platforma-sdk/workflow-tengo:tpl")
 text := import("text")
 smart := import("@platforma-sdk/workflow-tengo:smart")
 
-self.defineOutputs("result")
+self.defineOutputs("result", "aminoAcidColumns")
+
+// Sequences shorter than this are not variable domains. An scFv runs ~110-130 residues and a
+// single domain ~110; the threshold sits far enough below that to tolerate a truncated entry,
+// and far enough above an accession or a clone name to exclude one. It is what separates a
+// sequence from a short all-alphabet identifier like "AGA" or a plate well.
+MIN_DOMAIN_LENGTH := 50
+
+// Values sampled per column. The point is to characterise the column, not to validate it.
+MAX_SAMPLES := 20
+
+// Standard 20 plus X (unknown residue) and * (stop), both of which appear in real exports.
+// Deliberately excludes B, J, O, U and Z, which is what keeps antibody INNs — trastuzumab,
+// adalimumab — out of the sequence slots.
+AA_PATTERN := "^[ACDEFGHIKLMNPQRSTVWYXacdefghiklmnpqrstvwyx*]+$"
+
+// A column qualifies when this share of its sampled values look like domains. Not 100%: one
+// blank-ish or truncated entry in a real panel should not disqualify the column.
+MIN_SHARE := 0.8
+
+splitLine := func(line, separator) {
+	// Trailing CR survives text.split on a CRLF file and would land inside the last value.
+	return text.split(text.trim_right(line, "\r"), separator)
+}
 
 self.body(func(inputs) {
-    separator := inputs.separator
-    headerLine := text.trim_space(string(inputs.header.getData()))
-    columns := smart.createJsonResource(text.split(headerLine, separator))
+	separator := inputs.separator
+	lines := text.split(text.trim_space(string(inputs.header.getData())), "\n")
 
-    return {
-        result: columns
-    }
+	header := splitLine(lines[0], separator)
+	columns := smart.createJsonResource(header)
+
+	// Per column: how many values were sampled, and how many of those look like a domain.
+	sampled := []
+	domainLike := []
+	for _ in header {
+		sampled = append(sampled, 0)
+		domainLike = append(domainLike, 0)
+	}
+
+	for i, line in lines {
+		if i == 0 { continue }
+		if text.trim_space(line) == "" { continue }
+
+		values := splitLine(line, separator)
+		for c, value in values {
+			if c >= len(header) { break }
+			if sampled[c] >= MAX_SAMPLES { continue }
+
+			v := text.trim_space(value)
+			if v == "" { continue }
+
+			sampled[c] += 1
+			if len(v) >= MIN_DOMAIN_LENGTH && text.re_match(AA_PATTERN, v) {
+				domainLike[c] += 1
+			}
+		}
+	}
+
+	aminoAcid := []
+	for c, name in header {
+		if sampled[c] == 0 { continue }
+		if float(domainLike[c]) / float(sampled[c]) >= MIN_SHARE {
+			aminoAcid = append(aminoAcid, name)
+		}
+	}
+
+	return {
+		result: columns,
+		aminoAcidColumns: smart.createJsonResource(aminoAcid)
+	}
 })

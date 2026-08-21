@@ -1,5 +1,20 @@
 <script setup lang="ts">
-import type { PlRef } from "@platforma-sdk/model";
+import type {
+  BareSetChain,
+  BareSetScheme,
+  BlockData,
+  ChainSelection,
+  ImportedProperty,
+} from "@platforma-open/milaboratories.import-vdj.model";
+import {
+  CHAIN_SLOT_LABELS,
+  CHAIN_SLOTS,
+  SCHEMES_FOR_SELECTION,
+} from "@platforma-open/milaboratories.import-vdj.model";
+import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
+import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
+import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
+import canonicalize from "canonicalize";
 import { plRefsEqual } from "@platforma-sdk/model";
 import {
   PlAccordion,
@@ -10,14 +25,15 @@ import {
   PlBtnGhost,
   PlDropdown,
   PlDropdownMulti,
-  PlDropdownRef,
+  PlFileDialog,
   PlElementList,
   PlMaskIcon24,
   PlSectionSeparator,
   PlSlideModal,
   usePlDataTableSettingsV2,
 } from "@platforma-sdk/ui-vue";
-import { computed, watch, watchEffect } from "vue";
+import type { ImportedFiles } from "@platforma-sdk/ui-vue";
+import { computed, ref, watch, watchEffect } from "vue";
 import { useApp } from "../app";
 
 const app = useApp();
@@ -48,10 +64,44 @@ const receptorOptions = [
   { value: "TCRGD", label: "TCR-ɣδ" },
 ];
 
+const SCHEME_LABELS: Record<BareSetScheme, string> = {
+  imgt: "IMGT",
+  kabat: "Kabat",
+  chothia: "Chothia",
+};
+
+/**
+ * Only the schemes the declared chains can actually be numbered under. Kabat and Chothia are
+ * antibody schemes — ANARCI implements them for heavy and light only and raises for a TCR chain
+ * — so a TCR selection narrows this to IMGT rather than offering a choice that fails the run.
+ */
+const schemeOptions = computed(() => {
+  const selection = app.model.data.bareSet?.chainSelection;
+  const allowed = selection
+    ? (SCHEMES_FOR_SELECTION[selection] ?? (["imgt"] as BareSetScheme[]))
+    : (["imgt", "kabat", "chothia"] as BareSetScheme[]);
+  return allowed.map((s) => ({ label: SCHEME_LABELS[s], value: s }));
+});
+
 // updating defaultBlockLabel
 watchEffect(() => {
-  const args = app.model.args as any;
+  const args = app.model.data as any;
   const parts: string[] = [];
+
+  // On the file door the file IS the dataset, so its name is the only useful thing to show.
+  // Falling through to the chain list below would title every such block with the same six
+  // chain names, which are a default the scientist never chose and which say nothing about
+  // what was imported.
+  if (args.fileSource) {
+    parts.push(args.fileSource.label);
+    const scheme = args.bareSet?.scheme as BareSetScheme | undefined;
+    if (scheme && scheme !== "imgt") {
+      parts.push(SCHEME_LABELS[scheme] ?? scheme);
+    }
+    args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
+    return;
+  }
+
   // Add dataset name if available
   if (args.datasetRef) {
     const datasetOptions = app.model.outputs.datasetOptions ?? [];
@@ -69,13 +119,175 @@ watchEffect(() => {
   args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
 });
 
+// A bare set is not a mode the scientist declares up front — whether a set is bare is
+// something the block works out from what they mapped. So there is no toggle: the slots are
+// always offered, and filling the identity slot plus at least one chain is what makes it one.
+type BareSetArgs = NonNullable<BlockData["bareSet"]>;
+
+function getBare(): BareSetArgs | undefined {
+  return app.model.data.bareSet;
+}
+
+/**
+ * What is being imported. Receptors expand to both their chains; a single chain is its own
+ * entry, which is how a heavy-only panel is declared rather than inferred from an unfilled slot.
+ *
+ * The more diverse chain — the one recombining a D segment — comes first in every pair, which is
+ * MiXCR's rule and the order its receptorInfos uses. TCR is numbered under IMGT only; the scheme
+ * dropdown narrows itself from the selection.
+ */
+const chainSelectionOptions = [
+  // Receptors then chains, with the labels mixcr-clonotyping's combined receptor-or-chain list
+  // uses (SettingsPanel.vue:288-301) — the same control, so the same words.
+  { label: "IG", value: "IG" },
+  { label: "TCR-αβ", value: "TCRAB" },
+  { label: "TCR-ɣδ", value: "TCRGD" },
+  { label: "IG Heavy", value: "IGHeavy" },
+  { label: "IG Light", value: "IGLight" },
+  { label: "TCR-α", value: "TCRAlpha" },
+  { label: "TCR-β", value: "TCRBeta" },
+  { label: "TCR-ɣ", value: "TCRGamma" },
+  { label: "TCR-δ", value: "TCRDelta" },
+];
+
+/** The slots the current declaration asks for, in emission order. */
+const chainSlots = computed<BareSetChain[]>(() => {
+  const selection = app.model.data.bareSet?.chainSelection;
+  return selection ? (CHAIN_SLOTS[selection] ?? []) : [];
+});
+
+function slotLabel(slot: BareSetChain): string {
+  return CHAIN_SLOT_LABELS[slot];
+}
+
+function setChainSelection(value: string | undefined) {
+  const a = app.model.data;
+  const current: BareSetArgs = a.bareSet ?? {
+    identity: "",
+    chainSelection: "IG",
+    sequences: {},
+    scheme: "imgt",
+  };
+  if (!value) return;
+
+  const selection = value as ChainSelection;
+  // Columns mapped to a slot the new declaration does not ask for are dropped. Keeping them
+  // would leave the block emitting a chain the scientist just said they were not importing.
+  const kept: Partial<Record<BareSetChain, string>> = {};
+  for (const slot of CHAIN_SLOTS[selection] ?? []) {
+    const existing = current.sequences?.[slot];
+    if (existing) kept[slot] = existing;
+  }
+
+  // A scheme the new chains cannot be numbered under would fail the run rather than the
+  // mapping, so it is reset here rather than left for ANARCI to reject.
+  const allowed = SCHEMES_FOR_SELECTION[selection] ?? (["imgt"] as BareSetScheme[]);
+  const scheme = allowed.includes(current.scheme) ? current.scheme : allowed[0];
+
+  a.bareSet = { ...current, chainSelection: selection, sequences: kept, scheme };
+}
+
+function bareField(field: "identity" | BareSetChain): string | undefined {
+  const bare = getBare();
+  if (!bare) return undefined;
+  return field === "identity" ? bare.identity : bare.sequences?.[field];
+}
+
+/** Written on user gesture only, never from a watcher on an output. */
+function setBareField(field: "identity" | BareSetChain, value: string | undefined) {
+  const a = app.model.data;
+  const current: BareSetArgs = a.bareSet ?? {
+    identity: "",
+    chainSelection: "IG",
+    sequences: {},
+    scheme: "imgt",
+  };
+  const next: BareSetArgs = {
+    identity: field === "identity" ? (value ?? "") : current.identity,
+    chainSelection: current.chainSelection,
+    sequences: { ...current.sequences },
+    scheme: current.scheme,
+  };
+  if (field !== "identity") {
+    if (value) next.sequences[field] = value;
+    else delete next.sequences[field];
+  }
+
+  // Cleared right back out when nothing is mapped, so its mere presence stays a reliable
+  // signal that this is a bare set.
+  const empty = !next.identity && !next.sequences.IGHeavy && !next.sequences.IGLight;
+  a.bareSet = empty ? undefined : next;
+}
+
+function setBareScheme(value: string | undefined) {
+  const a = app.model.data;
+  if (!a.bareSet || !value) return;
+  a.bareSet = { ...a.bareSet, scheme: value as BareSetArgs["scheme"] };
+}
+
+const isBareSet = computed(() => app.model.data.bareSet !== undefined);
+
+/** Identity values the file repeats on rows that are not identical. The run cannot start
+ *  while any exist: the record key is the identity's hash, so a repeat would merge two
+ *  different records into one. */
+const identityCollisions = computed<string[]>(
+  () => (app.model.outputs.identityCollisions as string[] | undefined) ?? [],
+);
+
+/** Headers not taken by a sequence or the identity — offered as record properties rather than
+ *  dropped, which is what the block used to do with them. */
+const propertyCandidates = computed(() => {
+  const bare = app.model.data.bareSet;
+  const taken = new Set(
+    [bare?.identity, bare?.sequences?.IGHeavy, bare?.sequences?.IGLight].filter(
+      Boolean,
+    ) as string[],
+  );
+  // File door only — record properties exist only for a bare set.
+  return (app.model.outputs.fileColumns ?? []).filter((h) => !taken.has(h));
+});
+
+const acceptedProperties = computed<string[]>({
+  get: () => (app.model.data.bareSet?.properties ?? []).map((p) => p.header),
+  set: (headers) => {
+    const a = app.model.data;
+    if (!a.bareSet) return;
+    // The type is written here, on the accept gesture, from the profile prerun produced by
+    // reading every row. The panel asks no type question — see ColumnProfile — and taking a
+    // snapshot at the gesture keeps the args projection a pure function of `data`.
+    const types = app.model.outputs.columnProfile?.types ?? {};
+    a.bareSet = {
+      ...a.bareSet,
+      properties: headers.map(
+        (h): ImportedProperty => ({ header: h, valueType: types[h] ?? "String" }),
+      ),
+    };
+  },
+});
+
+const propertyCollisionMessage = computed(() => {
+  const collisions = propertyCollisions(app.model.data.bareSet?.properties ?? []);
+  const groups = Object.values(collisions);
+  if (groups.length === 0) return "";
+  const pairs = groups.map((hs) => hs.join(" / ")).join("; ");
+  return `These headers would become the same column: ${pairs}. Rename one in the file — importing both is not possible, and dropping one silently would lose a column you asked for.`;
+});
+
+const identityCollisionMessage = computed(() => {
+  const values = identityCollisions.value;
+  if (values.length === 0) return "";
+  const shown = values.slice(0, 10).join(", ");
+  const rest = values.length > 10 ? ` and ${values.length - 10} more` : "";
+  return `These values of "${app.model.data.bareSet?.identity}" appear on rows that are not identical: ${shown}${rest}. Each record needs its own identifier — two rows sharing one would become a single record. Fix them in the file, or choose a different identity column.`;
+});
+
 const countTypeOptions = [
   { label: "Reads", value: "read" },
   { label: "UMIs", value: "umi" },
 ];
 
 const secondaryTypeOptions = computed(() => {
-  const p = app.model.args.primaryCountType;
+  const p = app.model.data.primaryCountType;
   if (p === "read") return [{ label: "UMIs", value: "umi" }];
   if (p === "umi") return [{ label: "Reads", value: "read" }];
   return countTypeOptions;
@@ -83,9 +295,9 @@ const secondaryTypeOptions = computed(() => {
 
 const isSingleCell = computed(
   () =>
-    app.model.args.format === "mixcr-sc" ||
-    app.model.args.format === "cellranger" ||
-    app.model.args.format === "airr-sc",
+    app.model.data.format === "mixcr-sc" ||
+    app.model.data.format === "cellranger" ||
+    app.model.data.format === "airr-sc",
 );
 
 const tableSettings = usePlDataTableSettingsV2({
@@ -93,8 +305,123 @@ const tableSettings = usePlDataTableSettingsV2({
 });
 
 const setDataset = (datasetRef: PlRef | undefined) => {
-  app.model.args.datasetRef = datasetRef;
+  app.model.data.datasetRef = datasetRef;
+  // Exactly one door. Picking a dataset clears the file and the reverse, so the two can never
+  // both be set and the block never has to guess which the scientist meant.
+  if (datasetRef !== undefined) app.model.data.fileSource = undefined;
 };
+
+const fileSourceError = ref("");
+
+/**
+ * What the block is reading: a dataset from the pool, or a file this block loads itself.
+ *
+ * One dropdown rather than a checkbox plus a dropdown. The two doors are alternatives, and a
+ * checkbox made that a second question — the scientist had to know they were on the right door
+ * before the dropdown in front of them meant anything.
+ *
+ * Values are strings because the list mixes two kinds of entry: a canonicalised PlRef per pool
+ * dataset, and one sentinel that opens a file dialog instead of selecting anything. `PlDropdownRef`
+ * cannot express the sentinel — its value is a PlRef — so this is a plain dropdown that maps back.
+ */
+const LOAD_FROM_FILE = "__load_from_file__";
+
+const datasetOptions = computed(() => app.model.outputs.datasetOptions ?? []);
+
+const sourceOptions = computed(() => {
+  const opts = datasetOptions.value.map((o) => ({
+    label: o.label,
+    value: canonicalize(o.ref) as string,
+  }));
+  // The loaded file appears as a selected entry of its own, so the dropdown always shows what
+  // the block is actually reading rather than going blank on the file door.
+  const file = app.model.data.fileSource;
+  if (file) opts.push({ label: file.label, value: LOAD_FROM_FILE });
+  return [...opts, { label: "Load from file…", value: LOAD_FROM_FILE }].filter(
+    (o, i, all) => all.findIndex((x) => x.value === o.value) === i,
+  );
+});
+
+const selectedSource = computed<string | undefined>(() => {
+  if (app.model.data.fileSource !== undefined) return LOAD_FROM_FILE;
+  const ref = app.model.data.datasetRef;
+  return ref ? (canonicalize(ref) as string) : undefined;
+});
+
+/**
+ * The platform's own file browser, not the OS one — the same dialog PlFileInput opens.
+ *
+ * It lists every storage the scientist has, remote ones included, so a file on S3 can be loaded
+ * the same way as one on the desktop. `lsDriver.showOpenSingleFileDialog` opens the operating
+ * system's picker instead, which can only see the local disk.
+ */
+const fileDialogOpen = ref(false);
+
+function onFilesImported(imported: ImportedFiles) {
+  // Cancelling emits nothing, and nothing was cleared on the way in, so the previous selection
+  // simply stands.
+  if (imported.files.length > 0) void setFile(imported.files[0]);
+}
+
+function setSource(value: string | undefined) {
+  const a = app.model.data;
+
+  if (value === LOAD_FROM_FILE) {
+    // Re-selecting the entry for an already-loaded file reopens the dialog, which is how the
+    // scientist swaps the file without first clearing it.
+    fileDialogOpen.value = true;
+    return;
+  }
+
+  fileSourceError.value = "";
+  a.fileSource = undefined;
+  a.bareSet = undefined;
+  // The dataset door opens on a clean format choice rather than inheriting one. Without this a
+  // block that had been on the file door shows the whole per-format mapping unfurled under a
+  // format nobody picked. customMapping is deliberately kept: re-picking a format brings the
+  // scientist's own mapping back with it.
+  a.format = undefined;
+
+  if (value === undefined) {
+    a.datasetRef = undefined;
+    return;
+  }
+  const picked = datasetOptions.value.find((o) => canonicalize(o.ref) === value);
+  setDataset(picked?.ref);
+}
+
+/** The file door is showing exactly when a file is loaded. No stored flag decides it. */
+const loadFromFile = computed(() => app.model.data.fileSource !== undefined);
+
+async function setFile(handle: ImportFileHandle | undefined) {
+  fileSourceError.value = "";
+  const a = app.model.data;
+  if (handle === undefined) {
+    a.fileSource = undefined;
+    return;
+  }
+
+  const name = getFileNameFromHandle(handle);
+  // A workbook is identified by its name — there is no first line to read, and the workflow
+  // converts it to csv before anything else looks at it. For text files the delimiter is
+  // decided from the content workflow-side, so the name only has to distinguish the two kinds.
+  const extension: "csv" | "tsv" | "xlsx" = name.toLowerCase().endsWith(".xlsx")
+    ? "xlsx"
+    : name.toLowerCase().endsWith(".csv")
+      ? "csv"
+      : "tsv";
+
+  // The id is minted here, at the user's gesture, rather than derived from the handle, so the
+  // sample keeps its identity across runs. The label is the filename stem, which is exactly
+  // what samples-and-data would have produced.
+  a.fileSource = {
+    handle,
+    sampleId: uniquePlId(),
+    label: name.replace(/\.[^.]+$/, ""),
+    extension,
+  };
+  a.datasetRef = undefined;
+}
 
 function setReceptors(selected: string[]) {
   const chains: string[] = [];
@@ -107,12 +434,12 @@ function setReceptors(selected: string[]) {
   if (selected.includes("TCRGD")) {
     chains.push("TCRDelta", "TCRGamma");
   }
-  app.model.args.chains = chains;
+  app.model.data.chains = chains;
 }
 
 const selectedReceptors = computed<string[]>({
   get: () => {
-    const c = app.model.args.chains ?? [];
+    const c = app.model.data.chains ?? [];
     const sel: string[] = [];
     if (c.includes("IGHeavy") || c.includes("IGLight")) sel.push("IG");
     if (c.includes("TCRAlpha") || c.includes("TCRBeta")) sel.push("TCRAB");
@@ -177,40 +504,46 @@ const optionalMutations = [
   { key: "nt-mutations-rate-j", label: "NT mutations rate (J)" },
 ];
 
-const headerOptions = computed(() =>
-  (app.model.outputs.headerColumns ?? []).map((h) => ({ label: h, value: h })),
-);
+/**
+ * The columns of whatever this block is reading. Each door has its own output — the file door
+ * profiles a file we hold, the dataset door takes the pool's inference — so a door never offers
+ * columns discovered for the other one.
+ */
+const headerOptions = computed(() => {
+  const columns = loadFromFile.value
+    ? app.model.outputs.fileColumns
+    : app.model.outputs.datasetColumns;
+  return (columns ?? []).map((h) => ({ label: h, value: h }));
+});
+
+/** Headers whose sampled values actually read as amino-acid variable domains. The workflow
+ *  works this out at prerun by reading a few rows — a header cannot say it, and offering every
+ *  column here lets an antibody's *name* be mapped into a sequence slot, which imports cleanly
+ *  and leaves every record Failed after ANARCI declines to number it.
+ *
+ *  Falls back to every header when the classification is empty, which happens before the file
+ *  is read and on a file whose rows could not be sampled. An empty dropdown would be a worse
+ *  failure than an unfiltered one: the scientist could not proceed at all. */
+const sequenceOptions = computed(() => {
+  const aminoAcid = app.model.outputs.aminoAcidColumns ?? [];
+  if (aminoAcid.length === 0) return headerOptions.value;
+  return aminoAcid.map((h) => ({ label: h, value: h }));
+});
 
 function getMapping(key: string): string | undefined {
-  const a = app.model.args as unknown as { customMapping?: Record<string, string | undefined> };
+  const a = app.model.data as unknown as { customMapping?: Record<string, string | undefined> };
   return a.customMapping?.[key];
 }
 function setMapping(key: string, value: string | undefined) {
-  const a = app.model.args as unknown as { customMapping?: Record<string, string> };
+  const a = app.model.data as unknown as { customMapping?: Record<string, string> };
   if (!a.customMapping) a.customMapping = {};
   if (value === undefined || value === "") delete a.customMapping[key];
   else a.customMapping[key] = value;
 }
 
-const mappingComplete = computed(() => {
-  const a = app.model.args as {
-    customMapping?: Record<string, string | undefined>;
-    primaryCountType?: "read" | "umi";
-  };
-  const m = a.customMapping ?? {};
-  const hasAA = !!m["cdr3-aa"];
-  const hasNT = !!m["cdr3-nt"];
-  const hasV = !!m["v-gene"];
-  const hasJ = !!m["j-gene"];
-  const pct = a.primaryCountType ?? "read";
-  const hasPrimary = pct === "umi" ? !!m["umi-count"] : !!m["read-count"];
-  const hasOneSeq = hasAA || hasNT;
-  return hasOneSeq && hasV && hasJ && hasPrimary;
-});
-
 const validationResult = computed(() => {
   // Access format to create dependency and ensure reactivity when format changes
-  const format = app.model.args.format;
+  const format = app.model.data.format;
   // Access outputs - Vue should track this if outputs is reactive
   const outputs = app.model.outputs;
   const result = (
@@ -220,36 +553,25 @@ const validationResult = computed(() => {
   return format ? result : result;
 });
 
+/** The display name for a format id, from the same list the dropdown is built from. */
+function formatLabel(format: string | undefined): string {
+  if (!format) return "";
+  const key = format.toLowerCase();
+  return formatOptions.find((o) => o.value.toLowerCase() === key)?.label ?? format;
+}
+
 const validationMessage = computed(() => {
   const result = validationResult.value;
   if (!result || result.isValid) return "";
 
-  const formatKey = result.format?.toLowerCase?.() ?? result.format;
-  const formatName =
-    formatKey === "qiagen"
-      ? "QIAseq Immune Repertoire Analysis"
-      : formatKey === "immunoseq"
-        ? "ImmunoSeq"
-        : formatKey === "mixcr"
-          ? "MiXCR bulk"
-          : formatKey === "mixcr-sc"
-            ? "MiXCR single cell"
-            : formatKey === "cellranger"
-              ? "Cell Ranger VDJ"
-              : formatKey === "airr"
-                ? "AIRR bulk"
-                : formatKey === "airr-sc"
-                  ? "AIRR single cell"
-                  : result.format;
-
-  return `The selected dataset is missing required ${formatName} columns: ${result.missingColumns.join(", ")}. Please verify the format selection or choose a different dataset.`;
+  return `The selected dataset is missing required ${formatLabel(result.format)} columns: ${result.missingColumns.join(", ")}. Please verify the format selection or choose a different dataset.`;
 });
 
 watch(
-  () => app.model.args,
+  () => app.model.data,
   (args) => {
     if (args.format === "custom") {
-      const a = app.model.args as unknown as {
+      const a = app.model.data as unknown as {
         customMapping?: Record<string, string>;
         primaryCountType?: "read" | "umi";
         secondaryCountType?: "read" | "umi";
@@ -293,41 +615,32 @@ const formatFlags = {
 } as const;
 
 watch(
-  [() => app.model.args.format, validationResult],
+  [() => app.model.data.format, validationResult],
   ([format, result]) => {
-    Object.values(formatFlags).forEach((flag) => (app.model.ui[flag] = false));
+    Object.values(formatFlags).forEach((flag) => (app.model.data[flag] = false));
 
     if (!result) return;
 
     if (result.format === format) {
       const flag = formatFlags[result.format as keyof typeof formatFlags];
       if (flag) {
-        app.model.ui[flag] = result.isValid;
+        app.model.data[flag] = result.isValid;
       }
     }
   },
   { immediate: true, deep: true },
 );
 
-const forceSettingsOpen = computed(() => {
-  const mustStayOpen = app.model.args.format === "custom" && !mappingComplete.value;
-  return app.model.ui.settingsOpen || mustStayOpen;
-});
-
-function onModalUpdate(val: boolean) {
-  const mustStayOpen = app.model.args.format === "custom" && !mappingComplete.value;
-  if (mustStayOpen) {
-    app.model.ui.settingsOpen = true;
-    return;
-  }
-  app.model.ui.settingsOpen = val;
-}
+// The panel closes whenever the scientist closes it, finished or not. It used to refuse while
+// the mapping was incomplete, which left no way to look at the table, re-read the file or check
+// an upstream block without finishing first. Nothing needs the refusal: the args projection
+// already keeps Run disabled until the mapping is valid, and Settings reopens the panel.
 </script>
 
 <template>
   <PlBlockPage title="Import V(D)J Data">
     <template #append>
-      <PlBtnGhost @click.stop="() => (app.model.ui.settingsOpen = true)">
+      <PlBtnGhost @click.stop="() => (app.model.data.settingsOpen = true)">
         Settings
         <template #append>
           <PlMaskIcon24 name="settings" />
@@ -335,183 +648,241 @@ function onModalUpdate(val: boolean) {
       </PlBtnGhost>
     </template>
 
-    <PlSlideModal :model-value="forceSettingsOpen" @update:model-value="onModalUpdate">
+    <PlSlideModal v-model="app.model.data.settingsOpen">
       <template #title>Settings</template>
 
-      <PlDropdownRef
-        v-model="app.model.args.datasetRef"
-        :options="app.model.outputs.datasetOptions"
+      <PlDropdown
+        :model-value="selectedSource"
+        :options="sourceOptions"
         label="Select dataset"
         clearable
         required
-        @update:model-value="setDataset"
+        @update:model-value="(v: string | undefined) => setSource(v)"
       />
 
-      <PlDropdown
-        v-model="app.model.args.format"
-        :options="formatOptions"
-        label="Data format"
-        required
+      <PlFileDialog
+        v-model="fileDialogOpen"
+        :extensions="['csv', 'tsv', 'txt', 'xlsx']"
+        title="Load sequences from file"
+        @import:files="onFilesImported"
       />
 
-      <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
-        <template #title>
-          Invalid
-          {{
-            validationResult?.format === "qiagen"
-              ? "QIAseq Immune Repertoire Analysis"
-              : validationResult?.format === "immunoSeq" || validationResult?.format === "immunoseq"
-                ? "ImmunoSeq"
-                : validationResult?.format === "mixcr"
-                  ? "MiXCR bulk"
-                  : validationResult?.format === "mixcr-sc"
-                    ? "MiXCR single cell"
-                    : validationResult?.format === "cellranger"
-                      ? "Cell Ranger VDJ"
-                      : validationResult?.format === "airr"
-                        ? "AIRR bulk"
-                        : validationResult?.format
-          }}
-          dataset
+      <template v-if="loadFromFile">
+        <PlAlert v-if="fileSourceError" type="warn" :style="{ width: '100%' }">
+          {{ fileSourceError }}
+        </PlAlert>
+
+        <template v-if="headerOptions.length > 0">
+          <PlSectionSeparator>Columns to import</PlSectionSeparator>
+          <PlAlert v-if="identityCollisionMessage" type="warn" :style="{ width: '100%' }">
+            <template #title>Id column is not unique</template>
+            {{ identityCollisionMessage }}
+          </PlAlert>
+          <div class="field-col">
+            <PlDropdown
+              :model-value="bareField('identity')"
+              :options="headerOptions"
+              label="Select id column"
+              clearable
+              required
+              @update:model-value="(v: string | undefined) => setBareField('identity', v)"
+            />
+            <PlDropdown
+              :model-value="app.model.data.bareSet?.chainSelection"
+              :options="chainSelectionOptions"
+              label="Receptors"
+              required
+              @update:model-value="(v: string | undefined) => setChainSelection(v)"
+            />
+            <PlDropdown
+              v-for="slot in chainSlots"
+              :key="slot"
+              :model-value="bareField(slot)"
+              :options="sequenceOptions"
+              :label="slotLabel(slot)"
+              clearable
+              required
+              @update:model-value="(v: string | undefined) => setBareField(slot, v)"
+            />
+            <template v-if="isBareSet">
+              <PlDropdownMulti
+                v-model="acceptedProperties"
+                :options="propertyCandidates.map((h) => ({ label: h, value: h }))"
+                label="Import as record properties"
+              />
+            </template>
+          </div>
+          <PlAlert v-if="propertyCollisionMessage" type="warn" :style="{ width: '100%' }">
+            <template #title>Two headers would become one column</template>
+            {{ propertyCollisionMessage }}
+          </PlAlert>
         </template>
-        {{ validationMessage }}
-      </PlAlert>
 
-      <PlDropdownMulti
-        v-if="!isSingleCell"
-        v-model="app.model.args.chains"
-        :options="chainsOptions"
-        label="Chains to import"
-        required
-      />
-      <PlDropdownMulti
-        v-else
-        v-model="selectedReceptors"
-        :options="receptorOptions"
-        label="Immune receptors"
-        required
-      />
-      <!-- receptor selector for single-cell formats can be added here if needed -->
+        <!-- Not a column mapping: it chooses how the mapped sequences are numbered, and the
+             region boundaries every downstream block reads follow from it. Kept apart from the
+             mapping so it does not read as one more column to assign. -->
+        <template v-if="isBareSet">
+          <PlSectionSeparator>Region annotation</PlSectionSeparator>
+          <div class="field-col">
+            <PlDropdown
+              :model-value="app.model.data.bareSet?.scheme"
+              :options="schemeOptions"
+              label="Numbering scheme"
+              required
+              @update:model-value="(v: string | undefined) => setBareScheme(v)"
+            />
+          </div>
+        </template>
+      </template>
 
-      <template v-if="app.model.args.format === 'custom'">
-        <PlSectionSeparator>Required columns</PlSectionSeparator>
-        <div class="field-col">
-          <PlDropdown
-            v-for="f in requiredCanonicalBase"
-            :key="f.key"
-            :model-value="getMapping(f.key)"
-            :options="headerOptions"
-            :label="f.label"
-            clearable
-            required
-            @update:model-value="
-              (v: string | undefined) => setMapping(f.key, v as string | undefined)
-            "
-          />
+      <template v-else>
+        <PlDropdown
+          v-model="app.model.data.format"
+          :options="formatOptions"
+          label="Data format"
+          required
+        />
 
-          <PlDropdown
-            v-model="(app.model.args as any).primaryCountType"
-            :options="countTypeOptions"
-            label="Primary count type"
-            required
-          />
+        <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
+          <template #title>Invalid {{ formatLabel(validationResult?.format) }} dataset</template>
+          {{ validationMessage }}
+        </PlAlert>
 
-          <PlDropdown
-            v-if="(app.model.args as any).primaryCountType === 'read'"
-            :model-value="getMapping('read-count')"
-            :options="headerOptions"
-            label="Read count column (primary)"
-            clearable
-            required
-            @update:model-value="
-              (v: string | undefined) => setMapping('read-count', v as string | undefined)
-            "
-          />
-          <PlDropdown
-            v-if="(app.model.args as any).primaryCountType === 'umi'"
-            :model-value="getMapping('umi-count')"
-            :options="headerOptions"
-            label="UMI count column (primary)"
-            clearable
-            required
-            @update:model-value="
-              (v: string | undefined) => setMapping('umi-count', v as string | undefined)
-            "
-          />
-        </div>
+        <PlDropdownMulti
+          v-if="!isSingleCell"
+          v-model="app.model.data.chains"
+          :options="chainsOptions"
+          label="Chains to import"
+          required
+        />
+        <PlDropdownMulti
+          v-else
+          v-model="selectedReceptors"
+          :options="receptorOptions"
+          label="Immune receptors"
+          required
+        />
 
-        <PlSectionSeparator>Optional columns</PlSectionSeparator>
-        <PlAccordion>
-          <PlAccordionSection label="Canonical">
-            <div class="field-col">
-              <PlDropdown
-                v-model="(app.model.args as any).secondaryCountType"
-                :options="secondaryTypeOptions"
-                label="Secondary count type"
-                clearable
-              />
-              <PlDropdown
-                v-if="(app.model.args as any).secondaryCountType === 'umi'"
-                :model-value="getMapping('umi-count')"
-                :options="headerOptions"
-                label="UMI count column (secondary, optional)"
-                clearable
-                @update:model-value="
-                  (v: string | undefined) => setMapping('umi-count', v as string | undefined)
-                "
-              />
-              <PlDropdown
-                v-if="(app.model.args as any).secondaryCountType === 'read'"
-                :model-value="getMapping('read-count')"
-                :options="headerOptions"
-                label="Read count column (secondary, optional)"
-                clearable
-                @update:model-value="
-                  (v: string | undefined) => setMapping('read-count', v as string | undefined)
-                "
-              />
-              <PlDropdown
-                v-for="f in optionalCanonical"
-                :key="f.key"
-                :model-value="getMapping(f.key)"
-                :options="headerOptions"
-                :label="f.label"
-                clearable
-                @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
-              />
-            </div>
-          </PlAccordionSection>
-          <PlAccordionSection label="Sequence">
-            <div class="field-col">
-              <PlDropdown
-                v-for="f in optionalSequence"
-                :key="f.key"
-                :model-value="getMapping(f.key)"
-                :options="headerOptions"
-                :label="f.label"
-                clearable
-                @update:model-value="
-                  (v: string | undefined) => setMapping(f.key, v as string | undefined)
-                "
-              />
-            </div>
-          </PlAccordionSection>
-          <PlAccordionSection label="Mutations">
-            <div class="field-col">
-              <PlDropdown
-                v-for="f in optionalMutations"
-                :key="f.key"
-                :model-value="getMapping(f.key)"
-                :options="headerOptions"
-                :label="f.label"
-                clearable
-                @update:model-value="
-                  (v: string | undefined) => setMapping(f.key, v as string | undefined)
-                "
-              />
-            </div>
-          </PlAccordionSection>
-        </PlAccordion>
+        <template v-if="app.model.data.format === 'custom'">
+          <PlSectionSeparator>Required columns</PlSectionSeparator>
+          <div class="field-col">
+            <PlDropdown
+              v-for="f in requiredCanonicalBase"
+              :key="f.key"
+              :model-value="getMapping(f.key)"
+              :options="headerOptions"
+              :label="f.label"
+              clearable
+              required
+              @update:model-value="
+                (v: string | undefined) => setMapping(f.key, v as string | undefined)
+              "
+            />
+
+            <PlDropdown
+              v-model="(app.model.data as any).primaryCountType"
+              :options="countTypeOptions"
+              label="Primary count type"
+              required
+            />
+
+            <PlDropdown
+              v-if="(app.model.data as any).primaryCountType === 'read'"
+              :model-value="getMapping('read-count')"
+              :options="headerOptions"
+              label="Read count column (primary)"
+              clearable
+              required
+              @update:model-value="
+                (v: string | undefined) => setMapping('read-count', v as string | undefined)
+              "
+            />
+            <PlDropdown
+              v-if="(app.model.data as any).primaryCountType === 'umi'"
+              :model-value="getMapping('umi-count')"
+              :options="headerOptions"
+              label="UMI count column (primary)"
+              clearable
+              required
+              @update:model-value="
+                (v: string | undefined) => setMapping('umi-count', v as string | undefined)
+              "
+            />
+          </div>
+
+          <PlSectionSeparator>Optional columns</PlSectionSeparator>
+          <PlAccordion>
+            <PlAccordionSection label="Canonical">
+              <div class="field-col">
+                <PlDropdown
+                  v-model="(app.model.data as any).secondaryCountType"
+                  :options="secondaryTypeOptions"
+                  label="Secondary count type"
+                  clearable
+                />
+                <PlDropdown
+                  v-if="(app.model.data as any).secondaryCountType === 'umi'"
+                  :model-value="getMapping('umi-count')"
+                  :options="headerOptions"
+                  label="UMI count column (secondary, optional)"
+                  clearable
+                  @update:model-value="
+                    (v: string | undefined) => setMapping('umi-count', v as string | undefined)
+                  "
+                />
+                <PlDropdown
+                  v-if="(app.model.data as any).secondaryCountType === 'read'"
+                  :model-value="getMapping('read-count')"
+                  :options="headerOptions"
+                  label="Read count column (secondary, optional)"
+                  clearable
+                  @update:model-value="
+                    (v: string | undefined) => setMapping('read-count', v as string | undefined)
+                  "
+                />
+                <PlDropdown
+                  v-for="f in optionalCanonical"
+                  :key="f.key"
+                  :model-value="getMapping(f.key)"
+                  :options="headerOptions"
+                  :label="f.label"
+                  clearable
+                  @update:model-value="(v: string | undefined) => setMapping(f.key, v)"
+                />
+              </div>
+            </PlAccordionSection>
+            <PlAccordionSection label="Sequence">
+              <div class="field-col">
+                <PlDropdown
+                  v-for="f in optionalSequence"
+                  :key="f.key"
+                  :model-value="getMapping(f.key)"
+                  :options="headerOptions"
+                  :label="f.label"
+                  clearable
+                  @update:model-value="
+                    (v: string | undefined) => setMapping(f.key, v as string | undefined)
+                  "
+                />
+              </div>
+            </PlAccordionSection>
+            <PlAccordionSection label="Mutations">
+              <div class="field-col">
+                <PlDropdown
+                  v-for="f in optionalMutations"
+                  :key="f.key"
+                  :model-value="getMapping(f.key)"
+                  :options="headerOptions"
+                  :label="f.label"
+                  clearable
+                  @update:model-value="
+                    (v: string | undefined) => setMapping(f.key, v as string | undefined)
+                  "
+                />
+              </div>
+            </PlAccordionSection>
+          </PlAccordion>
+        </template>
       </template>
 
       <template v-if="app.model.outputs.columnDescriptions">
@@ -537,7 +908,7 @@ function onModalUpdate(val: boolean) {
     </PlSlideModal>
 
     <PlAgDataTableV2
-      v-model="app.model.ui.tableState"
+      v-model="app.model.data.tableState"
       :settings="tableSettings"
       show-export-button
     />
