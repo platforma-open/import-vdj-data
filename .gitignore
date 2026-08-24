@@ -18,3 +18,8 @@ ui/tsconfig.app.tsbuildinfo
 ui/tsconfig.node.tsbuildinfo
 software/**/*.tgz
 .vscode/sftp.json
+
+# Python bytecode. A stale .pyc shadows an edited source file inside a dev block
+# archive, so the backend silently runs the old code.
+__pycache__/
+*.py[cod]

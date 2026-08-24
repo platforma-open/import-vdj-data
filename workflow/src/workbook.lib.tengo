@@ -1,0 +1,59 @@
+// Turn a workbook into something the pipeline can read.
+//
+// `import-vdj-data` never ingested a workbook and neither does anything else in the platform:
+// the pipeline speaks csv/tsv, and a spreadsheet is a boundary format — read in, written out.
+//
+// The conversion happens here, in the workflow, rather than in the browser. The atom describes
+// it as a UI-boundary conversion and cites `immune-assay-data`, but that block converts in a
+// workflow software package too (`software/xlsx-to-csv`, invoked at
+// `workflow/src/analysis.tpl.tengo:28-38`); its UI-side xlsx reader only builds a column list
+// for the mapping panel. Converting workflow-side buys two things: no vendored JavaScript xlsx
+// dependency, and one converted file that the header list, the identity check and the import
+// all read — rather than the browser parsing the original and the pipeline parsing it again.
+//
+// Called at the point the file enters, so everything downstream — the dataset's
+// `pl7.app/fileExtension` domain included — only ever sees csv or tsv.
+
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+
+xlsxSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.xlsx-to-csv:main")
+
+CACHE_MILLIS := 24 * 60 * 60 * 1000
+
+/**
+ * @param fileResource the imported file
+ * @param extension    what the UI believes the file is: csv, tsv or xlsx
+ * @returns { file, extension } — extension is always csv or tsv
+ */
+toXsv := func(fileResource, extension) {
+	if extension != "xlsx" {
+		return {
+			file: fileResource,
+			extension: extension
+		}
+	}
+
+	cmd := exec.builder().
+		software(xlsxSw).
+		cpu(1).
+		mem("16GiB").
+		addFile("input.xlsx", fileResource).
+		arg("-i").arg("input.xlsx").
+		arg("-o").arg("output.csv").
+		saveFile("output.csv").
+		printErrStreamToStdout().
+		// Prerun and the main run both convert the same workbook; the cache is what stops that
+		// being two conversions.
+		cache(CACHE_MILLIS).
+		run()
+
+	return {
+		file: cmd.getFile("output.csv"),
+		extension: "csv"
+	}
+}
+
+export {
+	toXsv: toXsv
+}

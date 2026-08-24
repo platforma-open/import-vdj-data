@@ -1,18 +1,16 @@
-import type {
-  InferOutputsType,
-  PColumnKey,
-  PColumnValue,
-  PlDataTableStateV2,
-  PlRef,
-} from "@platforma-sdk/model";
+import type { InferOutputsType, PColumnKey, PColumnValue } from "@platforma-sdk/model";
 import {
-  BlockModel,
-  createPlDataTableStateV2,
-  createPlDataTableV2,
-  isPColumnReady,
-  PColumnCollection,
+  BlockModelV3,
+  DataColumn,
+  createPlDataTableV3,
   TreeNodeAccessor,
 } from "@platforma-sdk/model";
+import { blockDataModel } from "./data-model";
+import type { BlockArgs, BlockData, ColumnDescription, ColumnProfile } from "./types";
+import { bareSetValid } from "./types";
+
+export * from "./types";
+export { upgradeLegacyData } from "./data-model";
 
 /** Unpartitioned inline-JSON p-column storage; payload is `{ keyLength, data }`. */
 const RT_JSON = "PColumnData/Json";
@@ -23,96 +21,174 @@ type JsonColumnData = {
   data: Record<string, PColumnValue>;
 };
 
-export type BlockArgs = {
-  defaultBlockLabel: string;
-  customBlockLabel: string;
-  datasetRef?: PlRef;
-  format?:
-    | "immunoSeq"
-    | "qiagen"
-    | "mixcr"
-    | "mixcr-sc"
-    | "cellranger"
-    | "airr"
-    | "airr-sc"
-    | "custom";
-  chains: string[];
-  customMapping?: Record<string, string | undefined>;
-  primaryCountType?: "read" | "umi";
-  secondaryCountType?: "read" | "umi";
-};
+/**
+ * The mapping fields that belong to the dataset door and mean nothing on a bare set: the bare
+ * path in the workflow reads `bareSet`, `fileSource` and `datasetRef` and nothing else.
+ *
+ * Stripping them is not tidiness. A scientist who configures a custom mapping, switches to a
+ * bare set and runs would otherwise ship the abandoned mapping to the workflow, where it is
+ * dead weight in the args and in every diff a reader of the run later looks at.
+ */
+function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
+  return {
+    datasetRef: args.datasetRef,
+    fileSource: args.fileSource,
+    chains: args.chains,
+    bareSet: args.bareSet,
+  };
+}
 
-export type UiState = {
-  tableState: PlDataTableStateV2;
-  settingsOpen: boolean;
-  qiagenColumnsPresent: boolean;
-  immunoSeqColumnsPresent: boolean;
-  mixcrColumnsPresent: boolean;
-  crColumnsPresent: boolean;
-  airrColumnsPresent: boolean;
-};
+/**
+ * The workflow's view of the block, and the only place validation lives.
+ *
+ * Three jobs, in order: refuse what cannot run (by throwing), drop the door that is not in
+ * use, and drop the fields the chosen path never reads. What it deliberately does NOT do is
+ * reorder `chains`: canonicalising a set the user picked in their own order would change the
+ * args of every project already on disk, and buys only the rare case of someone re-picking the
+ * same chains in a different order.
+ */
+function projectArgs(data: BlockData): BlockArgs {
+  const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
 
-export type ColumnDescription = {
-  label: string;
-  description: string;
-};
+  // Exactly one door. Both set is a UI bug rather than a choice, and neither means nothing
+  // has been picked yet.
+  if ((datasetRef === undefined) === (fileSource === undefined)) {
+    throw new Error("Select a dataset, or load a file");
+  }
 
-export const platforma = BlockModel.create()
+  const args: BlockArgs = {
+    datasetRef,
+    fileSource,
+    format,
+    chains,
+    customMapping,
+    primaryCountType,
+    bareSet: data.bareSet,
+  };
 
-  .withArgs<BlockArgs>({
-    defaultBlockLabel: "",
-    customBlockLabel: "",
-    chains: ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta", "TCRGamma"],
-  })
+  // The direct door serves the custom format and no other, so the door decides which
+  // validation applies. Making the interface set `format` instead was worse than redundant:
+  // the value outlived the door, so switching back to a dataset left the whole per-format
+  // mapping unfurled under a format nobody had chosen.
+  if (fileSource !== undefined) {
+    if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the file's columns");
+    return withoutDatasetDoorMapping(args);
+  }
 
-  .withUiState<UiState>({
-    tableState: createPlDataTableStateV2(),
-    settingsOpen: true,
-    qiagenColumnsPresent: false,
-    immunoSeqColumnsPresent: false,
-    mixcrColumnsPresent: false,
-    crColumnsPresent: false,
-    airrColumnsPresent: false,
-  })
+  if (format === undefined) throw new Error("Choose a data format");
+  if (!Array.isArray(chains) || chains.length === 0) throw new Error("Choose at least one chain");
 
-  .argsValid((ctx) => {
-    const { datasetRef, format, chains, customMapping, primaryCountType } = ctx.args;
-    if (datasetRef === undefined) return false;
-    if (format === undefined) return false;
-    if (!Array.isArray(chains) || chains.length === 0) return false;
-
-    if (format === "custom") {
-      const m = customMapping ?? {};
-      const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
-      const hasV = !!m["v-gene"];
-      const hasJ = !!m["j-gene"];
-      const pct = primaryCountType ?? "read";
-      const hasPrimaryAbundance = pct === "umi" ? !!m["umi-count"] : !!m["read-count"];
-      return hasSeq && hasV && hasJ && hasPrimaryAbundance;
+  if (format === "custom") {
+    // A bare set drops the V gene, the J gene and the abundance — it supplies none of them,
+    // and the rule that demanded all three could not tell a bare set from a malformed
+    // repertoire export. What it requires instead is a sequence mapped to a chain and an
+    // identity column, because the key is the identity's hash and the label is its value.
+    if (data.bareSet !== undefined) {
+      if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
+      return withoutDatasetDoorMapping(args);
     }
 
-    if (format === "qiagen") {
-      return ctx.uiState.qiagenColumnsPresent === true;
+    const m = customMapping ?? {};
+    const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
+    const hasV = !!m["v-gene"];
+    const hasJ = !!m["j-gene"];
+    const pct = primaryCountType ?? "read";
+    const hasPrimaryAbundance = pct === "umi" ? !!m["umi-count"] : !!m["read-count"];
+    if (!hasSeq || !hasV || !hasJ || !hasPrimaryAbundance) {
+      throw new Error("Map a sequence, a V gene, a J gene and an abundance column");
     }
+    return args;
+  }
 
-    if (format === "immunoSeq") {
-      return ctx.uiState.immunoSeqColumnsPresent === true;
-    }
+  // The per-format flags are written by the UI from the `validationResult` output. They are a
+  // mirror of a derivation, which is a hairpin, but replacing them is a separate change: the
+  // check they stand for needs the file's headers, and the args lambda cannot reach prerun.
+  const presentByFormat: Record<string, boolean> = {
+    qiagen: data.qiagenColumnsPresent === true,
+    immunoSeq: data.immunoSeqColumnsPresent === true,
+    mixcr: data.mixcrColumnsPresent === true,
+    "mixcr-sc": data.mixcrColumnsPresent === true,
+    cellranger: data.crColumnsPresent === true,
+    airr: data.airrColumnsPresent === true,
+    "airr-sc": data.airrColumnsPresent === true,
+  };
+  if (format in presentByFormat && !presentByFormat[format]) {
+    throw new Error(`The file does not carry the columns a ${format} dataset needs`);
+  }
 
-    if (format === "mixcr" || format === "mixcr-sc") {
-      return ctx.uiState.mixcrColumnsPresent === true;
-    }
+  return args;
+}
 
-    if (format === "cellranger") {
-      return ctx.uiState.crColumnsPresent === true;
-    }
+// Named `platforma` because the structurer-generated block facade
+// (block/src/index.ts) imports that name. Every V3 block uses it too.
+export const platforma = BlockModelV3.create(blockDataModel)
 
-    if (format === "airr" || format === "airr-sc") {
-      return ctx.uiState.airrColumnsPresent === true;
-    }
+  .args<BlockArgs>(projectArgs)
 
-    // For other formats, basic args are sufficient
-    return true;
+  /**
+   * Prerun reads the file's header, infers the mapping and checks the identity column for
+   * collisions — discovery, all of it, and all of it expected to be current without the
+   * scientist pressing Run. So the projection is deliberately permissive where `args` is
+   * strict: it must survive a half-finished mapping, because a half-finished mapping is
+   * exactly when the panel needs the headers back.
+   *
+   * `chains` is absent because prerun never reads it (`workflow/src/prerun.tpl.tengo`).
+   */
+  .prerunArgs((data) => ({
+    datasetRef: data.datasetRef,
+    fileSource: data.fileSource,
+    format: data.format,
+    customMapping: data.customMapping,
+    primaryCountType: data.primaryCountType,
+    bareSet: data.bareSet,
+  }))
+
+  /**
+   * Identity values that appear on rows which are not identical to each other.
+   *
+   * Not `retentive`: this gates the run, so a stale value is worse than a briefly absent one.
+   *
+   * Read straight from prerun here, and *not* mirrored into `uiState` from a UI watcher. That
+   * mirror is what the format-validity flags do, and it is a hairpin — an output written back
+   * into state that a derivation then reads. It survives on one client and races on two.
+   */
+  /**
+   * Drives the upload for a directly-loaded file.
+   *
+   * `getImportProgress()` is what *starts* the transfer — retrieving the progress is the side
+   * effect. `isActive` forces the lambda to run even when nobody is looking at the block, and
+   * without it the upload never begins, prerun never resolves, and nothing errors anywhere.
+   */
+  .output(
+    "fileImports",
+    (ctx) =>
+      ctx.outputs
+        ?.resolve({ field: "fileImports", allowPermanentAbsence: true })
+        ?.getImportProgress(),
+    { isActive: true },
+  )
+
+  .output(
+    "prerunFileImports",
+    (ctx) =>
+      ctx.prerun
+        ?.resolve({ field: "fileImports", allowPermanentAbsence: true })
+        ?.getImportProgress(),
+    { isActive: true },
+  )
+
+  .output("identityCollisions", (ctx) => {
+    const raw = ctx.prerun
+      ?.resolve({ field: "identityCollisions", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (raw === undefined) return undefined;
+
+    // A one-column TSV: a header, then one colliding value per line.
+    const lines = raw
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+    return lines.slice(1);
   })
 
   .retentiveOutput("datasetOptions", (ctx) => {
@@ -138,13 +214,68 @@ export const platforma = BlockModel.create()
       ?.getDataAsJson<ColumnDescription[]>();
   })
 
-  .retentiveOutput("headerColumns", (ctx) => {
-    return ctx.prerun
+  /** Every column of a directly-loaded file, profiled over the WHOLE file: its value type, and
+   *  whether it holds amino-acid variable domains. Absent on the dataset door, where the pool
+   *  supplies the headers instead. */
+  .retentiveOutput("columnProfile", (ctx) => {
+    const raw = ctx.prerun
+      ?.resolve({ field: "columnProfile", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (raw === undefined) return undefined;
+    try {
+      return JSON.parse(raw) as ColumnProfile;
+    } catch {
+      return undefined;
+    }
+  })
+
+  /** Headers whose values actually read as amino-acid variable domains. The chain dropdowns
+   *  offer only these, so an identifier column cannot be mapped into a sequence slot. Empty
+   *  means "not determined" — the UI falls back to every header rather than an empty dropdown. */
+  .retentiveOutput("aminoAcidColumns", (ctx) => {
+    const raw = ctx.prerun
+      ?.resolve({ field: "columnProfile", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (raw === undefined) return undefined;
+    try {
+      return (JSON.parse(raw) as ColumnProfile).aminoAcid ?? [];
+    } catch {
+      return undefined;
+    }
+  })
+
+  /**
+   * Headers of the file this block loaded itself. Absent on the dataset door.
+   *
+   * Separate from {@link datasetColumns} rather than one output answering for both doors. The
+   * two are discovered differently — a full profile of a file we hold, versus the pool's own
+   * inference over a dataset somebody else produced — and a single output made each door's
+   * mapping dropdowns read a value the other door could have written.
+   */
+  .retentiveOutput("fileColumns", (ctx) => {
+    const raw = ctx.prerun
+      ?.resolve({ field: "columnProfile", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (raw === undefined) return undefined;
+    try {
+      return ((JSON.parse(raw) as ColumnProfile).headers ?? []).filter((h) => h.trim().length > 0);
+    } catch {
+      return undefined;
+    }
+  })
+
+  /** Headers of the dataset selected from the pool. Absent on the file door. */
+  .retentiveOutput("datasetColumns", (ctx) => {
+    const headers = ctx.prerun
       ?.resolve({
         field: "headerColumns",
         allowPermanentAbsence: true,
       })
       ?.getDataAsJson<string[]>();
+    if (headers === undefined) return undefined;
+    // A workbook with a trailing empty column yields an empty header, which would show up as a
+    // blank option in every mapping dropdown and cannot be mapped to anything.
+    return headers.filter((h) => h.trim().length > 0);
   })
 
   .retentiveOutput("validationResult", (ctx) => {
@@ -155,11 +286,11 @@ export const platforma = BlockModel.create()
       })
       ?.getDataAsJson<string[]>();
 
-    if (!headerColumns || !ctx.args.format) {
+    if (!headerColumns || !ctx.data.format) {
       return undefined;
     }
 
-    const format = ctx.args.format;
+    const format = ctx.data.format;
     const headers = headerColumns;
 
     if (format === "qiagen") {
@@ -294,26 +425,52 @@ export const platforma = BlockModel.create()
     };
   })
 
+  /**
+   * What the import actually emitted: one entry per exported p-column, with the axes and
+   * domain that give it its identity.
+   *
+   * Read from the workflow's own output rather than derived from the mapping, so it reports
+   * what was produced rather than what was intended — which is what makes it useful when a
+   * downstream block cannot see the dataset and the question is whether the column is missing
+   * or merely differently keyed.
+   */
+  .output("importedColumns", (ctx) => {
+    const cols = ctx.outputs?.resolve("result")?.getPColumns();
+    if (cols === undefined) return undefined;
+    return cols.map((c) => ({
+      name: c.spec.name,
+      valueType: c.spec.valueType,
+      domain: c.spec.domain ?? {},
+      annotations: c.spec.annotations ?? {},
+      axes: (c.spec.axesSpec ?? []).map((a) => ({ name: a.name, domain: a.domain ?? {} })),
+    }));
+  })
+
   .outputWithStatus("stats", (ctx) => {
     const pCols = ctx.outputs?.resolve("stats")?.getPColumns();
     if (pCols === undefined) {
       return undefined;
     }
 
-    // dontWaitAllData: skip columns whose data is missing instead of collapsing the
-    // whole request to undefined.
-    const withLabels = new PColumnCollection()
-      .addColumns(pCols)
-      .getColumns(() => true, { dontWaitAllData: true });
-    if (withLabels === undefined) {
+    // Anchor on the count its own path always emits — the two paths share this output but no columns.
+    const primary =
+      pCols.find((c) => c.spec.name.endsWith("/annotatedCount")) ??
+      pCols.find((c) => c.spec.name === "pl7.app/vdj/stat/clonotypeCount");
+    if (primary === undefined) {
       return undefined;
     }
 
-    return createPlDataTableV2(ctx, withLabels.filter(isPColumnReady), ctx.uiState.tableState);
+    // V3 rather than V2 because it filters a saved sort or filter that names a column the
+    // current run does not emit, where V2 threw and failed the whole output. Changing the
+    // receptor set changes the emitted columns, so that state is reachable by ordinary use.
+    return createPlDataTableV3(ctx, {
+      primaryColumns: [DataColumn.fromColumn(primary)],
+      columns: pCols.filter((c) => c.id !== primary.id).map((c) => DataColumn.fromColumn(c)),
+      tableState: ctx.data.tableState,
+    });
   })
 
-  // Samples whose clonotype count is zero once summed over every imported
-  // chain. Normally the result of receptor-chain filtering matching nothing.
+  // Samples summing to zero clonotypes across every imported chain — normally chain filtering matching nothing.
   .output("emptyChainSamples", (ctx) => {
     const pCols = ctx.outputs?.resolve("stats")?.getPColumns();
     if (pCols === undefined) {
@@ -359,8 +516,8 @@ export const platforma = BlockModel.create()
 
   .title(() => "Import V(D)J Data")
 
-  .subtitle((ctx) => ctx.args.customBlockLabel || ctx.args.defaultBlockLabel || "")
+  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
 
-  .done(2);
+  .done();
 
 export type BlockOutputs = InferOutputsType<typeof platforma>;

@@ -1,0 +1,157 @@
+// Locate FR/CDR region boundaries in amino-acid antibody variable domains.
+//
+// The body of a second `pframes.processColumn` pass, running once per sample over the record
+// TSV the first pass wrote.
+//
+// It is a separate pass rather than a few more lines in the first one, and that is load-bearing
+// rather than tidiness. A processColumn body is re-rendered once per declared output, so a body
+// must be reproducible. `pt.workflow()` is; `exec.builder()` is not — mixing them in one body
+// and declaring two outputs makes the second render disagree with the first, and the run dies
+// with a CIDConflictError on a field of the shared upstream node, pointing at the innocent file
+// they both consume rather than at the body that produced two graphs. Keeping polars in one
+// body and execs in another keeps each reproducible on its own.
+// Input:  a per-record TSV carrying the key column plus one `<chain>_sequence` column per
+//         mapped chain (`A` heavy, `B` light), and the numbering scheme the scientist chose.
+// Output: `regions` — a TSV with seven `<chain>_<region>_aa` columns per chain plus one
+//         `<chain>_regionAnnotationStatus`.
+//         `stats`   — one row per chain: annotated / notApplicable / failed counts, plus
+//         `chainDisagreed`, the number of annotated records ANARCI numbered as the *other*
+//         chain. Nothing acts on that number; it exists because the alternative is that
+//         mapping the sequence columns to the wrong slots imports cleanly with every chain
+//         label wrong, and because the threshold at which such disagreement should stop a
+//         run is deferred precisely for want of a measured rate.
+//
+// Three steps: build a FASTA, number it with ANARCI, project the numbering onto region
+// ranges. ANARCI is the shared, already-published artifact — reused, not introduced here.
+// The convention is passed through as `--scheme`, which is the whole reason ANARCI is the
+// instrument rather than repseqio: repseqio's boundaries are whatever its reference library
+// defines, with nothing to ask for.
+
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+text := import("text")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+
+anarciSw := assets.importSoftware("@platforma-open/milaboratories.software-anarci:main")
+fastaSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.region-annotation:fasta")
+regionsSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.region-annotation:main")
+
+// One day in ms. Region annotation of a given set of sequences under a given scheme is
+// deterministic, so the result is worth holding on to.
+CACHE_MILLIS := 24 * 60 * 60 * 1000
+
+// ANARCI writes one CSV per chain type it found, over exactly this list (anarci.py:263). Kappa
+// and lambda share KL. Every bucket is pre-created and saved whichever chains the set declares:
+// the step must name its saves before ANARCI has run.
+BUCKETS := ["H", "KL", "A", "B", "G", "D"]
+
+bucketCsv := func(bucket) { return "anarci.csv_" + bucket + ".csv" }
+
+self.defineOutputs("regions", "stats")
+
+self.body(func(inputs) {
+	keyColumn := inputs.keyColumn
+	scheme := inputs.scheme
+
+	// One group per sample. With no axes left to aggregate over, the group's value is the
+	// record TSV itself rather than a map of them, so both shapes are accepted.
+	inputValue := inputs[pConstants.VALUE_FIELD_NAME]
+	inputMap := inputValue.inputs()
+	keys := maps.getKeys(inputMap)
+	inputTsv := inputValue
+	if len(keys) > 0 {
+		ll.assert(len(keys) == 1, "annotate-regions: expected one record TSV per group, got %v", len(keys))
+		inputTsv = inputMap[keys[0]]
+	}
+
+	ll.assert(inputTsv != undefined, "annotate-regions: inputTsv is required")
+	ll.assert(keyColumn != undefined && keyColumn != "", "annotate-regions: keyColumn is required")
+	ll.assert(
+		scheme == "imgt" || scheme == "kabat" || scheme == "chothia",
+		"annotate-regions: unsupported numbering scheme %v (expected imgt, kabat or chothia)",
+		scheme
+	)
+
+	fastaCmd := exec.builder().
+		software(fastaSw).
+		cpu(1).
+		mem("4GiB").
+		addFile("input.tsv", inputTsv).
+		arg("--input_tsv").arg("input.tsv").
+		arg("--key_column").arg(keyColumn).
+		arg("--output_fasta").arg("input.fasta").
+		saveFile("input.fasta").
+		printErrStreamToStdout().
+		cache(CACHE_MILLIS).
+		run()
+
+	// ANARCI writes one CSV per bucket it actually found, so a heavy-only set leaves no
+	// `_KL.csv` and saving a file the run never wrote fails the step. Both are pre-created as
+	// header-only placeholders, which ANARCI overwrites for the buckets it does find and leaves
+	// alone for the others — so both saves always have a file.
+	//
+	// `writable: true` is the whole trick. Workdir inputs land 0o400 by default so the backend
+	// can hardlink them from the archive cache; without it ANARCI dies on
+	// "Permission denied: anarci.csv_H.csv". Same pattern as
+	// peptide-extraction/workflow/src/parse.tpl.tengo:28.
+	//
+	// Both buckets are always read, whichever chains were mapped: the chain a column was
+	// assigned to is *declared*, ANARCI's bucket is *inferred*, and the two can disagree.
+	// Reconciling them is out of scope, so the numbering step resolves each record by its
+	// full `key|chain` id across both buckets rather than assuming they agree.
+	anarciBuilder := exec.builder().
+		software(anarciSw).
+		addFile("input.fasta", fastaCmd.getFile("input.fasta")).
+		arg("-i").arg("input.fasta").
+		arg("--scheme").arg(scheme).
+		arg("--ncpu").argWithVar("{system.cpu}").
+		arg("-o").arg("anarci.csv").arg("--csv")
+
+	// One placeholder and one save per bucket ANARCI can write. Which ones it fills depends on
+	// the chains in the set, and the step must declare its saves before knowing that.
+	for bucket in BUCKETS {
+		anarciBuilder = anarciBuilder.
+			writeFile(bucketCsv(bucket), "Id\n", { writable: true }).
+			saveFile(bucketCsv(bucket))
+	}
+
+	anarciCmd := anarciBuilder.
+		printErrStreamToStdout().
+		cache(CACHE_MILLIS).
+		run()
+
+	regionsBuilder := exec.builder().
+		software(regionsSw).
+		cpu(1).
+		mem("4GiB").
+		addFile("input.tsv", inputTsv).
+		arg("--input_tsv").arg("input.tsv").
+		arg("--key_column").arg(keyColumn).
+		arg("--scheme").arg(scheme).
+		arg("--out_tsv").arg("regions.tsv").
+		arg("--out_stats").arg("region-stats.tsv")
+
+	for bucket in BUCKETS {
+		regionsBuilder = regionsBuilder.
+			addFile(bucketCsv(bucket), anarciCmd.getFile(bucketCsv(bucket))).
+			arg("--csv_" + text.to_lower(bucket)).arg(bucketCsv(bucket))
+	}
+
+	regionsCmd := regionsBuilder.
+		saveFile("regions.tsv").
+		saveFileContent("region-stats.tsv").
+		printErrStreamToStdout().
+		cache(CACHE_MILLIS).
+		run()
+
+	return {
+		regions: { main: regionsCmd.getFile("regions.tsv") },
+		// Per-chain outcome counts. The other formats show per-chain import statistics in the
+		// block's table; a bare set has no counts to sum, so this is what it has to show —
+		// how many records were annotated, and how many the instrument could not place.
+		stats: { main: regionsCmd.getFileContent("region-stats.tsv") }
+	}
+})

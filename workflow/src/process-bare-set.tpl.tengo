@@ -1,0 +1,232 @@
+// Assemble a bare paired set into one p-frame.
+//
+// Four passes, and the split between them is the shape of the emitted dataset:
+//
+//   1. import          per sample   parse the scientist's file into a record TSV, and emit the
+//                                   abundance column — the only one that keeps the sample axis
+//   2. annotate        per sample   ANARCI over that TSV, producing a region TSV and per-chain
+//                                   outcome counts
+//   3. aggregate       collapse     the record TSVs -> sequences, imported properties, label
+//   4. aggregate       collapse     the region TSVs -> located regions and their statuses
+//
+// Passes 3 and 4 share one body (`aggregate-by-record`); only the declared Xsv columns differ.
+//
+// Why the collapse exists at all is in that template's header: consumers match axes
+// positionally, so a property column has to carry the record key at axis 0. This mirrors
+// MiXCR, which runs per sample and then aggregates onto `clonotypeKey`, leaving only abundance
+// per sample.
+//
+// Two columns the per-chain path emits are still absent, and their absence is a decision
+// rather than a filter: `pl7.app/vdj/sampleCount` and the `…CountTotal` / `…FractionMean` pair
+// are cross-sample aggregates of a real abundance. A bare set's abundance is the literal 1, so
+// a count of how often a record repeats would be presented as an abundance, and a total of a
+// constant is just the number of samples wearing an abundance label. Nothing computes them.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+processUtils := import(":process-utils")
+specs := import(":bare-set-specs")
+smart := import("@platforma-sdk/workflow-tengo:smart")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+json := import("json")
+
+importTpl := assets.importTemplate(":import-bare-set")
+annotateTpl := assets.importTemplate(":annotate-regions")
+aggregateTpl := assets.importTemplate(":aggregate-by-record")
+
+self.awaitState("InputsLocked")
+self.awaitState("datasetData", "ResourceReady")
+
+self.body(func(inputs) {
+	datasetSpec := inputs.datasetSpec
+	dataset := inputs.datasetData
+	blockId := inputs.blockId
+	chains := inputs.chains
+	scheme := inputs.scheme
+	mapping := inputs.mapping
+	properties := inputs.properties
+	if properties == undefined { properties = [] }
+
+	datasetLabel := inputs.datasetLabel
+	if datasetLabel == undefined || datasetLabel == "" { datasetLabel = "Import V(D)J Data" }
+
+	ll.assert(len(chains) > 0, "process-bare-set: at least one chain must be mapped")
+
+	keyAxis := specs.keyAxis(blockId, chains)
+	bySource := specs.columnsBySource(chains, scheme, properties)
+
+	// Pass 1. The Xsv output declares the abundance column only; the record TSV it also emits
+	// carries every other column, for pass 3 to collapse.
+	results := pframes.processColumn(
+		{ spec: datasetSpec, data: dataset },
+		importTpl,
+		[
+			{
+				type: "Xsv",
+				xsvType: "tsv",
+				settings: {
+					axes: [keyAxis],
+					columns: bySource.perSample,
+					storageFormat: "Parquet",
+					partitionKeyLength: 0
+				},
+				mem: "16GiB",
+				cpu: 2,
+				name: "abundance",
+				path: ["records", "main"]
+			},
+			{
+				type: "Resource",
+				spec: {
+					kind: "PColumn",
+					name: "mixcr.com/clonotypeTable",
+					valueType: "File"
+				},
+				name: "recordsTsv",
+				path: ["records", "main"]
+			}
+		],
+		{
+			// The sample axis is not declared by this block on this door — it arrives from the
+			// dataset's own partition. On the direct door import declares it itself; the
+			// emitted shape is identical either way.
+			aggregate: [{
+				name: "pl7.app/sequencing/lane",
+				optional: true
+			}, {
+				name: "pl7.app/sequencing/tag",
+				optional: true
+			}],
+			passAggregationAxesNames: true,
+
+			// Named after what was imported, not after the block that imported it. The trace
+			// label is what a downstream dataset dropdown shows, and "Import V(D)J Data" there
+			// tells the scientist nothing when two imports sit side by side. MiXCR does the
+			// same, labelling its step "MiXCR " + preset name.
+			traceSteps: [{
+				type: "milaboratories.importVDJ",
+				id: blockId,
+				importance: 81,
+				label: datasetLabel
+			}],
+
+			extra: {
+				mapping: mapping,
+				properties: properties,
+				chains: chains,
+				scheme: scheme,
+				xsvType: processUtils.applyXsvType({ xsvType: "tsv" }, datasetSpec).xsvType
+			}
+		}
+	)
+
+	// Pass 2. Separate from the first because a processColumn body is re-rendered per declared
+	// output and exec construction is not reproducible, so polars and execs cannot share one
+	// body. Emits the region TSV as a file for pass 4; only the stats become columns here,
+	// because they are genuinely per sample.
+	annotated := pframes.processColumn(
+		results.output("recordsTsv"),
+		annotateTpl,
+		[{
+			type: "Resource",
+			spec: {
+				kind: "PColumn",
+				name: "mixcr.com/clonotypeTable",
+				valueType: "File"
+			},
+			name: "regionsTsv",
+			path: ["regions", "main"]
+		}, {
+			type: "TsvContent",
+			settings: {
+				// One row per declared chain, so a paired set's two chains can be read against
+				// one another rather than laid end to end across the header.
+				axes: [specs.statsAxis()],
+				columns: specs.statsColumns(blockId)
+			},
+			name: "regionStats",
+			path: ["stats", "main"]
+		}],
+		{
+			// No traceSteps: this pass consumes the first pass's output and inherits its step.
+			// Adding it again put the same import step in the trace twice, which the region
+			// columns showed as a duplicated provenance entry.
+			extra: {
+				keyColumn: specs.keyColumn,
+				scheme: scheme
+			}
+		}
+	)
+
+	// Pass 3.
+	records := pframes.processColumn(
+		results.output("recordsTsv"),
+		aggregateTpl,
+		[{
+			type: "Xsv",
+			xsvType: "tsv",
+			settings: {
+				axes: [keyAxis],
+				columns: bySource.perRecord,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			mem: "8GiB",
+			cpu: 2,
+			name: "perRecord",
+			path: ["tsv", "main"]
+		}],
+		{
+			aggregate: ["pl7.app/sampleId"]
+		}
+	)
+
+	// Pass 4.
+	regions := pframes.processColumn(
+		annotated.output("regionsTsv"),
+		aggregateTpl,
+		[{
+			type: "Xsv",
+			xsvType: "tsv",
+			settings: {
+				axes: [keyAxis],
+				columns: bySource.regions,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			mem: "8GiB",
+			cpu: 2,
+			name: "regions",
+			path: ["tsv", "main"]
+		}],
+		{
+			aggregate: ["pl7.app/sampleId"]
+		}
+	)
+
+	result := pframes.pFrameBuilder()
+	results.addXsvOutputToBuilder(result, "abundance", "abundance")
+	records.addXsvOutputToBuilder(result, "perRecord", "perRecord")
+	regions.addXsvOutputToBuilder(result, "regions", "regions")
+
+	stats := pframes.pFrameBuilder()
+	annotated.addXsvOutputToBuilder(stats, "regionStats", "regionStats")
+
+	// Names the chain axis, whose values are the locus vocabulary. Static, and on the axis alone
+	// so it acts as that axis's label rather than as one more property of it.
+	chainLabel := specs.chainLabelColumn(chains)
+	stats.add(
+		"chainLabel",
+		chainLabel.spec,
+		smart.createValueResource(pConstants.RTYPE_P_COLUMN_DATA_JSON, json.encode(chainLabel.data))
+	)
+
+
+	return {
+		result: result.build(),
+		stats: stats.build()
+	}
+})

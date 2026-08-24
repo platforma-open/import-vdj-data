@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.ui",
-  "version": "1.11.3",
+  "version": "1.12.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -15,6 +15,7 @@
     "@platforma-open/milaboratories.import-vdj.model": "workspace:*",
     "@platforma-sdk/model": "catalog:",
     "@platforma-sdk/ui-vue": "catalog:",
+    "canonicalize": "catalog:",
     "vue": "catalog:"
   },
   "devDependencies": {
