@@ -3,9 +3,8 @@
   "version": "1.1.0",
   "description": "Locate FR/CDR region boundaries in amino-acid antibody variable domains from ANARCI numbering",
   "scripts": {
-    "build": "pl-pkg build",
-    "prepublishOnly": "pl-pkg prepublish",
-    "do-pack": "rm -f *.tgz && pl-pkg build && pnpm pack && mv platforma-open*.tgz package.tgz",
+    "build": "block-tools software build",
+    "do-pack": "shx rm -f *.tgz && block-tools software build && pnpm pack && shx mv platforma-open*.tgz package.tgz",
     "changeset": "changeset",
     "version-packages": "changeset version"
   },
@@ -14,8 +13,8 @@
   ],
   "dependencies": {},
   "devDependencies": {
-    "@platforma-sdk/package-builder": "catalog:",
-    "@platforma-open/milaboratories.runenv-python-3": "catalog:"
+    "@platforma-open/milaboratories.runenv-python-3": "catalog:",
+    "@platforma-sdk/block-tools": "catalog:"
   },
   "block-software": {
     "entrypoints": {
