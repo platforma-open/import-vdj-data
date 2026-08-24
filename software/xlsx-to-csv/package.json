@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.xlsx-to-csv",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Convert the first worksheet of a workbook to CSV so the pipeline only ever sees csv/tsv",
   "type": "module",
   "scripts": {

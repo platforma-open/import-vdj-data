@@ -1,5 +1,50 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.16.2
+
+### Patch Changes
+
+- c546f52: Move to software-anarci 1.0.1, which records its docker entrypoint
+
+  Region annotation failed on k8s deployments with `sh: 1: ANARCI: not found`
+  (exit 127). The conda image puts its environment on PATH solely through
+  `ENTRYPOINT ["micromamba", "run", "--prefix", "/conda-env"]`, and a k8s pod spec
+  overrides the image entrypoint — so the runner has to re-apply it from the
+  software descriptor. Every software-anarci up to 1.0.0 records
+  `docker.entrypoint: []`, because the package-builder that published them did not
+  read the built image's entrypoint back. Nothing re-applied the wrapper, ANARCI
+  was never on PATH, and the step died before it started.
+
+  1.0.1 was rebuilt with a package-builder that reads `.Config.Entrypoint` from the
+  image, so its descriptor carries the micromamba wrapper and the k8s runner
+  reconstructs the right command. `^0.0.3` is exact for a 0.0.x range, so the pin
+  could never pick the fix up on its own.
+
+  No ANARCI behaviour changes between these versions — 1.0.0 was a plain release
+  and 1.0.1 was "update build deps".
+
+- 27edd37: Pass the column-profile separator by name, not as a tab character
+
+  Loading a TSV failed on server deployments with `TypeError: "delimiter" must be a 1-character
+string`, while the same file loaded on a desktop backend. The block was passing a real tab as an
+  argv element. Desktop runners exec argv directly, so the tab arrived intact; the k8s and
+  google-batch runners serialise the command with Go's `%q` and re-run it through `sh -c`, where
+  the tab has already become the two characters `\` and `t` and stays that way. `csv.reader`
+  rejects a two-character delimiter.
+
+  Prerun now sends `tab` or `comma` and `main.py` maps the name back to the character, so only
+  plain words cross the runner boundary. A separator that still arrives malformed now fails with a
+  message naming the accepted values rather than a `TypeError`.
+
+  The underlying quoting is a backend issue and is unfixed: `toShellCmd` in `util/k8s/template.go`
+  uses Go quoting where POSIX shell quoting is needed.
+
+- Updated dependencies [27edd37]
+- Updated dependencies [48c194e]
+  - @platforma-open/milaboratories.import-vdj.column-profile@1.1.1
+  - @platforma-open/milaboratories.import-vdj.region-annotation@1.1.1
+  - @platforma-open/milaboratories.import-vdj.xlsx-to-csv@1.1.1
+
 ## 1.16.1
 
 ### Patch Changes
