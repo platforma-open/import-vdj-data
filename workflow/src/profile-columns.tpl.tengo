@@ -21,6 +21,8 @@ self.defineOutputs("profile")
 
 self.body(func(inputs) {
 	ll.assert(inputs.file != undefined, "profile-columns: file is required")
+	// A name — "tab" or "comma" — not the character. See prerun: a real tab does not survive
+	// the `sh -c` round-trip the k8s runner puts argv through. main.py maps the name back.
 	ll.assert(inputs.separator != undefined, "profile-columns: separator is required")
 
 	cmd := exec.builder().

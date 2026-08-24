@@ -55,6 +55,23 @@ def value_type(value: str) -> int:
     return T_DOUBLE
 
 
+# The workflow passes a name rather than the character. On the k8s and google-batch runners the
+# backend serialises argv with Go's %q and re-runs it through `sh -c`: a real tab arrives here as
+# the two characters \ and t, which csv.reader rejects outright. A plain word survives that
+# round-trip, so the name is what crosses the boundary and the character is chosen here.
+SEPARATOR_NAMES = {"tab": "\t", "comma": ",", "semicolon": ";"}
+
+
+def resolve_separator(separator: str) -> str:
+    resolved = SEPARATOR_NAMES.get(separator, separator)
+    if len(resolved) != 1:
+        raise SystemExit(
+            f"--separator must be one of {sorted(SEPARATOR_NAMES)} or a single character,"
+            f" got {separator!r}"
+        )
+    return resolved
+
+
 def profile(path: str, separator: str) -> dict:
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.reader(f, delimiter=separator)
@@ -97,11 +114,15 @@ def profile(path: str, separator: str) -> dict:
 def main() -> None:
     p = argparse.ArgumentParser(description="Profile a csv/tsv's columns")
     p.add_argument("--input", required=True, help="Input csv or tsv")
-    p.add_argument("--separator", required=True, help="Field separator")
+    p.add_argument(
+        "--separator",
+        required=True,
+        help='Field separator: a name ("tab", "comma", "semicolon") or the character itself',
+    )
     p.add_argument("--output", required=True, help="Output JSON")
     args = p.parse_args()
 
-    result = profile(args.input, args.separator)
+    result = profile(args.input, resolve_separator(args.separator))
     with open(args.output, "w") as f:
         json.dump(result, f, sort_keys=True)
 
