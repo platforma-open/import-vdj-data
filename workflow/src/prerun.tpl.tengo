@@ -29,7 +29,12 @@ wf.body(func(args) {
 		// The mapping dropdowns need the file's headers, and on this door nothing upstream
 		// supplies them. The separator comes from what the UI read out of the file's own first
 		// line rather than from the filename, which may not match the content.
-		separator := readable.extension == "csv" ? "," : "\t"
+		//
+		// A name, not the character itself: on the k8s and google-batch runners the backend
+		// serialises argv with Go's %q and re-runs it through `sh -c`, which turns a real tab
+		// into the two characters \t and leaves them that way. Only plain words survive that
+		// round-trip intact. profile-columns maps the name back.
+		separator := readable.extension == "csv" ? "comma" : "tab"
 		// The whole file, not a head: the panel needs each column's value type and whether it
 		// holds amino-acid domains, and both are wrong if taken from a sample. See
 		// profile-columns.
