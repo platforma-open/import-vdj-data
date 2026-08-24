@@ -28,8 +28,8 @@ catalogs:
       specifier: 1.5.2
       version: 1.5.2
     '@platforma-open/milaboratories.software-anarci':
-      specifier: ^0.0.3
-      version: 0.0.3
+      specifier: ^1.0.1
+      version: 1.0.1
     '@platforma-sdk/block-tools':
       specifier: 2.14.3
       version: 2.14.3
@@ -257,7 +257,7 @@ importers:
         version: link:../software/xlsx-to-csv
       '@platforma-open/milaboratories.software-anarci':
         specifier: 'catalog:'
-        version: 0.0.3
+        version: 1.0.1
       '@platforma-sdk/workflow-tengo':
         specifier: 'catalog:'
         version: 6.8.2
@@ -1666,8 +1666,8 @@ packages:
   '@platforma-open/milaboratories.sequence-properties@1.5.2':
     resolution: {integrity: sha512-RsLYUzUbZbGcjpNSOV5xOzeqvITQsdAjlcKW9z/nwuvNCJXS3tnSQy9Z5s7PvDKyx1Q6POwGyEGwYv1AQY371w==}
 
-  '@platforma-open/milaboratories.software-anarci@0.0.3':
-    resolution: {integrity: sha512-BtzWsu32K/V7Sw3uCS/lzkILoI+JVHYl7mE3PNf0UEj1ZImjlRFuMFbo/t8LpywYTAGdUIwR9cu2i6ayq/hDGQ==}
+  '@platforma-open/milaboratories.software-anarci@1.0.1':
+    resolution: {integrity: sha512-Y86dkacjjC/z+NnSUdKBTPfaQ/5lQx9MTH/K7sBynUMthwwfeSyk3UciMni7OVX2Tk7bWgtQiCpsbmecgl1cNA==}
 
   '@platforma-open/milaboratories.software-ptabler.schema@1.15.15':
     resolution: {integrity: sha512-zvPuRZgQyxjED+txJVgWHUOPeRp4TG1jOrJOtuw9WnwxFiHNjQHIB+Xe1j8f6skgMqZgRSQvEbhRvqbWjGmhKQ==}
@@ -8882,7 +8882,7 @@ snapshots:
       - vitest
       - vue
 
-  '@platforma-open/milaboratories.software-anarci@0.0.3': {}
+  '@platforma-open/milaboratories.software-anarci@1.0.1': {}
 
   '@platforma-open/milaboratories.software-ptabler.schema@1.15.15':
     dependencies:
