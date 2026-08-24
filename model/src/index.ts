@@ -1,11 +1,25 @@
-import type { InferOutputsType } from "@platforma-sdk/model";
-import { BlockModelV3, DataColumn, createPlDataTableV3 } from "@platforma-sdk/model";
+import type { InferOutputsType, PColumnKey, PColumnValue } from "@platforma-sdk/model";
+import {
+  BlockModelV3,
+  DataColumn,
+  createPlDataTableV3,
+  TreeNodeAccessor,
+} from "@platforma-sdk/model";
 import { blockDataModel } from "./data-model";
 import type { BlockArgs, BlockData, ColumnDescription, ColumnProfile } from "./types";
 import { bareSetValid } from "./types";
 
 export * from "./types";
 export { upgradeLegacyData } from "./data-model";
+
+/** Unpartitioned inline-JSON p-column storage; payload is `{ keyLength, data }`. */
+const RT_JSON = "PColumnData/Json";
+
+type JsonColumnData = {
+  keyLength: number;
+  /** Keys are stringified axis tuples, e.g. `'["S1"]'`. */
+  data: Record<string, PColumnValue>;
+};
 
 /**
  * The mapping fields that belong to the dataset door and mean nothing on a bare set: the bare
@@ -438,11 +452,10 @@ export const platforma = BlockModelV3.create(blockDataModel)
       return undefined;
     }
 
-    // Anchor on the annotated count. Every column here — the four counts and the chain label —
-    // keys on the single chain axis, so the choice does not affect the join; it decides what V3
-    // discovers labels against and what stays permanently visible, since visibility rules are
-    // never applied to primary columns. The annotated count is emitted for every run.
-    const primary = pCols.find((c) => c.spec.name.endsWith("/annotatedCount"));
+    // Anchor on the count its own path always emits — the two paths share this output but no columns.
+    const primary =
+      pCols.find((c) => c.spec.name.endsWith("/annotatedCount")) ??
+      pCols.find((c) => c.spec.name === "pl7.app/vdj/stat/clonotypeCount");
     if (primary === undefined) {
       return undefined;
     }
@@ -455,6 +468,48 @@ export const platforma = BlockModelV3.create(blockDataModel)
       columns: pCols.filter((c) => c.id !== primary.id).map((c) => DataColumn.fromColumn(c)),
       tableState: ctx.data.tableState,
     });
+  })
+
+  // Samples summing to zero clonotypes across every imported chain — normally chain filtering matching nothing.
+  .output("emptyChainSamples", (ctx) => {
+    const pCols = ctx.outputs?.resolve("stats")?.getPColumns();
+    if (pCols === undefined) {
+      return undefined;
+    }
+
+    const countCols = pCols.filter((c) => c.spec.name === "pl7.app/vdj/stat/clonotypeCount");
+    const [firstCol] = countCols;
+    if (firstCol === undefined) {
+      return undefined;
+    }
+
+    const totals = new Map<string | number, number>();
+    for (const col of countCols) {
+      const data = col.data;
+      if (!(data instanceof TreeNodeAccessor) || data.resourceType.name !== RT_JSON) {
+        return undefined;
+      }
+      const json = data.getDataAsJsonOrUndefined<JsonColumnData>();
+      if (json === undefined) {
+        return undefined;
+      }
+      for (const [keyStr, value] of Object.entries(json.data)) {
+        const [sampleId] = JSON.parse(keyStr) as PColumnKey;
+        if (sampleId === undefined) {
+          continue;
+        }
+        const count = typeof value === "number" ? value : 0;
+        totals.set(sampleId, (totals.get(sampleId) ?? 0) + count);
+      }
+    }
+
+    const labels = ctx.resultPool.findLabelsForColumnAxis(firstCol.spec, 0);
+    const emptySamples = [...totals.entries()]
+      .filter(([, total]) => total === 0)
+      .map(([sampleId]) => labels?.[sampleId] ?? String(sampleId))
+      .sort((a, b) => a.localeCompare(b));
+
+    return { emptySamples, sampleCount: totals.size };
   })
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])

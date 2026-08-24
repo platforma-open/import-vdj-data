@@ -80,16 +80,21 @@ self.body(func(inputs) {
 	for chain in chains {
 		prefix := chainToLocusMap[chain]
 		
+		// Chain values are matched case-insensitively.
+		// The trailing 'C' has already been stripped from the chain column above, so
+		// this still assumes the source value carried that suffix.
+		chainUpper := pt.col("chain").strToUpper()
+
 		chainDf := undefined
 		if chain == "IGLight" {
 			// For IG light chains, check for both IGK and IGL (after removing 'C' suffix)
 			chainDf = df.filter(
-				pt.col("chain").eq("IGK").or(pt.col("chain").eq("IGL"))
+				chainUpper.eq("IGK").or(chainUpper.eq("IGL"))
 			)
 		} else {
 			// Use exact chain column value for filtering (after removing 'C' suffix)
 			qiagenChainValue := chainToLocusMap[chain]
-			chainDf = df.filter(pt.col("chain").eq(qiagenChainValue))
+			chainDf = df.filter(chainUpper.eq(qiagenChainValue))
 		}
 
 		// Calculate "is-productive" column based on CDR3 AA sequence presence.
