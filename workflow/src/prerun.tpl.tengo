@@ -46,7 +46,10 @@ wf.body(func(args) {
 		outputs := {
 			// getImportProgress on this is what starts the upload.
 			fileImports: imported.handle,
-			columnProfile: profile.output("profile")
+			columnProfile: profile.output("profile"),
+			// Which file the profile above describes. Stated here because nothing exposes the args
+			// a staging context was built with, so the model cannot work it out.
+			profiledSampleId: smart.createJsonResource(args.fileSource.sampleId)
 		}
 
 		if args.bareSet != undefined {

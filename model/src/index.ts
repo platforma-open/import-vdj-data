@@ -264,6 +264,30 @@ export const platforma = BlockModelV3.create(blockDataModel)
     }
   })
 
+  /**
+   * Which file the profile the UI currently sees was taken from, so a mismatch with
+   * `data.fileSource.sampleId` means "the panel is showing the last file's columns".
+   *
+   * Keyed to the file, not to whether prerun is busy: `prerunArgs` carries `bareSet`, so prerun
+   * re-runs on every mapping edit to re-check the identity column for collisions.
+   */
+  .retentiveOutput("profiledSampleId", (ctx) => {
+    const profile = ctx.prerun?.resolve({ field: "columnProfile", allowPermanentAbsence: true });
+    if (profile === undefined) return undefined;
+    // Marks the read unstable (pl-tree/src/accessors.ts:347), so `retentive` keeps reporting the
+    // previous file's id until the new profile lands — the id and the profile can never disagree.
+    if (!profile.getIsReadyOrError()) return undefined;
+    return ctx.prerun
+      ?.resolve({ field: "profiledSampleId", allowPermanentAbsence: true })
+      ?.getDataAsJsonOrUndefined<string>();
+  })
+
+  /**
+   * Drives the block's loader (`ui/src/app.ts`). Excludes prerun: the loader covers the whole
+   * block, and prerun re-runs while the settings panel is being edited.
+   */
+  .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
+
   /** Headers of the dataset selected from the pool. Absent on the file door. */
   .retentiveOutput("datasetColumns", (ctx) => {
     const headers = ctx.prerun

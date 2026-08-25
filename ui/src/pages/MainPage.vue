@@ -239,7 +239,15 @@ function setBareScheme(value: string | undefined) {
   a.bareSet = { ...a.bareSet, scheme: value as BareSetArgs["scheme"] };
 }
 
-const isBareSet = computed(() => app.model.data.bareSet !== undefined);
+/**
+ * A column has been assigned. Not `bareSet !== undefined`: picking a new file keeps the receptor
+ * declaration and the scheme (see forgetMappedColumns), so the object outlives the mapping.
+ */
+const isBareSet = computed(() => {
+  const bare = app.model.data.bareSet;
+  if (bare === undefined) return false;
+  return !!bare.identity || Object.values(bare.sequences ?? {}).some(Boolean);
+});
 
 /** Identity values the file repeats on rows that are not identical. The run cannot start
  *  while any exist: the record key is the identity's hash, so a repeat would merge two
@@ -407,6 +415,30 @@ function setSource(value: string | undefined) {
 /** The file door is showing exactly when a file is loaded. No stored flag decides it. */
 const loadFromFile = computed(() => app.model.data.fileSource !== undefined);
 
+/**
+ * The loaded file is still being profiled — the columns on offer are the previous file's, since
+ * the profile outputs are retentive. True between picking a file and its scan finishing.
+ */
+const fileScanning = computed(() => {
+  const file = app.model.data.fileSource;
+  if (file === undefined) return false;
+  return app.model.outputs.profiledSampleId !== file.sampleId;
+});
+
+/**
+ * The mapping with everything that names a column dropped. The receptor declaration and the
+ * numbering scheme describe the biology and outlive any one file; the column names do not.
+ */
+function forgetMappedColumns(bare: BareSetArgs | undefined): BareSetArgs | undefined {
+  if (bare === undefined) return undefined;
+  return {
+    identity: "",
+    chainSelection: bare.chainSelection,
+    sequences: {},
+    scheme: bare.scheme,
+  };
+}
+
 async function setFile(handle: ImportFileHandle | undefined) {
   fileSourceError.value = "";
   const a = app.model.data;
@@ -415,6 +447,7 @@ async function setFile(handle: ImportFileHandle | undefined) {
     return;
   }
 
+  const previous = a.fileSource;
   const name = getFileNameFromHandle(handle);
   // A workbook is identified by its name — there is no first line to read, and the workflow
   // converts it to csv before anything else looks at it. For text files the delimiter is
@@ -435,6 +468,12 @@ async function setFile(handle: ImportFileHandle | undefined) {
     extension,
   };
   a.datasetRef = undefined;
+
+  // This is what disables Run: a mapping that passed against the last file still satisfies
+  // `bareSetValid`, so otherwise the block stays runnable over a file nothing has read yet.
+  // Cleared on the gesture because `args` sees only `data` and cannot consult prerun.
+  // Re-picking the same file is not a swap — the dialog is also how a file gets re-read.
+  if (previous?.handle !== handle) a.bareSet = forgetMappedColumns(a.bareSet);
 }
 
 function setReceptors(selected: string[]) {
@@ -686,7 +725,11 @@ watch(
           {{ fileSourceError }}
         </PlAlert>
 
-        <template v-if="headerOptions.length > 0">
+        <PlAlert v-if="fileScanning" type="info" :style="{ width: '100%' }">
+          Checking the file's columns. This can take a moment, please wait...
+        </PlAlert>
+
+        <template v-if="!fileScanning && headerOptions.length > 0">
           <PlSectionSeparator>Columns to import</PlSectionSeparator>
           <PlAlert v-if="identityCollisionMessage" type="warn" :style="{ width: '100%' }">
             <template #title>Id column is not unique</template>
@@ -735,7 +778,7 @@ watch(
         <!-- Not a column mapping: it chooses how the mapped sequences are numbered, and the
              region boundaries every downstream block reads follow from it. Kept apart from the
              mapping so it does not read as one more column to assign. -->
-        <template v-if="isBareSet">
+        <template v-if="isBareSet && !fileScanning">
           <PlSectionSeparator>Region annotation</PlSectionSeparator>
           <div class="field-col">
             <PlDropdown
