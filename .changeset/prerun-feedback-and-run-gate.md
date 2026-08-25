@@ -1,0 +1,48 @@
+---
+'@platforma-open/milaboratories.import-vdj.workflow': patch
+'@platforma-open/milaboratories.import-vdj.model': patch
+'@platforma-open/milaboratories.import-vdj.ui': patch
+'@platforma-open/milaboratories.import-vdj': patch
+---
+
+Say what the block is checking, and refuse to run until it has
+
+Loading a file left the panel silent while every column of it was profiled — a whole-file pass,
+minutes on remote storage — and the profile outputs are retentive, so the dropdowns went on
+answering with the *previous* file's headers as though nothing had happened. A mapping that had
+passed every check against that previous file also still counted as valid, so Run stayed live over
+a file nobody had read yet, against headers it might not even contain.
+
+- **The wait is announced.** Prerun now states which file a profile was taken from, and the model
+  pairs the two so the reported file cannot get ahead of the profile. The panel announces the scan
+  and withholds the mapping until the columns on offer are really this file's. Keyed to the file
+  rather than to "prerun is busy", because prerun also re-runs on every mapping edit to re-check
+  the id column. The import itself now shows the block's loader, which it never did.
+- **Loading a second file disables Run.** Picking a different file drops the parts of the mapping
+  that name columns, keeping the receptor declaration and the numbering scheme, which describe the
+  data rather than one file. Re-picking the same file is not a swap and keeps the mapping.
+- **A repeated id column now stops the run.** The record key is the identity's hash, so a value
+  repeated on rows that are not identical merges two records into one. Prerun always found these
+  and the panel always warned, but the warning was only a warning, and a run driven through the API
+  imported the merged set without complaint. Run is now refused both while the verdict is
+  outstanding and when it reports a repeat, and the platform enforces it as well as the interface.
+- **The warning names the column it is about.** It used to quote the freshly picked column against
+  the previous one's verdict, so changing an offending column flashed the old accusation under the
+  new column's name. It also listed up to ten repeated values; it now lists three and a count,
+  printed whole, since the id column can hold sequences and trimming those hides what tells them
+  apart.
+- **Alert headings appear.** Four alerts passed their heading to a slot `PlAlert` does not have, so
+  the headings had never rendered — a warning about a non-unique id column read as an unlabelled
+  wall of values.
+- **The id column can be cleared.** Clearing it left the field reading "Value not available" in
+  red: "nothing chosen" is stored as an empty string, and a dropdown counts any value that is not
+  `undefined` as chosen. Relatedly, clearing a mapping only reset it for the IG chain pair, so a
+  TCR mapping could never clear itself.
+
+Refusing the run on a prerun verdict needs that verdict inside the args projection, which sees only
+the block's own data, so the UI mirrors it in. That is a hairpin, and deliberate: unlike a column
+mapping there is no gesture at which the fact could be captured, because the scientist picks a
+column and only then does the check discover whether it is sound. The two rules that keep it safe —
+a verdict carries what it is about, and is dropped when the source changes — are stated on
+`BlockData.prerunChecks`, and the checks still to come should follow them. It can all go once
+`argsValid` can read prerun directly.
