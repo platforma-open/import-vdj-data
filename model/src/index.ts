@@ -39,6 +39,25 @@ function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
 }
 
 /**
+ * Refuse a bare set whose id column prerun has not cleared.
+ *
+ * The check itself cannot live here — it reads the whole file — so this reads the verdict the UI
+ * mirrored into `data.prerunChecks`, and refuses both a verdict that says the column repeats and
+ * the absence of one for the column currently selected. Refusing the absence is the point: the
+ * record key is the identity's hash, so starting a run before the answer is in is exactly how two
+ * different records silently become one.
+ */
+function requireCheckedIdentity(data: BlockData): void {
+  const identity = data.bareSet?.identity;
+  if (identity === undefined || identity === "") return; // bareSetValid has already refused
+  const checks = data.prerunChecks;
+  if (checks?.identity !== identity) throw new Error("Checking the id column for repeats");
+  if (checks.identityCollides) {
+    throw new Error(`"${identity}" repeats on rows that are not identical`);
+  }
+}
+
+/**
  * The workflow's view of the block, and the only place validation lives.
  *
  * Three jobs, in order: refuse what cannot run (by throwing), drop the door that is not in
@@ -72,6 +91,7 @@ function projectArgs(data: BlockData): BlockArgs {
   // mapping unfurled under a format nobody had chosen.
   if (fileSource !== undefined) {
     if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the file's columns");
+    requireCheckedIdentity(data);
     return withoutDatasetDoorMapping(args);
   }
 
@@ -85,6 +105,7 @@ function projectArgs(data: BlockData): BlockArgs {
     // identity column, because the key is the identity's hash and the label is its value.
     if (data.bareSet !== undefined) {
       if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
+      requireCheckedIdentity(data);
       return withoutDatasetDoorMapping(args);
     }
 

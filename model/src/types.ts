@@ -222,6 +222,31 @@ export type BlockData = {
   // --- bare set. Its presence is what selects the bare path in the workflow.
   bareSet?: BareSetMapping;
 
+  /**
+   * Verdicts prerun reached, mirrored here so `args` can refuse a run on them.
+   *
+   * `args` is a pure function of this data and cannot read prerun, and unlike the column mapping
+   * there is no gesture at which a verdict could be snapshotted: the scientist picks a column, and
+   * only then does the check discover whether it is sound. So the UI mirrors it in
+   * (`ui/src/app.ts`) — the hairpin the harness warns about, made safe by two rules every entry
+   * here must follow:
+   *
+   * - it carries what it is *about*, so a verdict for something nobody has selected any more is
+   *   ignored rather than applied;
+   * - it is cleared when the source changes, so a verdict cannot survive into a different file.
+   *
+   * Together those make the write idempotent — every client derives the same value from the same
+   * output, so concurrent writes agree instead of racing. Add further checks as sibling fields
+   * following the same two rules. The whole field goes away once args can read prerun directly
+   * (SDK request "Simplify prerun checks").
+   */
+  prerunChecks?: {
+    /** The id column the verdict below was reached for. */
+    identity: string;
+    /** That column repeats on rows that are not identical, so two records would merge into one. */
+    identityCollides: boolean;
+  };
+
   // --- view state. None of this is projected anywhere.
   tableState: PlDataTableStateV2;
   settingsOpen: boolean;

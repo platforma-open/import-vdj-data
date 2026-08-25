@@ -11,7 +11,7 @@ import {
   CHAIN_SLOTS,
   SCHEMES_FOR_SELECTION,
 } from "@platforma-open/milaboratories.import-vdj.model";
-import { propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
+import { bareSetValid, propertyCollisions } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
 import canonicalize from "canonicalize";
@@ -301,6 +301,18 @@ const propertyCollisionMessage = computed(() => {
   if (groups.length === 0) return "";
   const pairs = groups.map((hs) => hs.join(" / ")).join("; ");
   return `These headers would become the same column: ${pairs}. Rename one in the file — importing both is not possible, and dropping one silently would lose a column you asked for.`;
+});
+
+/**
+ * The mapping is finished but prerun has not yet said whether the id column repeats.
+ *
+ * Run is disabled meanwhile (the args projection refuses an unchecked column), and this block's
+ * layout does not surface the args error, so the reason has to be said here.
+ */
+const identityCheckPending = computed(() => {
+  const bare = app.model.data.bareSet;
+  if (bare === undefined || !bareSetValid(bare)) return false;
+  return app.model.data.prerunChecks?.identity !== bare.identity;
 });
 
 // Enough values to recognise the problem in the file, not enough to bury the sentence that says
@@ -751,6 +763,9 @@ watch(
             :style="{ width: '100%' }"
           >
             {{ identityCollisionMessage }}
+          </PlAlert>
+          <PlAlert v-else-if="identityCheckPending" type="info" :style="{ width: '100%' }">
+            Checking the id column for repeats. This can take a moment, please wait...
           </PlAlert>
           <div class="field-col">
             <PlDropdown

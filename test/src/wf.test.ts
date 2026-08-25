@@ -29,6 +29,7 @@ import { ImportVdjBlockPointer } from "this-block";
  * visibly `tableState`, which the stats table is built from.
  */
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
+  const bareSet = fields.bareSet as { identity?: string } | undefined;
   return {
     defaultBlockLabel: "",
     customBlockLabel: "",
@@ -40,6 +41,12 @@ function blockData(fields: Record<string, unknown>): Record<string, unknown> {
     mixcrColumnsPresent: false,
     crColumnsPresent: false,
     airrColumnsPresent: false,
+    // `args` refuses a bare set whose id column prerun has not cleared, and the verdict reaches
+    // data through a UI watcher these tests never run. So stand in for it — clean unless the test
+    // passes its own `prerunChecks`, which `...fields` below lets it do.
+    ...(bareSet?.identity !== undefined && bareSet.identity !== ""
+      ? { prerunChecks: { identity: bareSet.identity, identityCollides: false } }
+      : {}),
     ...fields,
   };
 }
@@ -307,14 +314,23 @@ blockTest(
           sequences: { IGHeavy: "VH", IGLight: "VL" },
           scheme: SCHEME,
         },
+        // What the UI mirrors in once prerun answers. Stated here because the mirror is a UI
+        // watcher and these tests drive the block directly.
+        prerunChecks: { identity: "mAb ID", identityCollides: true },
       }),
     });
 
     const state = (await awaitStableState(project.getBlockState(blockId), 300000)) as {
       outputs?: Record<string, unknown>;
-      inputsValid?: boolean;
-      canRun?: boolean;
     };
+
+    // The refusal the block's name promises: a colliding id column makes args invalid, so the
+    // interface offers no Run. Read from the overview, not the block state — the block state
+    // carries outputs, and runnability lives on the overview.
+    const overview = (await project.overview.getValue())!;
+    const blockOverview = overview.blocks.find((b) => b.id === blockId)!;
+    expect(blockOverview.inputsValid).toBe(false);
+    expect(blockOverview.canRun).toBe(false);
 
     const wrapped = state.outputs?.identityCollisions as
       | { value?: { identity: string; values: string[] } }
@@ -334,13 +350,11 @@ blockTest(
     // The identical pair is not: repeating a record verbatim discards nothing.
     expect(collisions).not.toContain("AB-002");
 
-    // GAP, verified here rather than assumed: `argsValid` disables Run in the interface, but
-    // the platform does not enforce it — `project.runBlock` resolves happily on an invalid
-    // block. So "the run does not start" holds for a scientist clicking Run and not for an API
-    // caller, and a colliding set driven through the API would still import and merge records.
-    // Closing that needs a workflow-side refusal, which is data-dependent and therefore a
-    // separate awaiting template.
-    await expect(project.runBlock(blockId)).resolves.toBeUndefined();
+    // Enforced by the platform, not only by the interface: invalid args means no args to render a
+    // production from, so an API caller cannot drive a colliding set through either. This was a
+    // documented gap while the collision verdict sat outside the gate — args stayed valid, and
+    // `runBlock` imported a set that merged records without complaint.
+    await expect(project.runBlock(blockId)).rejects.toThrow(/currentArgs not set/);
   },
 );
 
