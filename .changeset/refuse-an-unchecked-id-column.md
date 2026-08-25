@@ -13,8 +13,9 @@ a warning: Run stayed live, and a run driven through the API imported the merged
 complaint.
 
 Run is now refused both while the verdict for the selected column is still outstanding and when it
-says the column repeats, and the panel says which of the two it is waiting on. The platform
-enforces it as well as the interface — invalid args leave nothing to render a production from.
+says the column repeats, and the panel says which of the two it is waiting on — worded for the
+checks in general, since more of them are coming. The platform enforces it as well as the
+interface: invalid args leave nothing to render a production from.
 
 Getting there needs prerun's verdict inside the args projection, which sees only the block's own
 data, so the UI mirrors it in. That is a hairpin, and deliberately so: unlike a column mapping

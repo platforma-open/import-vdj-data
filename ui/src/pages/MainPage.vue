@@ -204,7 +204,11 @@ function setChainSelection(value: string | undefined) {
 function bareField(field: "identity" | BareSetChain): string | undefined {
   const bare = getBare();
   if (!bare) return undefined;
-  return field === "identity" ? bare.identity : bare.sequences?.[field];
+  if (field !== "identity") return bare.sequences?.[field];
+  // `identity` is a required string, so "nothing chosen" is stored as "". A dropdown counts any
+  // non-undefined value as chosen, so handing it "" showed an italic red "Value not available"
+  // instead of an empty field, and clearing the id column looked like it had broken it.
+  return bare.identity === "" ? undefined : bare.identity;
 }
 
 /** Written on user gesture only, never from a watcher on an output. */
@@ -228,8 +232,9 @@ function setBareField(field: "identity" | BareSetChain, value: string | undefine
   }
 
   // Cleared right back out when nothing is mapped, so its mere presence stays a reliable
-  // signal that this is a bare set.
-  const empty = !next.identity && !next.sequences.IGHeavy && !next.sequences.IGLight;
+  // signal that this is a bare set. Every slot, not just the two IG ones — naming those two left
+  // a TCR mapping unable to clear itself.
+  const empty = !next.identity && !Object.values(next.sequences).some(Boolean);
   a.bareSet = empty ? undefined : next;
 }
 
@@ -304,19 +309,21 @@ const propertyCollisionMessage = computed(() => {
 });
 
 /**
- * The mapping is finished but prerun has not yet said whether the id column repeats.
+ * The mapping is finished but prerun has not yet cleared the columns it names.
  *
- * Run is disabled meanwhile (the args projection refuses an unchecked column), and this block's
- * layout does not surface the args error, so the reason has to be said here.
+ * Run is disabled meanwhile (the args projection refuses unchecked columns), and this block's
+ * layout does not surface the args error, so the reason has to be said here. Named and worded for
+ * the checks in general — the id column's uniqueness is the only one today.
  */
-const identityCheckPending = computed(() => {
+const columnChecksPending = computed(() => {
   const bare = app.model.data.bareSet;
   if (bare === undefined || !bareSetValid(bare)) return false;
   return app.model.data.prerunChecks?.identity !== bare.identity;
 });
 
 // Enough values to recognise the problem in the file, not enough to bury the sentence that says
-// what to do about it.
+// what to do about it. Printed whole and left to scroll: the id column can hold sequences, and
+// trimming those removes the very part that tells two of them apart.
 const COLLISIONS_SHOWN = 3;
 
 const identityCollisionMessage = computed(() => {
@@ -764,8 +771,8 @@ watch(
           >
             {{ identityCollisionMessage }}
           </PlAlert>
-          <PlAlert v-else-if="identityCheckPending" type="info" :style="{ width: '100%' }">
-            Checking the id column for repeats. This can take a moment, please wait...
+          <PlAlert v-else-if="columnChecksPending" type="info" :style="{ width: '100%' }">
+            Validating the selected columns. This can take a moment, please wait...
           </PlAlert>
           <div class="field-col">
             <PlDropdown
