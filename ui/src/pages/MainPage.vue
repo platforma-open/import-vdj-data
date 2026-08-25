@@ -731,8 +731,12 @@ watch(
 
         <template v-if="!fileScanning && headerOptions.length > 0">
           <PlSectionSeparator>Columns to import</PlSectionSeparator>
-          <PlAlert v-if="identityCollisionMessage" type="warn" :style="{ width: '100%' }">
-            <template #title>Id column is not unique</template>
+          <PlAlert
+            v-if="identityCollisionMessage"
+            type="warn"
+            label="Id column is not unique"
+            :style="{ width: '100%' }"
+          >
             {{ identityCollisionMessage }}
           </PlAlert>
           <div class="field-col">
@@ -769,8 +773,12 @@ watch(
               />
             </template>
           </div>
-          <PlAlert v-if="propertyCollisionMessage" type="warn" :style="{ width: '100%' }">
-            <template #title>Two headers would become one column</template>
+          <PlAlert
+            v-if="propertyCollisionMessage"
+            type="warn"
+            label="Two headers would become one column"
+            :style="{ width: '100%' }"
+          >
             {{ propertyCollisionMessage }}
           </PlAlert>
         </template>
@@ -800,8 +808,12 @@ watch(
           required
         />
 
-        <PlAlert v-if="validationMessage" type="warn" :style="{ width: '100%' }">
-          <template #title>Invalid {{ formatLabel(validationResult?.format) }} dataset</template>
+        <PlAlert
+          v-if="validationMessage"
+          type="warn"
+          :label="`Invalid ${formatLabel(validationResult?.format)} dataset`"
+          :style="{ width: '100%' }"
+        >
           {{ validationMessage }}
         </PlAlert>
 
@@ -964,8 +976,12 @@ watch(
       </template>
     </PlSlideModal>
 
-    <PlAlert v-if="emptySamplesMessage" type="warn" :style="{ width: '100%' }">
-      <template #title>No clonotypes imported</template>
+    <PlAlert
+      v-if="emptySamplesMessage"
+      type="warn"
+      label="No clonotypes imported"
+      :style="{ width: '100%' }"
+    >
       {{ emptySamplesMessage }}
     </PlAlert>
 
