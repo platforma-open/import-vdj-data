@@ -744,8 +744,20 @@ columnsBySource := func(chains, scheme, properties) {
 	}
 }
 
+// The mapped sequence columns, keyed by slot — the other half of what the collision check reads.
+// Emitted alongside a verdict so the panel and the run gate can tell a verdict about the current
+// mapping from one reached before a chain was remapped.
+mappedSequences := func(bare, mappedChains) {
+	mapped := {}
+	for chain in mappedChains {
+		mapped[chain] = bare.sequences[chain]
+	}
+	return mapped
+}
+
 export {
 	CHAINS: CHAINS,
+	mappedSequences: mappedSequences,
 	CHAIN_LABELS: CHAIN_LABELS,
 	REGIONS: REGIONS,
 	SCHEMES: SCHEMES,

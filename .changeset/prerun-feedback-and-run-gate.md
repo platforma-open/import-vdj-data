@@ -26,9 +26,11 @@ a file nobody had read yet, against headers it might not even contain.
   and the panel always warned, but the warning was only a warning, and a run driven through the API
   imported the merged set without complaint. Run is now refused both while the verdict is
   outstanding and when it reports a repeat, and the platform enforces it as well as the interface.
-- **The warning names the column it is about.** It used to quote the freshly picked column against
-  the previous one's verdict, so changing an offending column flashed the old accusation under the
-  new column's name. It also listed up to ten repeated values; it now lists three and a count,
+- **The warning names the mapping it is about.** It used to compare against the freshly picked
+  column while the verdict was still the previous mapping's, so changing an offending column flashed
+  the old accusation under the new selection. What a verdict covers is the id column *and* the
+  sequence columns, since a collision is a repeated id whose other mapped cells differ — keyed on
+  the id alone, a clean verdict outlived a remapped chain and the run gate accepted it. It also listed up to ten repeated values; it now lists three and a count,
   printed whole, since the id column can hold sequences and trimming those hides what tells them
   apart.
 - **Alert headings appear.** Four alerts passed their heading to a slot `PlAlert` does not have, so

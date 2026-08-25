@@ -248,9 +248,9 @@ export type BlockData = {
    * (SDK request "Simplify prerun checks").
    */
   prerunChecks?: {
-    /** The id column the verdict below was reached for. */
-    identity: string;
-    /** That column repeats on rows that are not identical, so two records would merge into one. */
+    /** The mapping the verdicts below were reached for — see {@link collisionCheckKey}. */
+    columns: string;
+    /** The id column repeats on rows whose other mapped cells differ, so two records would merge. */
     identityCollides: boolean;
   };
 
@@ -308,6 +308,30 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
     (byToken[token] ??= []).push(p.header);
   }
   return Object.fromEntries(Object.entries(byToken).filter(([, hs]) => hs.length > 1));
+}
+
+/**
+ * What a collision verdict is about: the identity column *and* the sequence columns.
+ *
+ * The sequence columns are load-bearing, not incidental. A collision is not "the identity
+ * repeats" — it is an identity repeated on rows whose other mapped cells differ, so remapping a
+ * chain can turn a clean set into a colliding one and back (`bare-set-collisions.tpl.tengo`).
+ * Keying a verdict on the identity alone let a clean verdict outlive the mapping it was reached
+ * for, and the run gate would accept it: records merged.
+ *
+ * Sorted by slot so the key does not depend on the order the columns were picked in, and shared
+ * between the panel, the run gate and the mirror so all three agree on what "the same mapping"
+ * means.
+ */
+export function collisionCheckKey(
+  mapping: Pick<BareSetMapping, "identity" | "sequences"> | undefined,
+): string | undefined {
+  if (mapping === undefined || !mapping.identity) return undefined;
+  const mapped = Object.entries(mapping.sequences ?? {})
+    .filter(([, column]) => Boolean(column))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([slot, column]) => `${slot}=${column}`);
+  return [mapping.identity, ...mapped].join("\u0000");
 }
 
 /**

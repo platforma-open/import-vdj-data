@@ -18,6 +18,7 @@ import type {
 import {
   bareSetValid,
   CHAIN_SLOT_LABELS,
+  collisionCheckKey,
   CHAIN_SLOTS,
   propertyCollisions,
   SCHEME_LABELS,
@@ -185,13 +186,14 @@ const sequenceOptions = computed(() => {
  * to be about the column now selected. The record key is the identity's hash, so a repeat merges
  * two different records into one.
  *
- * The output carries the column it was computed for; anything else is a verdict about a column the
- * scientist has already moved on from.
+ * The output carries the mapping it was computed under — the identity and the sequence columns,
+ * since a collision depends on both. Anything else is a verdict about a mapping the scientist has
+ * already moved on from.
  */
 const identityCollisions = computed<string[]>(() => {
   const found = app.model.outputs.identityCollisions;
   if (found === undefined) return [];
-  if (found.identity !== app.model.data.bareSet?.identity) return [];
+  if (found.key !== collisionCheckKey(app.model.data.bareSet)) return [];
   return found.values;
 });
 
@@ -205,7 +207,7 @@ const identityCollisions = computed<string[]>(() => {
 const columnChecksPending = computed(() => {
   const bare = app.model.data.bareSet;
   if (bare === undefined || !bareSetValid(bare)) return false;
-  return app.model.data.prerunChecks?.identity !== bare.identity;
+  return app.model.data.prerunChecks?.columns !== collisionCheckKey(bare);
 });
 
 // Enough values to recognise the problem in the file, not enough to bury the sentence that says

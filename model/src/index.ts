@@ -6,8 +6,14 @@ import {
   TreeNodeAccessor,
 } from "@platforma-sdk/model";
 import { blockDataModel } from "./data-model";
-import type { BlockArgs, BlockData, ColumnDescription, ColumnProfile } from "./types";
-import { bareSetValid } from "./types";
+import type {
+  BareSetMapping,
+  BlockArgs,
+  BlockData,
+  ColumnDescription,
+  ColumnProfile,
+} from "./types";
+import { bareSetValid, collisionCheckKey } from "./types";
 
 export * from "./types";
 export { upgradeLegacyData } from "./data-model";
@@ -50,12 +56,12 @@ function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
  * Phrased for the checks rather than for the id column, because it is about to cover more of them.
  */
 function requireCheckedColumns(data: BlockData): void {
-  const identity = data.bareSet?.identity;
-  if (identity === undefined || identity === "") return; // bareSetValid has already refused
+  const columns = collisionCheckKey(data.bareSet);
+  if (columns === undefined) return; // bareSetValid has already refused
   const checks = data.prerunChecks;
-  if (checks?.identity !== identity) throw new Error("Validating the selected columns");
+  if (checks?.columns !== columns) throw new Error("Validating the selected columns");
   if (checks.identityCollides) {
-    throw new Error(`"${identity}" repeats on rows that are not identical`);
+    throw new Error(`"${data.bareSet?.identity}" repeats on rows that are not identical`);
   }
 }
 
@@ -201,21 +207,22 @@ export const platforma = BlockModelV3.create(blockDataModel)
   )
 
   /**
-   * Identity values the file repeats on rows that are not identical, and the column they were
-   * found in.
+   * Identity values the file repeats on rows that are not identical, and the mapping they were
+   * found under.
    *
    * Reported as one value because the two must never be read from different runs: the panel used
-   * to quote `data.bareSet.identity`, which updates the instant a new column is picked, against
-   * collisions the previous column's run had produced — so changing an offending column flashed
-   * the old verdict under the new column's name.
+   * to compare against `data.bareSet`, which updates the instant a column is picked, while the
+   * collisions were still the previous mapping's — so changing an offending column flashed the old
+   * verdict under the new selection.
    *
    * Not `retentive`: this reports a defect, so a briefly absent verdict beats a stale one.
    */
   .output("identityCollisions", (ctx) => {
-    const identity = ctx.prerun
+    const mapping = ctx.prerun
       ?.resolve({ field: "collisionsFor", allowPermanentAbsence: true })
-      ?.getDataAsJsonOrUndefined<string>();
-    if (identity === undefined) return undefined;
+      ?.getDataAsJsonOrUndefined<Pick<BareSetMapping, "identity" | "sequences">>();
+    const key = collisionCheckKey(mapping);
+    if (key === undefined) return undefined;
 
     const raw = ctx.prerun
       ?.resolve({ field: "identityCollisions", allowPermanentAbsence: true })
@@ -227,7 +234,7 @@ export const platforma = BlockModelV3.create(blockDataModel)
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
-    return { identity, values: lines.slice(1) };
+    return { key, values: lines.slice(1) };
   })
 
   .retentiveOutput("datasetOptions", (ctx) => {

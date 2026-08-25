@@ -34,9 +34,9 @@ function syncPrerunChecks(model: AppModel) {
   watchEffect(() => {
     const found = model.outputs.identityCollisions;
     if (found === undefined) return;
-    const next = { identity: found.identity, identityCollides: found.values.length > 0 };
+    const next = { columns: found.key, identityCollides: found.values.length > 0 };
     const current = model.data.prerunChecks;
-    if (current?.identity === next.identity && current.identityCollides === next.identityCollides) {
+    if (current?.columns === next.columns && current.identityCollides === next.identityCollides) {
       return;
     }
     model.data.prerunChecks = next;

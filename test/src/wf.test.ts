@@ -19,7 +19,7 @@ import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaborator
 import type { PTableHandle } from "@platforma-sdk/model";
 import { createPlDataTableStateV2, uniquePlId } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
-import { ImportVdjBlockPointer } from "this-block";
+import { collisionCheckKey, ImportVdjBlockPointer } from "this-block";
 
 /**
  * A complete `BlockData` from the fields a test actually cares about.
@@ -29,7 +29,9 @@ import { ImportVdjBlockPointer } from "this-block";
  * visibly `tableState`, which the stats table is built from.
  */
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
-  const bareSet = fields.bareSet as { identity?: string } | undefined;
+  const bareSet = fields.bareSet as
+    | { identity: string; sequences: Record<string, string> }
+    | undefined;
   return {
     defaultBlockLabel: "",
     customBlockLabel: "",
@@ -41,11 +43,12 @@ function blockData(fields: Record<string, unknown>): Record<string, unknown> {
     mixcrColumnsPresent: false,
     crColumnsPresent: false,
     airrColumnsPresent: false,
-    // `args` refuses a bare set whose id column prerun has not cleared, and the verdict reaches
-    // data through a UI watcher these tests never run. So stand in for it — clean unless the test
-    // passes its own `prerunChecks`, which `...fields` below lets it do.
-    ...(bareSet?.identity !== undefined && bareSet.identity !== ""
-      ? { prerunChecks: { identity: bareSet.identity, identityCollides: false } }
+    // `args` refuses a bare set whose columns prerun has not cleared, and the verdict reaches data
+    // through a UI watcher these tests never run. So stand in for it — clean unless the test passes
+    // its own `prerunChecks`, which `...fields` below lets it do. Keyed with the block's own rule,
+    // so a change to what a verdict covers fails here rather than silently passing.
+    ...(collisionCheckKey(bareSet) !== undefined
+      ? { prerunChecks: { columns: collisionCheckKey(bareSet), identityCollides: false } }
       : {}),
     ...fields,
   };
@@ -316,7 +319,13 @@ blockTest(
         },
         // What the UI mirrors in once prerun answers. Stated here because the mirror is a UI
         // watcher and these tests drive the block directly.
-        prerunChecks: { identity: "mAb ID", identityCollides: true },
+        prerunChecks: {
+          columns: collisionCheckKey({
+            identity: "mAb ID",
+            sequences: { IGHeavy: "VH", IGLight: "VL" },
+          }),
+          identityCollides: true,
+        },
       }),
     });
 
@@ -332,17 +341,20 @@ blockTest(
     expect(blockOverview.inputsValid).toBe(false);
     expect(blockOverview.canRun).toBe(false);
 
-    const wrapped = state.outputs?.identityCollisions as
-      | { value?: { identity: string; values: string[] } }
-      | { identity: string; values: string[] }
-      | undefined;
-    const found = (wrapped && "identity" in wrapped ? wrapped : wrapped?.value) as
-      | { identity: string; values: string[] }
-      | undefined;
+    type Verdict = { key: string; values: string[] };
+    const wrapped = state.outputs?.identityCollisions as { value?: Verdict } | Verdict | undefined;
+    const found = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Verdict | undefined;
 
-    // The verdict names the column it is about. Without this the panel could quote the freshly
-    // picked column against the previous one's collisions, which is what it used to do.
-    expect(found?.identity).toBe("mAb ID");
+    // The verdict names the mapping it is about — the id column AND the sequence columns, since a
+    // collision is a repeated id whose other mapped cells differ. Keyed on the id alone, a clean
+    // verdict outlived a remapped chain and the run gate accepted it, merging records.
+    expect(found?.key).toBe(
+      collisionCheckKey({ identity: "mAb ID", sequences: { IGHeavy: "VH", IGLight: "VL" } }),
+    );
+    // Remapping a chain is a different question, so the old verdict must not answer it.
+    expect(found?.key).not.toBe(
+      collisionCheckKey({ identity: "mAb ID", sequences: { IGHeavy: "VH", IGLight: "VL2" } }),
+    );
     const collisions = found?.values ?? [];
 
     // The differing pair is reported, so the scientist is told which value to fix.

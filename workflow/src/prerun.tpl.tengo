@@ -63,9 +63,13 @@ wf.body(func(args) {
 			}
 
 			if bare.identity != "" && len(mappedChains) > 0 {
-				// Which column the collisions below are about, so the panel cannot pair them with a
-				// different one the scientist has since picked.
-				outputs.collisionsFor = smart.createJsonResource(bare.identity)
+				// What the collisions below are about: the identity AND the sequence columns, because a
+				// collision is a repeated identity whose other mapped cells differ. Naming only the
+				// identity let a verdict outlive the mapping it was reached for.
+				outputs.collisionsFor = smart.createJsonResource({
+					identity: bare.identity,
+					sequences: specs.mappedSequences(bare, mappedChains)
+				})
 				outputs.identityCollisions = render.create(collisionsTpl, {
 					dataset: {
 						spec: {
@@ -121,7 +125,10 @@ wf.body(func(args) {
 			return {
 				outputs: {
 					identityCollisions: collisions,
-					collisionsFor: smart.createJsonResource(bare.identity)
+					collisionsFor: smart.createJsonResource({
+						identity: bare.identity,
+						sequences: specs.mappedSequences(bare, mappedChains)
+					})
 				},
 				exports: {}
 			}
