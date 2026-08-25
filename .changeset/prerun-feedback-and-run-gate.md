@@ -36,8 +36,9 @@ a file nobody had read yet, against headers it might not even contain.
   wall of values.
 - **The id column can be cleared.** Clearing it left the field reading "Value not available" in
   red: "nothing chosen" is stored as an empty string, and a dropdown counts any value that is not
-  `undefined` as chosen. Relatedly, clearing a mapping only reset it for the IG chain pair, so a
-  TCR mapping could never clear itself.
+  `undefined` as chosen. Relatedly, two places named the IG chain pair where they meant every
+  mapped chain, so a TCR mapping could never clear itself and was offered its own sequence columns
+  as record properties.
 
 Refusing the run on a prerun verdict needs that verdict inside the args projection, which sees only
 the block's own data, so the UI mirrors it in. That is a hairpin, and deliberate: unlike a column

@@ -110,6 +110,13 @@ export const CHAIN_SLOT_LABELS: Record<BareSetChain, string> = {
   TCRGamma: "TCR-ɣ",
 };
 
+/** What to call each numbering scheme in front of the scientist. */
+export const SCHEME_LABELS: Record<BareSetScheme, string> = {
+  imgt: "IMGT",
+  kabat: "Kabat",
+  chothia: "Chothia",
+};
+
 /** What a column can hold, decided by profiling every row of the file. */
 export type ColumnValueType = "Long" | "Double" | "String";
 
@@ -301,6 +308,23 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
     (byToken[token] ??= []).push(p.header);
   }
   return Object.fromEntries(Object.entries(byToken).filter(([, hs]) => hs.length > 1));
+}
+
+/**
+ * The mapping with everything that names a column dropped.
+ *
+ * The receptor declaration and the numbering scheme describe the biology and outlive any one file;
+ * the identity column, the sequence columns and the accepted properties name headers, and mean
+ * nothing once the headers change.
+ */
+export function forgetMappedColumns(bare: BareSetMapping | undefined): BareSetMapping | undefined {
+  if (bare === undefined) return undefined;
+  return {
+    identity: "",
+    chainSelection: bare.chainSelection,
+    sequences: {},
+    scheme: bare.scheme,
+  };
 }
 
 /**
