@@ -249,12 +249,20 @@ const isBareSet = computed(() => {
   return !!bare.identity || Object.values(bare.sequences ?? {}).some(Boolean);
 });
 
-/** Identity values the file repeats on rows that are not identical. The run cannot start
- *  while any exist: the record key is the identity's hash, so a repeat would merge two
- *  different records into one. */
-const identityCollisions = computed<string[]>(
-  () => (app.model.outputs.identityCollisions as string[] | undefined) ?? [],
-);
+/**
+ * Identity values the file repeats on rows that are not identical — but only once they are known
+ * to be about the column now selected. The record key is the identity's hash, so a repeat merges
+ * two different records into one.
+ *
+ * The output carries the column it was computed for; anything else is a verdict about a column
+ * the scientist has already moved on from.
+ */
+const identityCollisions = computed<string[]>(() => {
+  const found = app.model.outputs.identityCollisions;
+  if (found === undefined) return [];
+  if (found.identity !== app.model.data.bareSet?.identity) return [];
+  return found.values;
+});
 
 /** Headers not taken by a sequence or the identity — offered as record properties rather than
  *  dropped, which is what the block used to do with them. */
@@ -295,12 +303,17 @@ const propertyCollisionMessage = computed(() => {
   return `These headers would become the same column: ${pairs}. Rename one in the file — importing both is not possible, and dropping one silently would lose a column you asked for.`;
 });
 
+// Enough values to recognise the problem in the file, not enough to bury the sentence that says
+// what to do about it.
+const COLLISIONS_SHOWN = 3;
+
 const identityCollisionMessage = computed(() => {
   const values = identityCollisions.value;
   if (values.length === 0) return "";
-  const shown = values.slice(0, 10).join(", ");
-  const rest = values.length > 10 ? ` and ${values.length - 10} more` : "";
-  return `These values of "${app.model.data.bareSet?.identity}" appear on rows that are not identical: ${shown}${rest}. Each record needs its own identifier — two rows sharing one would become a single record. Fix them in the file, or choose a different identity column.`;
+  const shown = values.slice(0, COLLISIONS_SHOWN).join(", ");
+  const rest =
+    values.length > COLLISIONS_SHOWN ? ` and ${values.length - COLLISIONS_SHOWN} more` : "";
+  return `Repeated on rows that are not identical: ${shown}${rest}. Two rows sharing an id become one record — pick a different column, or fix the file.`;
 });
 
 const countTypeOptions = [

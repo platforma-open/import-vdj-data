@@ -317,10 +317,17 @@ blockTest(
     };
 
     const wrapped = state.outputs?.identityCollisions as
-      | { value?: string[] }
-      | string[]
+      | { value?: { identity: string; values: string[] } }
+      | { identity: string; values: string[] }
       | undefined;
-    const collisions = (Array.isArray(wrapped) ? wrapped : (wrapped?.value ?? [])) as string[];
+    const found = (wrapped && "identity" in wrapped ? wrapped : wrapped?.value) as
+      | { identity: string; values: string[] }
+      | undefined;
+
+    // The verdict names the column it is about. Without this the panel could quote the freshly
+    // picked column against the previous one's collisions, which is what it used to do.
+    expect(found?.identity).toBe("mAb ID");
+    const collisions = found?.values ?? [];
 
     // The differing pair is reported, so the scientist is told which value to fix.
     expect(collisions).toContain("AB-001");

@@ -177,7 +177,23 @@ export const platforma = BlockModelV3.create(blockDataModel)
     { isActive: true },
   )
 
+  /**
+   * Identity values the file repeats on rows that are not identical, and the column they were
+   * found in.
+   *
+   * Reported as one value because the two must never be read from different runs: the panel used
+   * to quote `data.bareSet.identity`, which updates the instant a new column is picked, against
+   * collisions the previous column's run had produced — so changing an offending column flashed
+   * the old verdict under the new column's name.
+   *
+   * Not `retentive`: this reports a defect, so a briefly absent verdict beats a stale one.
+   */
   .output("identityCollisions", (ctx) => {
+    const identity = ctx.prerun
+      ?.resolve({ field: "collisionsFor", allowPermanentAbsence: true })
+      ?.getDataAsJsonOrUndefined<string>();
+    if (identity === undefined) return undefined;
+
     const raw = ctx.prerun
       ?.resolve({ field: "identityCollisions", allowPermanentAbsence: true })
       ?.getDataAsString();
@@ -188,7 +204,7 @@ export const platforma = BlockModelV3.create(blockDataModel)
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
-    return lines.slice(1);
+    return { identity, values: lines.slice(1) };
   })
 
   .retentiveOutput("datasetOptions", (ctx) => {
