@@ -60,15 +60,6 @@ function requireCheckedColumns(data: BlockData): void {
   }
 }
 
-/**
- * The workflow's view of the block, and the only place validation lives.
- *
- * Three jobs, in order: refuse what cannot run (by throwing), drop the door that is not in
- * use, and drop the fields the chosen path never reads. What it deliberately does NOT do is
- * reorder `chains`: canonicalising a set the user picked in their own order would change the
- * args of every project already on disk, and buys only the rare case of someone re-picking the
- * same chains in a different order.
- */
 function projectArgs(data: BlockData): BlockArgs {
   const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
 
@@ -82,6 +73,8 @@ function projectArgs(data: BlockData): BlockArgs {
     datasetRef,
     fileSource,
     format,
+    // Not sorted: canonicalising an order the user chose would change the args of every project
+    // already on disk, to buy the rare re-pick of the same chains in a different order.
     chains,
     customMapping,
     primaryCountType,
