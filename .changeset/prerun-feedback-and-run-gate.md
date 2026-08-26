@@ -13,11 +13,12 @@ answering with the *previous* file's headers as though nothing had happened. A m
 passed every check against that previous file also still counted as valid, so Run stayed live over
 a file nobody had read yet, against headers it might not even contain.
 
-- **The wait is announced.** Prerun now states which file a profile was taken from, and the model
-  pairs the two so the reported file cannot get ahead of the profile. The panel announces the scan
-  and withholds the mapping until the columns on offer are really this file's. Keyed to the file
-  rather than to "prerun is busy", because prerun also re-runs on every mapping edit to re-check
-  the id column. The import itself now shows the block's loader, which it never did.
+- **The wait is announced, on both doors.** Prerun now states which file a profile was taken from,
+  and which dataset and format an inference was run for; the model pairs each with its result so the
+  two cannot get out of step. The panel announces the wait and withholds the mapping until the
+  columns on offer really belong to what is selected. Keyed to the input rather than to "prerun is
+  busy", because prerun also re-runs on every mapping edit to re-check the id column. The import
+  itself now shows the block's loader, which it never did.
 - **Loading a second file disables Run.** Picking a different file drops the parts of the mapping
   that name columns, keeping the receptor declaration and the numbering scheme, which describe the
   data rather than one file. Re-picking the same file is not a swap and keeps the mapping.

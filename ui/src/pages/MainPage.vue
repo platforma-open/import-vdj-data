@@ -229,6 +229,26 @@ const fileScanning = computed(() => {
   return app.model.outputs.profiledSampleId !== file.sampleId;
 });
 
+/**
+ * The selected dataset's columns are still being inferred — the same blind window as
+ * {@link fileScanning}, on the other door, and with the same hazard: `datasetColumns` and
+ * `validationResult` are retentive, so until the new inference lands the panel offers the previous
+ * dataset's headers and can still be showing its verdict.
+ *
+ * Waits for a format, because that is what the inference is asked about and until one is chosen
+ * there is nothing to say. Not raised on the bare-set path, where prerun answers with collisions
+ * and never produces columns at all.
+ */
+const datasetScanning = computed(() => {
+  if (loadFromFile.value) return false;
+  const ref = app.model.data.datasetRef;
+  if (ref === undefined || app.model.data.format === undefined) return false;
+  if (app.model.data.bareSet !== undefined) return false;
+  const inferred = app.model.outputs.inferredFor;
+  if (inferred?.datasetRef === undefined) return true;
+  return !plRefsEqual(inferred.datasetRef, ref) || inferred.format !== app.model.data.format;
+});
+
 async function setFile(handle: ImportFileHandle | undefined) {
   fileSourceError.value = "";
   const a = app.model.data;
@@ -519,8 +539,12 @@ watch(
           required
         />
 
+        <PlAlert v-if="datasetScanning" type="info" :style="{ width: '100%' }">
+          Validating the selected columns. This can take a moment, please wait...
+        </PlAlert>
+
         <PlAlert
-          v-if="validationMessage"
+          v-if="!datasetScanning && validationMessage"
           type="warn"
           :label="`Invalid ${formatLabel(validationResult?.format)} dataset`"
           :style="{ width: '100%' }"
@@ -543,7 +567,7 @@ watch(
           required
         />
 
-        <template v-if="app.model.data.format === 'custom'">
+        <template v-if="app.model.data.format === 'custom' && !datasetScanning">
           <PlSectionSeparator>Required columns</PlSectionSeparator>
           <div class="field-col">
             <PlDropdown

@@ -150,7 +150,14 @@ wf.body(func(args) {
 		outputs: {
 			columnsInfo: columnsInfo,
 			columnDescriptions: columnDescriptions,
-			headerColumns: headerColumns
+			headerColumns: headerColumns,
+			// What the inference above was about. Same reason as the file door's profiledSampleId:
+			// the model cannot ask which args a staging context was built with, so the panel cannot
+			// otherwise tell this dataset's columns from the last one's, still on screen.
+			inferredFor: smart.createJsonResource({
+				datasetRef: args.datasetRef,
+				format: args.format
+			})
 		},
 		exports: {}
 	}

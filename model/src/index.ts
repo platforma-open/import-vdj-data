@@ -1,4 +1,4 @@
-import type { InferOutputsType, PColumnKey, PColumnValue } from "@platforma-sdk/model";
+import type { InferOutputsType, PColumnKey, PColumnValue, PlRef } from "@platforma-sdk/model";
 import {
   BlockModelV3,
   DataColumn,
@@ -12,6 +12,7 @@ import type {
   BlockData,
   ColumnDescription,
   ColumnProfile,
+  ImportFormat,
 } from "./types";
 import { bareSetValid, collisionCheckKey } from "./types";
 
@@ -333,6 +334,25 @@ export const platforma = BlockModelV3.create(blockDataModel)
    * block, and prerun re-runs while the settings panel is being edited.
    */
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
+
+  /**
+   * Which dataset and format the column inference on screen was run for.
+   *
+   * The dataset door's twin of {@link profiledSampleId}, and paired the same way: the read goes
+   * unstable while the new inference is running, so `retentive` keeps reporting the previous
+   * dataset until the new headers land. The panel compares it with the current selection to tell
+   * "these are this dataset's columns" from "these are the last one's".
+   *
+   * Absent on the bare-set path, where prerun answers with collisions instead of columns.
+   */
+  .retentiveOutput("inferredFor", (ctx) => {
+    const headers = ctx.prerun?.resolve({ field: "headerColumns", allowPermanentAbsence: true });
+    if (headers === undefined) return undefined;
+    if (!headers.getIsReadyOrError()) return undefined;
+    return ctx.prerun
+      ?.resolve({ field: "inferredFor", allowPermanentAbsence: true })
+      ?.getDataAsJsonOrUndefined<{ datasetRef?: PlRef; format?: ImportFormat }>();
+  })
 
   /** Headers of the dataset selected from the pool. Absent on the file door. */
   .retentiveOutput("datasetColumns", (ctx) => {
