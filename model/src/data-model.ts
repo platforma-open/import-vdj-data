@@ -22,19 +22,6 @@ const viewStateDefaults = () => ({
   airrColumnsPresent: false,
 });
 
-/**
- * V1 kept the scientist's edits in two buckets — `args` and `uiState`. V3 keeps them in one,
- * and derives what the workflow sees. This upgrade runs once per project, the first time a
- * project saved under V1 is opened.
- *
- * The mapping is field-for-field: nothing is reshaped, because nothing in V1's shape was bent
- * to dodge the stale gate. What changes is where the fields *go afterwards* — the labels and
- * the secondary count type stop being projected into args, which is the whole point of the
- * migration for this block. See `index.ts`.
- *
- * V1's `loadFromFile` is dropped rather than carried: the panel now derives which door it is
- * showing from whether a file is loaded, so a stored flag could only disagree with the data.
- */
 export function upgradeLegacyData({
   args,
   uiState,
