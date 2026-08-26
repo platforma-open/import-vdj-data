@@ -7,8 +7,8 @@ export const sdkPlugin = defineAppV3(platforma, (app) => {
   syncPrerunChecks(app.model);
 
   return {
-    // Main run only: this loader covers the whole block, and prerun re-runs while the settings
-    // panel is being edited. The file scan is announced inside the panel instead.
+    // Main run only: the loader covers the whole block, and prerun re-runs while the settings
+    // panel is being edited. Prerun waits are announced inside the panel instead.
     progress: () => app.model.outputs.isRunning,
     routes: {
       "/": () => MainPage,
@@ -21,16 +21,13 @@ export const useApp = sdkPlugin.useApp;
 type AppModel = ReturnType<typeof useApp>["model"];
 
 /**
- * Carry prerun's verdicts into `data` so the args projection can refuse the run on them.
- *
- * This is the hairpin — an output written back into the state a derivation reads — and it is here
- * because nothing else can be: args sees only `data`, and no user gesture can establish whether a
- * column the scientist just picked repeats. The contract that keeps it safe is stated on
- * `BlockData.prerunChecks`; both halves below are that contract.
+ * Carry prerun's verdicts into `data` so the args projection can refuse the run on them. An output
+ * written back into state a derivation reads — the hairpin — kept safe by the contract on
+ * `BlockData.prerunChecks`, which the two halves below are.
  */
 function syncPrerunChecks(model: AppModel) {
-  // Idempotent by construction: every client derives the same verdict from the same output, and
-  // the equality guard means agreeing clients do not write at all.
+  // Idempotent: every client derives the same verdict from the same output, and the guard means
+  // agreeing clients do not write at all.
   watchEffect(() => {
     const found = model.outputs.identityCollisions;
     if (found === undefined) return;
@@ -42,10 +39,8 @@ function syncPrerunChecks(model: AppModel) {
     model.data.prerunChecks = next;
   });
 
-  // A verdict cannot outlive the file or dataset it was reached for — the same column name in a
-  // different file is a different column, and one that repeated there may be sound here. Watching
-  // the primitives rather than the refs so a server patch swapping the data object does not clear
-  // it spuriously.
+  // A verdict cannot outlive the file or dataset it was reached for. Watching primitives, not the
+  // refs, so a server patch swapping the data object does not clear it spuriously.
   watch(
     () => [
       model.data.fileSource?.sampleId,

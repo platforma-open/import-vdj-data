@@ -230,22 +230,11 @@ export type BlockData = {
   bareSet?: BareSetMapping;
 
   /**
-   * Verdicts prerun reached, mirrored here so `args` can refuse a run on them.
+   * What prerun found, kept here so the args projection — which sees only `data` — can gate the run
+   * on it. Written by the UI (`ui/src/app.ts`).
    *
-   * `args` is a pure function of this data and cannot read prerun, and unlike the column mapping
-   * there is no gesture at which a verdict could be snapshotted: the scientist picks a column, and
-   * only then does the check discover whether it is sound. So the UI mirrors it in
-   * (`ui/src/app.ts`) — the hairpin the harness warns about, made safe by two rules every entry
-   * here must follow:
-   *
-   * - it carries what it is *about*, so a verdict for something nobody has selected any more is
-   *   ignored rather than applied;
-   * - it is cleared when the source changes, so a verdict cannot survive into a different file.
-   *
-   * Together those make the write idempotent — every client derives the same value from the same
-   * output, so concurrent writes agree instead of racing. Add further checks as sibling fields
-   * following the same two rules. The whole field goes away once args can read prerun directly
-   * (SDK request "Simplify prerun checks").
+   * Every entry carries what it is *about* and is cleared when the source changes, so a verdict for
+   * something no longer selected is ignored rather than applied. Add further checks the same way.
    */
   prerunChecks?: {
     /** The mapping the verdicts below were reached for — see {@link collisionCheckKey}. */
@@ -311,17 +300,9 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
 }
 
 /**
- * What a collision verdict is about: the identity column *and* the sequence columns.
- *
- * The sequence columns are load-bearing, not incidental. A collision is not "the identity
- * repeats" — it is an identity repeated on rows whose other mapped cells differ, so remapping a
- * chain can turn a clean set into a colliding one and back (`bare-set-collisions.tpl.tengo`).
- * Keying a verdict on the identity alone let a clean verdict outlive the mapping it was reached
- * for, and the run gate would accept it: records merged.
- *
- * Sorted by slot so the key does not depend on the order the columns were picked in, and shared
- * between the panel, the run gate and the mirror so all three agree on what "the same mapping"
- * means.
+ * What a collision verdict is about. A collision is an identity repeated on rows whose *other
+ * mapped cells* differ, so the sequence columns are part of the question and remapping a chain
+ * invalidates the answer. Sorted, so the key does not depend on the order columns were picked in.
  */
 export function collisionCheckKey(
   mapping: Pick<BareSetMapping, "identity" | "sequences"> | undefined,
@@ -335,11 +316,8 @@ export function collisionCheckKey(
 }
 
 /**
- * The mapping with everything that names a column dropped.
- *
- * The receptor declaration and the numbering scheme describe the biology and outlive any one file;
- * the identity column, the sequence columns and the accepted properties name headers, and mean
- * nothing once the headers change.
+ * The mapping with everything that names a column dropped. The receptor declaration and the
+ * numbering scheme describe the biology and outlive any one file; the column names do not.
  */
 export function forgetMappedColumns(bare: BareSetMapping | undefined): BareSetMapping | undefined {
   if (bare === undefined) return undefined;

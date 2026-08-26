@@ -46,15 +46,9 @@ function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
 }
 
 /**
- * Refuse a bare set whose mapped columns prerun has not cleared.
- *
- * The checks themselves cannot live here — they read the whole file — so this reads the verdicts
- * the UI mirrored into `data.prerunChecks`, and refuses both a verdict that reports a defect and
- * the absence of one for the columns currently selected. Refusing the absence is the point: the
- * record key is the identity's hash, so starting a run before the answer is in is exactly how two
+ * Refuse a bare set whose mapped columns prerun has not cleared — including when there is no
+ * verdict yet. The record key is the identity's hash, so running before the answer is in is how two
  * different records silently become one.
- *
- * Phrased for the checks rather than for the id column, because it is about to cover more of them.
  */
 function requireCheckedColumns(data: BlockData): void {
   const columns = collisionCheckKey(data.bareSet);
@@ -174,15 +168,6 @@ export const platforma = BlockModelV3.create(blockDataModel)
   }))
 
   /**
-   * Identity values that appear on rows which are not identical to each other.
-   *
-   * Not `retentive`: this gates the run, so a stale value is worse than a briefly absent one.
-   *
-   * Read straight from prerun here, and *not* mirrored into `uiState` from a UI watcher. That
-   * mirror is what the format-validity flags do, and it is a hairpin — an output written back
-   * into state that a derivation then reads. It survives on one client and races on two.
-   */
-  /**
    * Drives the upload for a directly-loaded file.
    *
    * `getImportProgress()` is what *starts* the transfer — retrieving the progress is the side
@@ -208,13 +193,8 @@ export const platforma = BlockModelV3.create(blockDataModel)
   )
 
   /**
-   * Identity values the file repeats on rows that are not identical, and the mapping they were
-   * found under.
-   *
-   * Reported as one value because the two must never be read from different runs: the panel used
-   * to compare against `data.bareSet`, which updates the instant a column is picked, while the
-   * collisions were still the previous mapping's — so changing an offending column flashed the old
-   * verdict under the new selection.
+   * Identity values repeated on rows that are not identical, with the mapping they were found
+   * under. One value, so the two can never be read from different runs.
    *
    * Not `retentive`: this reports a defect, so a briefly absent verdict beats a stale one.
    */
@@ -336,14 +316,9 @@ export const platforma = BlockModelV3.create(blockDataModel)
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
 
   /**
-   * Which dataset and format the column inference on screen was run for.
-   *
-   * The dataset door's twin of {@link profiledSampleId}, and paired the same way: the read goes
-   * unstable while the new inference is running, so `retentive` keeps reporting the previous
-   * dataset until the new headers land. The panel compares it with the current selection to tell
-   * "these are this dataset's columns" from "these are the last one's".
-   *
-   * Absent on the bare-set path, where prerun answers with collisions instead of columns.
+   * Which dataset and format the inference on screen was run for — the dataset door's twin of
+   * {@link profiledSampleId}, paired with the headers the same way. Absent on the bare-set path,
+   * where prerun answers with collisions instead of columns.
    */
   .retentiveOutput("inferredFor", (ctx) => {
     const headers = ctx.prerun?.resolve({ field: "headerColumns", allowPermanentAbsence: true });

@@ -1,11 +1,9 @@
 <script setup lang="ts">
 /**
- * Mapping a file of bare sequences onto records: which column identifies a record, which chains
- * are being imported, which column carries each one, what else to keep, and how to number it.
+ * Mapping a file of bare sequences onto records: the id column, the chains, the column carrying
+ * each one, what else to keep, and how to number it — with the checks that gate them.
  *
- * A form for one shape of input, kept whole — its dropdowns, the checks that gate them and the
- * numbering that follows from them are one subject, and they were the larger half of MainPage.
- * The parent decides *whether* this shape is being mapped at all (a file is loaded and its columns
+ * The parent decides whether this shape is being mapped at all (a file is loaded and its columns
  * are known); everything from there down is here.
  */
 import type {
@@ -155,10 +153,7 @@ function setBareScheme(value: string | undefined) {
   a.bareSet = { ...a.bareSet, scheme: value as BareSetScheme };
 }
 
-/**
- * A column has been assigned. Not `bareSet !== undefined`: picking a new file keeps the receptor
- * declaration and the scheme (see forgetMappedColumns), so the object outlives the mapping.
- */
+/** A column has been assigned. Not `bareSet !== undefined` — that outlives the mapping it held. */
 const isBareSet = computed(() => {
   const bare = app.model.data.bareSet;
   if (bare === undefined) return false;
@@ -182,13 +177,9 @@ const sequenceOptions = computed(() => {
 });
 
 /**
- * Identity values the file repeats on rows that are not identical — but only once they are known
- * to be about the column now selected. The record key is the identity's hash, so a repeat merges
- * two different records into one.
- *
- * The output carries the mapping it was computed under — the identity and the sequence columns,
- * since a collision depends on both. Anything else is a verdict about a mapping the scientist has
- * already moved on from.
+ * Identity values repeated on rows that are not identical — the record key is the identity's hash,
+ * so a repeat merges two records into one. Empty unless the verdict is about the mapping now
+ * selected; anything else is about one the scientist has moved on from.
  */
 const identityCollisions = computed<string[]>(() => {
   const found = app.model.outputs.identityCollisions;
@@ -198,11 +189,8 @@ const identityCollisions = computed<string[]>(() => {
 });
 
 /**
- * The mapping is finished but prerun has not yet cleared the columns it names.
- *
- * Run is disabled meanwhile (the args projection refuses unchecked columns), and this block's
- * layout does not surface the args error, so the reason has to be said here. Named and worded for
- * the checks in general — the id column's uniqueness is the only one today.
+ * The mapping is finished but prerun has not yet cleared the columns it names. Run is disabled
+ * meanwhile and this layout does not surface the args error, so the reason is said here.
  */
 const columnChecksPending = computed(() => {
   const bare = app.model.data.bareSet;
@@ -210,9 +198,8 @@ const columnChecksPending = computed(() => {
   return app.model.data.prerunChecks?.columns !== collisionCheckKey(bare);
 });
 
-// Enough values to recognise the problem in the file, not enough to bury the sentence that says
-// what to do about it. Printed whole and left to scroll: the id column can hold sequences, and
-// trimming those removes the very part that tells two of them apart.
+// Enough to recognise the problem, not enough to bury the advice. Printed whole and left to
+// scroll: the id column can hold sequences, and trimming those hides what tells them apart.
 const COLLISIONS_SHOWN = 3;
 
 const identityCollisionMessage = computed(() => {

@@ -230,14 +230,12 @@ const fileScanning = computed(() => {
 });
 
 /**
- * The selected dataset's columns are still being inferred — the same blind window as
- * {@link fileScanning}, on the other door, and with the same hazard: `datasetColumns` and
- * `validationResult` are retentive, so until the new inference lands the panel offers the previous
- * dataset's headers and can still be showing its verdict.
+ * The selected dataset's columns are still being inferred — {@link fileScanning} for the other
+ * door. `datasetColumns` and `validationResult` are retentive, so until then the panel would offer
+ * the previous dataset's headers and verdict.
  *
- * Waits for a format, because that is what the inference is asked about and until one is chosen
- * there is nothing to say. Not raised on the bare-set path, where prerun answers with collisions
- * and never produces columns at all.
+ * Needs a format, which is what the inference is asked about. Not raised on the bare-set path,
+ * where prerun answers with collisions and never produces columns.
  */
 const datasetScanning = computed(() => {
   if (loadFromFile.value) return false;
@@ -250,12 +248,9 @@ const datasetScanning = computed(() => {
 });
 
 /**
- * The columns the import will emit, once they are known for what is selected now.
- *
- * Only the dataset door produces them, and only under a chosen format, and the output is retentive
- * — so without these guards the list showed the previous dataset's columns after a switch, and its
- * heading with nothing under it before a format was picked, which read as "this import emits
- * nothing".
+ * The columns the import will emit, once known for what is selected now. Only the dataset door
+ * produces them, only under a chosen format, and the output is retentive — drop any guard and the
+ * list shows the previous dataset's columns, or a heading with nothing under it.
  */
 const columnDescriptions = computed(() => {
   if (loadFromFile.value || app.model.data.format === undefined || datasetScanning.value) return [];
@@ -293,9 +288,8 @@ async function setFile(handle: ImportFileHandle | undefined) {
   a.datasetRef = undefined;
 
   // This is what disables Run: a mapping that passed against the last file still satisfies
-  // `bareSetValid`, so otherwise the block stays runnable over a file nothing has read yet.
-  // Cleared on the gesture because `args` sees only `data` and cannot consult prerun.
-  // Re-picking the same file is not a swap — the dialog is also how a file gets re-read.
+  // `bareSetValid`. Re-picking the same file is not a swap — the dialog is also how a file gets
+  // re-read.
   if (previous?.handle !== handle) a.bareSet = forgetMappedColumns(a.bareSet);
 }
 
