@@ -18,7 +18,12 @@ a file nobody had read yet, against headers it might not even contain.
   two cannot get out of step. The panel announces the wait and withholds the mapping until the
   columns on offer really belong to what is selected. Keyed to the input rather than to "prerun is
   busy", because prerun also re-runs on every mapping edit to re-check the id column. The import
-  itself now shows the block's loader, which it never did.
+  itself now shows the block's loader, which it never did. The verdict about the selected columns
+  now sits below the controls it is about, rather than between them.
+- **The column list waits until it has something to list.** "The following columns will be
+  imported:" appeared with nothing under it as soon as a dataset was picked, before any format was,
+  which read as an import that would emit nothing. It also outlived a dataset switch, listing the
+  previous dataset's columns.
 - **Loading a second file disables Run.** Picking a different file drops the parts of the mapping
   that name columns, keeping the receptor declaration and the numbering scheme, which describe the
   data rather than one file. Re-picking the same file is not a swap and keeps the mapping.

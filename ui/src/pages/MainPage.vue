@@ -249,6 +249,19 @@ const datasetScanning = computed(() => {
   return !plRefsEqual(inferred.datasetRef, ref) || inferred.format !== app.model.data.format;
 });
 
+/**
+ * The columns the import will emit, once they are known for what is selected now.
+ *
+ * Only the dataset door produces them, and only under a chosen format, and the output is retentive
+ * — so without these guards the list showed the previous dataset's columns after a switch, and its
+ * heading with nothing under it before a format was picked, which read as "this import emits
+ * nothing".
+ */
+const columnDescriptions = computed(() => {
+  if (loadFromFile.value || app.model.data.format === undefined || datasetScanning.value) return [];
+  return app.model.outputs.columnDescriptions ?? [];
+});
+
 async function setFile(handle: ImportFileHandle | undefined) {
   fileSourceError.value = "";
   const a = app.model.data;
@@ -539,19 +552,6 @@ watch(
           required
         />
 
-        <PlAlert v-if="datasetScanning" type="info" :style="{ width: '100%' }">
-          Validating the selected columns. This can take a moment, please wait...
-        </PlAlert>
-
-        <PlAlert
-          v-if="!datasetScanning && validationMessage"
-          type="warn"
-          :label="`Invalid ${formatLabel(validationResult?.format)} dataset`"
-          :style="{ width: '100%' }"
-        >
-          {{ validationMessage }}
-        </PlAlert>
-
         <PlDropdownMulti
           v-if="!isSingleCell"
           v-model="app.model.data.chains"
@@ -566,6 +566,19 @@ watch(
           label="Immune receptors"
           required
         />
+
+        <PlAlert v-if="datasetScanning" type="info" :style="{ width: '100%' }">
+          Validating the selected columns. This can take a moment, please wait...
+        </PlAlert>
+
+        <PlAlert
+          v-if="!datasetScanning && validationMessage"
+          type="warn"
+          :label="`Invalid ${formatLabel(validationResult?.format)} dataset`"
+          :style="{ width: '100%' }"
+        >
+          {{ validationMessage }}
+        </PlAlert>
 
         <template v-if="app.model.data.format === 'custom' && !datasetScanning">
           <PlSectionSeparator>Required columns</PlSectionSeparator>
@@ -689,11 +702,11 @@ watch(
         </template>
       </template>
 
-      <template v-if="app.model.outputs.columnDescriptions">
+      <template v-if="columnDescriptions.length > 0">
         <PlSectionSeparator>Columns</PlSectionSeparator>
         The following columns will be imported:
         <PlElementList
-          v-model:items="app.model.outputs.columnDescriptions"
+          :items="columnDescriptions"
           disable-removing
           disable-dragging
           disable-pinning
