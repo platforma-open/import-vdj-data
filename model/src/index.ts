@@ -279,25 +279,20 @@ export const platforma = BlockModelV3.create(blockDataModel)
   })
 
   /**
-   * What the prerun results the UI currently sees were computed for, so a mismatch with what is
-   * selected now means "the panel is showing the last one's columns".
+   * What the prerun results on screen were computed for. A mismatch with what is selected now
+   * means the panel is still showing the previous one's columns.
    *
-   * One output for both doors, because it is one question — but tagged by door, because the two
-   * answers are not interchangeable. The file door names a dataset that IS the file, by an id
-   * minted when it was picked; the dataset door names one already in the result pool, by a ref
-   * to the column it comes from. Both say "which dataset", neither is the other in a different
-   * format, and the tag is what stops them reading that way.
+   * Tagged by door because the two answers are not interchangeable: the file door names a dataset
+   * that IS the file, by a minted id; the dataset door names one already in the result pool, by a
+   * ref. Exactly one door is ever live — `projectArgs` refuses both at once.
    *
-   * Exactly one door is ever live — `projectArgs` refuses both at once — so the tag is a
-   * statement of that rule rather than a new degree of freedom.
-   *
-   * Keyed to the input, not to whether prerun is busy: `prerunArgs` carries `bareSet`, so prerun
-   * re-runs on every mapping edit to re-check the identity column for collisions.
+   * Keyed to the input rather than to "prerun is busy": prerun also re-runs on every mapping edit,
+   * to re-check the identity column.
    */
   .retentiveOutput("prerunDatasetValidationInfo", (ctx) => {
-    // Gate on the result the stamp describes, whichever door produced it. Reading it marks the
-    // read unstable (pl-tree/src/accessors.ts:347), so `retentive` keeps reporting the previous
-    // input until the new result lands — stamp and result can never disagree.
+    // Gate on the result the stamp describes, whichever door produced it. The read is marked
+    // unstable, so `retentive` keeps reporting the previous input until the new result lands and
+    // the two can never disagree.
     const backing =
       ctx.prerun?.resolve({ field: "columnProfile", allowPermanentAbsence: true }) ??
       ctx.prerun?.resolve({ field: "headerColumns", allowPermanentAbsence: true });

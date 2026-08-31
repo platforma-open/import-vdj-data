@@ -58,7 +58,7 @@ function getBare(): BareSetMapping | undefined {
  * which is how a heavy-only panel is declared rather than inferred from an unfilled slot.
  *
  * The labels are the ones mixcr-clonotyping's combined receptor-or-chain list uses
- * (SettingsPanel.vue:288-301) — the same control, so the same words. The more diverse chain, the
+ * (its SettingsPanel.vue) — the same control, so the same words. The more diverse chain, the
  * one recombining a D segment, comes first in every pair, which is MiXCR's rule.
  */
 const chainSelectionOptions = [

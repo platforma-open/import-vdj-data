@@ -43,7 +43,7 @@ regionsSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.re
 // deterministic, so the result is worth holding on to.
 CACHE_MILLIS := 24 * 60 * 60 * 1000
 
-// ANARCI writes one CSV per chain type it found, over exactly this list (anarci.py:263). Kappa
+// ANARCI writes one CSV per chain type it found, over exactly this list (anarci.py). Kappa
 // and lambda share KL. Every bucket is pre-created and saved whichever chains the set declares:
 // the step must name its saves before ANARCI has run.
 BUCKETS := ["H", "KL", "A", "B", "G", "D"]
@@ -96,7 +96,7 @@ self.body(func(inputs) {
 	// `writable: true` is the whole trick. Workdir inputs land 0o400 by default so the backend
 	// can hardlink them from the archive cache; without it ANARCI dies on
 	// "Permission denied: anarci.csv_H.csv". Same pattern as
-	// peptide-extraction/workflow/src/parse.tpl.tengo:28.
+	// peptide-extraction's parse.tpl.tengo.
 	//
 	// Both buckets are always read, whichever chains were mapped: the chain a column was
 	// assigned to is *declared*, ANARCI's bucket is *inferred*, and the two can disagree.

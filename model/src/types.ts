@@ -84,7 +84,7 @@ export const CHAIN_SLOTS: Record<ChainSelection, BareSetChain[]> = {
  * IMGT is position-unified and chain-agnostic — ANARCI's `number_imgt` takes no chain type at
  * all. Kabat, Chothia, Martin and Wolfguy were defined on antibody structures and ANARCI
  * implements them for `H`/`K`/`L` only, raising "Unimplemented numbering scheme" for a TCR chain
- * (anarci.py:558-592). So a TCR selection can only be numbered under IMGT, and offering the
+ * (anarci.py). So a TCR selection can only be numbered under IMGT, and offering the
  * others would hand the scientist a choice that fails the run.
  */
 export const SCHEMES_FOR_SELECTION: Record<ChainSelection, BareSetScheme[]> = {
@@ -276,7 +276,7 @@ export type LegacyUiState = {
 /**
  * The SDK's `substituteSpecialCharacters` class, mirrored so the model can refuse a collision
  * without a round trip to the workflow. Kept in step with
- * `sdk/workflow-tengo/src/strings.lib.tengo:4`.
+ * the SDK's `strings.lib.tengo`.
  */
 const SPECIAL_CHARACTERS = /[-_,.:; +()!<>[\]}{"\\/:$%^#@*&]+/g;
 
