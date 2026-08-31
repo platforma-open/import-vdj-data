@@ -117,22 +117,16 @@ function projectArgs(data: BlockData): BlockArgs {
     return args;
   }
 
-  // The per-format flags are written by the UI from the `validationResult` output. They are a
-  // mirror of a derivation, which is a hairpin, but replacing them is a separate change: the
-  // check they stand for needs the file's headers, and the args lambda cannot reach prerun.
-  const presentByFormat: Record<string, boolean> = {
-    qiagen: data.qiagenColumnsPresent === true,
-    immunoSeq: data.immunoSeqColumnsPresent === true,
-    mixcr: data.mixcrColumnsPresent === true,
-    "mixcr-sc": data.mixcrColumnsPresent === true,
-    cellranger: data.crColumnsPresent === true,
-    airr: data.airrColumnsPresent === true,
-    "airr-sc": data.airrColumnsPresent === true,
-  };
-  if (format in presentByFormat && !presentByFormat[format]) {
-    throw new Error(`The file does not carry the columns a ${format} dataset needs`);
-  }
-
+  // No per-format column check here. It used to read booleans the UI mirrored back from the
+  // `validationResult` output — a hairpin, and a broken one: the flags were keyed on the format
+  // alone, so switching between two datasets of the SAME format left the previous dataset's
+  // verdict in place and Run armed on it. A gate that answers confidently and wrongly at the one
+  // moment it matters is worse than no gate.
+  //
+  // It cannot be done correctly here: the check needs the file's headers, those live in prerun,
+  // and a V3 args lambda receives `data` only — there is no ctx and no `argsValid`. The honest
+  // signal stays on screen instead, driven straight from `validationResult`: the UI raises
+  // "Invalid <format> dataset", and suppresses it while the new dataset is still being scanned.
   return args;
 }
 

@@ -39,6 +39,18 @@ a file nobody had read yet, against headers it might not even contain.
   the id alone, a clean verdict outlived a remapped chain and the run gate accepted it. It also listed up to ten repeated values; it now lists three and a count,
   printed whole, since the id column can hold sequences and trimming those hides what tells them
   apart.
+- **The per-format column gate is gone, and with it the last stale-verdict hairpin.** For the seven
+  non-custom formats Run was gated on booleans the UI mirrored back from `validationResult`. They
+  were keyed on the *format* alone, never on the dataset, so switching between two datasets of the
+  same format left the previous one's verdict in place: Run armed immediately while the panel was
+  still scanning and still showing the old verdict. It broke the rule the surviving hairpin follows
+  — a verdict must carry what it is about. It could not be fixed in place, since the check needs the
+  file's headers and a V3 args lambda sees only `data`, so the five `*ColumnsPresent` fields, the
+  mirroring watcher and the check itself are removed. The verdict stays on screen, driven straight
+  from `validationResult` and suppressed while a new dataset is being scanned; what is lost is the
+  refusal, so a dataset that lacks the format's columns can now be run and will fail in the
+  workflow. Restoring it properly means moving the check onto `prerunChecks`, keyed on dataset and
+  format the way the collision check is keyed on the mapping.
 - **Alert headings appear.** Four alerts passed their heading to a slot `PlAlert` does not have, so
   the headings had never rendered — a warning about a non-unique id column read as an unlabelled
   wall of values.

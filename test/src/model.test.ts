@@ -35,7 +35,7 @@ describe("upgradeLegacyData", () => {
           scheme: "kabat",
         },
       },
-      uiState: { settingsOpen: false, mixcrColumnsPresent: true },
+      uiState: { settingsOpen: false },
     });
 
     expect(data.defaultBlockLabel).toBe("my import");
@@ -48,22 +48,15 @@ describe("upgradeLegacyData", () => {
     expect(data.secondaryCountType).toBe("read");
     expect(data.bareSet?.scheme).toBe("kabat");
 
-    // uiState survives too, including a flag the defaults set the other way.
+    // uiState survives too, set the other way from the defaults.
     expect(data.settingsOpen).toBe(false);
-    expect(data.mixcrColumnsPresent).toBe(true);
   });
 
-  test("fills view state a project saved before a flag existed has no value for", () => {
+  test("fills view state and chains a project saved without them has no value for", () => {
     const data = upgradeLegacyData({ args: { format: "qiagen" }, uiState: {} });
 
-    // Every flag present and false rather than undefined: an undefined boolean reaching the
-    // args projection would read as "columns not present" by accident rather than by rule.
-    expect(data.qiagenColumnsPresent).toBe(false);
-    expect(data.immunoSeqColumnsPresent).toBe(false);
-    expect(data.mixcrColumnsPresent).toBe(false);
-    expect(data.crColumnsPresent).toBe(false);
-    expect(data.airrColumnsPresent).toBe(false);
     expect(data.tableState).toBeDefined();
+    expect(data.settingsOpen).toBe(true);
     expect(data.chains.length).toBe(6);
   });
 

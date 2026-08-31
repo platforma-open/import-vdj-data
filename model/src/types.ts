@@ -246,11 +246,6 @@ export type BlockData = {
   // --- view state. None of this is projected anywhere.
   tableState: PlDataTableStateV2;
   settingsOpen: boolean;
-  qiagenColumnsPresent: boolean;
-  immunoSeqColumnsPresent: boolean;
-  mixcrColumnsPresent: boolean;
-  crColumnsPresent: boolean;
-  airrColumnsPresent: boolean;
 };
 
 /** The V1 `args` bucket, as it sits in projects saved before the V3 migration. */
@@ -271,11 +266,6 @@ export type LegacyBlockArgs = {
 export type LegacyUiState = {
   tableState?: PlDataTableStateV2;
   settingsOpen?: boolean;
-  qiagenColumnsPresent?: boolean;
-  immunoSeqColumnsPresent?: boolean;
-  mixcrColumnsPresent?: boolean;
-  crColumnsPresent?: boolean;
-  airrColumnsPresent?: boolean;
 };
 
 /**

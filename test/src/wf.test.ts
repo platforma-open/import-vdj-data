@@ -38,11 +38,6 @@ function blockData(fields: Record<string, unknown>): Record<string, unknown> {
     chains: [],
     tableState: createPlDataTableStateV2(),
     settingsOpen: true,
-    qiagenColumnsPresent: false,
-    immunoSeqColumnsPresent: false,
-    mixcrColumnsPresent: false,
-    crColumnsPresent: false,
-    airrColumnsPresent: false,
     // `args` refuses a bare set whose columns prerun has not cleared, and the verdict reaches data
     // through a UI watcher these tests never run. So stand in for it — clean unless the test passes
     // its own `prerunChecks`, which `...fields` below lets it do. Keyed with the block's own rule,

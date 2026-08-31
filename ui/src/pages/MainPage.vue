@@ -459,34 +459,6 @@ watch(
   { immediate: true },
 );
 
-const formatFlags = {
-  qiagen: "qiagenColumnsPresent",
-  immunoSeq: "immunoSeqColumnsPresent",
-  immunoseq: "immunoSeqColumnsPresent",
-  mixcr: "mixcrColumnsPresent",
-  "mixcr-sc": "mixcrColumnsPresent",
-  cellranger: "crColumnsPresent",
-  airr: "airrColumnsPresent",
-  "airr-sc": "airrColumnsPresent",
-} as const;
-
-watch(
-  [() => app.model.data.format, validationResult],
-  ([format, result]) => {
-    Object.values(formatFlags).forEach((flag) => (app.model.data[flag] = false));
-
-    if (!result) return;
-
-    if (result.format === format) {
-      const flag = formatFlags[result.format as keyof typeof formatFlags];
-      if (flag) {
-        app.model.data[flag] = result.isValid;
-      }
-    }
-  },
-  { immediate: true, deep: true },
-);
-
 // The panel closes whenever the scientist closes it, finished or not. It used to refuse while
 // the mapping was incomplete, which left no way to look at the table, re-read the file or check
 // an upstream block without finishing first. Nothing needs the refusal: the args projection
