@@ -547,11 +547,15 @@ blockTest(
       "Affinity (nM)": "Double",
     });
 
-    // The profile names the file it came from. The panel reads this to tell this file's columns
+    // The profile names the dataset it came from. The panel reads this to tell this file's columns
     // from the previous file's, still retained while the new one is scanned.
-    expect((state.outputs?.profiledSampleId as { value?: string } | undefined)?.value).toBe(
-      "SDIRECT000000000000000001",
-    );
+    expect(
+      (
+        state.outputs?.prerunDatasetValidationInfo as
+          | { value?: { door?: string; datasetId?: string } }
+          | undefined
+      )?.value,
+    ).toEqual({ door: "file", datasetId: "SDIRECT000000000000000001" });
 
     // Indistinguishable from the pool door: same axes, same key, same columns — abundance
     // alone on [sampleId, variantKey], every property of the record on the record axis.
