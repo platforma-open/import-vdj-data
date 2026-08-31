@@ -47,6 +47,12 @@ a file nobody had read yet, against headers it might not even contain.
   collision check already uses: the verdict carries the dataset *and format* it was reached for,
   and one left over from an earlier selection reads as "not judged yet" rather than being applied.
   Run is refused both while a verdict is outstanding and when it reports missing columns.
+
+  `validationResult` now takes the format from prerun's stamp rather than from live block data, so
+  both halves of the question come from one staging context and a verdict can no longer judge one
+  dataset's headers under another's format. It states the dataset it judged, which is what lets the
+  UI mirror it in by copying rather than by matching the two outputs against the selection — there
+  is no comparison left in the hairpin to get wrong.
 - **One provenance stamp, not two, and it names a dataset.** The file door emitted
   `profiledSampleId` and the dataset door `inferredFor`; both answered the same question — what the
   prerun results on screen were computed for — and only one door is ever live. They are now a
