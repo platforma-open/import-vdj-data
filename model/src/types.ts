@@ -248,6 +248,18 @@ export type BlockData = {
     identityCollides: boolean;
   };
 
+  /**
+   * The dataset door's verdict, under the same contract: what it is about, and whether it passed.
+   * Kept apart from `prerunChecks` because it is about a different thing — the dataset and format
+   * picked, not the mapping — and so is invalidated by different edits.
+   */
+  prerunDatasetCheck?: {
+    /** The dataset and format the verdict below was reached for — see {@link datasetCheckKey}. */
+    dataset: string;
+    /** The dataset carries the columns its declared format needs. */
+    columnsPresent: boolean;
+  };
+
   // --- view state. None of this is projected anywhere.
   tableState: PlDataTableStateV2;
   settingsOpen: boolean;
@@ -308,6 +320,21 @@ export function collisionCheckKey(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([slot, column]) => `${slot}=${column}`);
   return [mapping.identity, ...mapped].join("\u0000");
+}
+
+/**
+ * What a dataset-door verdict is about: the dataset picked and the format it was declared to be.
+ * Both, because the same dataset answers differently under a different format.
+ *
+ * `undefined` when there is nothing to check yet — no dataset, or no format — which is also how
+ * the caller tells the dataset door from the file door.
+ */
+export function datasetCheckKey(
+  data: Pick<BlockData, "datasetRef" | "format">,
+): string | undefined {
+  const ref = data.datasetRef;
+  if (ref === undefined || data.format === undefined) return undefined;
+  return [ref.blockId, ref.name, data.format].join("\u0000");
 }
 
 /**

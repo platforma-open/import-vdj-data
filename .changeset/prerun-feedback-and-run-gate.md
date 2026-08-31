@@ -39,18 +39,14 @@ a file nobody had read yet, against headers it might not even contain.
   the id alone, a clean verdict outlived a remapped chain and the run gate accepted it. It also listed up to ten repeated values; it now lists three and a count,
   printed whole, since the id column can hold sequences and trimming those hides what tells them
   apart.
-- **The per-format column gate is gone, and with it the last stale-verdict hairpin.** For the seven
-  non-custom formats Run was gated on booleans the UI mirrored back from `validationResult`. They
-  were keyed on the *format* alone, never on the dataset, so switching between two datasets of the
-  same format left the previous one's verdict in place: Run armed immediately while the panel was
-  still scanning and still showing the old verdict. It broke the rule the surviving hairpin follows
-  — a verdict must carry what it is about. It could not be fixed in place, since the check needs the
-  file's headers and a V3 args lambda sees only `data`, so the five `*ColumnsPresent` fields, the
-  mirroring watcher and the check itself are removed. The verdict stays on screen, driven straight
-  from `validationResult` and suppressed while a new dataset is being scanned; what is lost is the
-  refusal, so a dataset that lacks the format's columns can now be run and will fail in the
-  workflow. Restoring it properly means moving the check onto `prerunChecks`, keyed on dataset and
-  format the way the collision check is keyed on the mapping.
+- **Run waits for the dataset to be judged.** For the seven non-custom formats Run was gated on
+  booleans the UI mirrored back from `validationResult`, keyed on the *format* alone and never on
+  the dataset. Switching between two datasets of the same format left the previous one's verdict
+  standing, so Run armed at once while the panel was still scanning. The five `*ColumnsPresent`
+  fields and their watcher are gone, replaced by `prerunDatasetCheck` — the same shape the
+  collision check already uses: the verdict carries the dataset *and format* it was reached for,
+  and one left over from an earlier selection reads as "not judged yet" rather than being applied.
+  Run is refused both while a verdict is outstanding and when it reports missing columns.
 - **One provenance stamp, not two, and it names a dataset.** The file door emitted
   `profiledSampleId` and the dataset door `inferredFor`; both answered the same question — what the
   prerun results on screen were computed for — and only one door is ever live. They are now a

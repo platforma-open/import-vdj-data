@@ -1,4 +1,4 @@
-import { platforma } from "@platforma-open/milaboratories.import-vdj.model";
+import { datasetCheckKey, platforma } from "@platforma-open/milaboratories.import-vdj.model";
 import { defineAppV3 } from "@platforma-sdk/ui-vue";
 import MainPage from "./pages/MainPage.vue";
 import { watch, watchEffect } from "vue";
@@ -39,16 +39,41 @@ function syncPrerunChecks(model: AppModel) {
     model.data.prerunChecks = next;
   });
 
+  // The dataset door's verdict, written only once prerun's stamp says the results on hand were
+  // computed for what is selected now. Without that check the verdict would be the previous
+  // dataset's — `validationResult` is retentive, and it judges prerun's headers against the LIVE
+  // format, so mid-switch it can pair one dataset's headers with another's format.
+  watchEffect(() => {
+    const stamp = model.outputs.prerunDatasetValidationInfo;
+    const result = model.outputs.validationResult;
+    if (stamp?.door !== "dataset" || result === undefined) return;
+
+    const ref = model.data.datasetRef;
+    if (ref === undefined || model.data.format === undefined) return;
+    if (stamp.datasetRef?.blockId !== ref.blockId || stamp.datasetRef.name !== ref.name) return;
+    if (stamp.format !== model.data.format) return;
+
+    const dataset = datasetCheckKey(model.data);
+    if (dataset === undefined) return;
+    const next = { dataset, columnsPresent: result.isValid };
+    const current = model.data.prerunDatasetCheck;
+    if (current?.dataset === next.dataset && current.columnsPresent === next.columnsPresent) return;
+    model.data.prerunDatasetCheck = next;
+  });
+
   // A verdict cannot outlive the file or dataset it was reached for. Watching primitives, not the
-  // refs, so a server patch swapping the data object does not clear it spuriously.
+  // refs, so a server patch swapping the data object does not clear it spuriously. Format is in
+  // here for the dataset check: the same dataset answers differently under a different format.
   watch(
     () => [
       model.data.fileSource?.datasetId,
       model.data.datasetRef?.blockId,
       model.data.datasetRef?.name,
+      model.data.format,
     ],
     () => {
       model.data.prerunChecks = undefined;
+      model.data.prerunDatasetCheck = undefined;
     },
   );
 }

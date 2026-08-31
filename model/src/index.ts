@@ -14,7 +14,7 @@ import type {
   ColumnProfile,
   ImportFormat,
 } from "./types";
-import { bareSetValid, collisionCheckKey } from "./types";
+import { bareSetValid, collisionCheckKey, datasetCheckKey } from "./types";
 
 export * from "./types";
 export { upgradeLegacyData } from "./data-model";
@@ -57,6 +57,24 @@ function requireCheckedColumns(data: BlockData): void {
   if (checks?.columns !== columns) throw new Error("Validating the selected columns");
   if (checks.identityCollides) {
     throw new Error(`"${data.bareSet?.identity}" repeats on rows that are not identical`);
+  }
+}
+
+/**
+ * Refuse the run until prerun has judged the dataset and format actually selected.
+ *
+ * The verdict carries the dataset it was reached for, so one left over from a previous selection
+ * reads as "not judged yet" rather than being applied to this one. That is the whole of the rule
+ * the old per-format flags broke: they were keyed on the format alone, so switching between two
+ * datasets of the same format left the previous verdict standing and Run armed on it.
+ */
+function requireCheckedDataset(data: BlockData): void {
+  const dataset = datasetCheckKey(data);
+  if (dataset === undefined) return; // the file door, or nothing picked yet
+  const check = data.prerunDatasetCheck;
+  if (check?.dataset !== dataset) throw new Error("Validating the selected columns");
+  if (!check.columnsPresent) {
+    throw new Error(`The dataset does not carry the columns a ${data.format} dataset needs`);
   }
 }
 
@@ -117,16 +135,11 @@ function projectArgs(data: BlockData): BlockArgs {
     return args;
   }
 
-  // No per-format column check here. It used to read booleans the UI mirrored back from the
-  // `validationResult` output — a hairpin, and a broken one: the flags were keyed on the format
-  // alone, so switching between two datasets of the SAME format left the previous dataset's
-  // verdict in place and Run armed on it. A gate that answers confidently and wrongly at the one
-  // moment it matters is worse than no gate.
-  //
-  // It cannot be done correctly here: the check needs the file's headers, those live in prerun,
-  // and a V3 args lambda receives `data` only — there is no ctx and no `argsValid`. The honest
-  // signal stays on screen instead, driven straight from `validationResult`: the UI raises
-  // "Invalid <format> dataset", and suppresses it while the new dataset is still being scanned.
+  // The check needs the dataset's headers, which live in prerun, and a V3 args lambda receives
+  // `data` only. So the verdict is mirrored in — the same hairpin the collision check uses, under
+  // the same contract, which is what keeps it from repeating the per-format flags' mistake.
+  requireCheckedDataset(data);
+
   return args;
 }
 
