@@ -3,12 +3,10 @@ import type {
   CountType,
   ImportFormat,
 } from "@platforma-open/milaboratories.import-vdj.model";
-
-/** A `PlDropdown` option. */
-type Option<T> = { label: string; value: T };
+import type { ListOptionBase } from "@platforma-sdk/ui-vue";
 
 /** The formats the dataset door can read. `custom` is the mapping-by-hand path. */
-export const formatOptions: Option<ImportFormat>[] = [
+export const formatOptions: ListOptionBase<ImportFormat>[] = [
   { label: "ImmunoSeq", value: "immunoSeq" },
   { label: "QIAseq Immune Repertoire Analysis", value: "qiagen" },
   { label: "MiXCR bulk", value: "mixcr" },
@@ -20,23 +18,23 @@ export const formatOptions: Option<ImportFormat>[] = [
 ];
 
 /** Chains to import from the selected dataset. Values are the `pl7.app/vdj/chain` vocabulary. */
-export const chainsOptions: Option<ChainSelection>[] = [
+export const chainsOptions: ListOptionBase<ChainSelection>[] = [
   { label: "IG Heavy", value: "IGHeavy" },
   { label: "IG Light", value: "IGLight" },
   { label: "TCR-α", value: "TCRAlpha" },
   { label: "TCR-β", value: "TCRBeta" },
-  { label: "TCR-ɣ", value: "TCRDelta" },
-  { label: "TCR-δ", value: "TCRGamma" },
+  { label: "TCR-δ", value: "TCRDelta" },
+  { label: "TCR-ɣ", value: "TCRGamma" },
 ];
 
 /** Receptors offered on the direct-file door, where the scientist declares what they are importing. */
-export const receptorOptions: Option<ChainSelection>[] = [
+export const receptorOptions: ListOptionBase<ChainSelection>[] = [
   { value: "IG", label: "IG" },
   { value: "TCRAB", label: "TCR-αβ" },
   { value: "TCRGD", label: "TCR-ɣδ" },
 ];
 
-export const countTypeOptions: Option<CountType>[] = [
+export const countTypeOptions: ListOptionBase<CountType>[] = [
   { label: "Reads", value: "read" },
   { label: "UMIs", value: "umi" },
 ];

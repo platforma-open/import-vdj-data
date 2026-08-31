@@ -1,11 +1,4 @@
 <script setup lang="ts">
-/**
- * Mapping a file of bare sequences onto records: the id column, the chains, the column carrying
- * each one, what else to keep, and how to number it — with the checks that gate them.
- *
- * The parent decides whether this shape is being mapped at all (a file is loaded and its columns
- * are known); everything from there down is here.
- */
 import type {
   BareSetChain,
   BareSetMapping,
@@ -18,7 +11,6 @@ import {
   CHAIN_SLOT_LABELS,
   collisionCheckKey,
   CHAIN_SLOTS,
-  propertyCollisions,
   SCHEME_LABELS,
   SCHEMES_FOR_SELECTION,
 } from "@platforma-open/milaboratories.import-vdj.model";
@@ -171,10 +163,6 @@ const columnChecksPending = computed(() => {
   return app.model.data.prerunChecks?.columns !== collisionCheckKey(bare);
 });
 
-const identityCollisionMessage = computed(() =>
-  buildIdentityCollisionMessage(app.model.outputs.identityCollisions, app.model.data.bareSet),
-);
-
 /**
  * Headers not taken by a sequence or the identity — offered as record properties rather than
  * dropped, which is what the block used to do with them.
@@ -205,6 +193,9 @@ const acceptedProperties = computed<string[]>({
   },
 });
 
+const identityCollisionMessage = computed(() =>
+  buildIdentityCollisionMessage(app.model.outputs.identityCollisions, app.model.data.bareSet),
+);
 const propertyCollisionMessage = computed(() =>
   buildPropertyCollisionMessage(app.model.data.bareSet?.properties),
 );
