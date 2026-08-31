@@ -53,9 +53,11 @@ function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
 function requireCheckedColumns(data: BlockData): void {
   const columns = collisionCheckKey(data.bareSet);
   if (columns === undefined) return; // bareSetValid has already refused
-  const checks = data.prerunChecks;
-  if (checks?.columns !== columns) throw new Error("Validating the selected columns");
-  if (checks.identityCollides) {
+  const check = data.prerunCheck;
+  if (check?.check !== "columns" || check.subject !== columns) {
+    throw new Error("Validating the selected columns");
+  }
+  if (check.identityCollides) {
     throw new Error(`"${data.bareSet?.identity}" repeats on rows that are not identical`);
   }
 }
@@ -71,8 +73,10 @@ function requireCheckedColumns(data: BlockData): void {
 function requireCheckedDataset(data: BlockData): void {
   const dataset = datasetCheckKey(data);
   if (dataset === undefined) return; // the file door, or nothing picked yet
-  const check = data.prerunDatasetCheck;
-  if (check?.dataset !== dataset) throw new Error("Validating the selected columns");
+  const check = data.prerunCheck;
+  if (check?.check !== "dataset" || check.subject !== dataset) {
+    throw new Error("Validating the selected columns");
+  }
   if (!check.columnsPresent) {
     throw new Error(`The dataset does not carry the columns a ${data.format} dataset needs`);
   }

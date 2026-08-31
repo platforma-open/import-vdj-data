@@ -230,27 +230,25 @@ export type BlockData = {
    * What prerun found, kept here so the args projection — which sees only `data` — can gate the run
    * on it. Written by the UI (`ui/src/app.ts`).
    *
-   * Every entry carries what it is *about* and is cleared when the source changes, so a verdict for
-   * something no longer selected is ignored rather than applied. Add further checks the same way.
+   * The verdict carries what it is *about*, so one reached for something no longer selected is
+   * ignored rather than applied. Tagged by which check it is: the two paths through `projectArgs`
+   * that consult a verdict return before reaching each other, so only ever one is live.
    */
-  prerunChecks?: {
-    /** The mapping the verdicts below were reached for — see {@link collisionCheckKey}. */
-    columns: string;
-    /** The id column repeats on rows whose other mapped cells differ, so two records would merge. */
-    identityCollides: boolean;
-  };
-
-  /**
-   * The dataset door's verdict, under the same contract: what it is about, and whether it passed.
-   * Kept apart from `prerunChecks` because it is about a different thing — the dataset and format
-   * picked, not the mapping — and so is invalidated by different edits.
-   */
-  prerunDatasetCheck?: {
-    /** The dataset and format the verdict below was reached for — see {@link datasetCheckKey}. */
-    dataset: string;
-    /** The dataset carries the columns its declared format needs. */
-    columnsPresent: boolean;
-  };
+  prerunCheck?:
+    | {
+        check: "columns";
+        /** The mapping the verdict was reached for — see {@link collisionCheckKey}. */
+        subject: string;
+        /** The id column repeats on rows whose other mapped cells differ, so two records merge. */
+        identityCollides: boolean;
+      }
+    | {
+        check: "dataset";
+        /** The dataset and format the verdict was reached for — see {@link datasetCheckKey}. */
+        subject: string;
+        /** The dataset carries the columns its declared format needs. */
+        columnsPresent: boolean;
+      };
 
   // --- view state. None of this is projected anywhere.
   tableState: PlDataTableStateV2;

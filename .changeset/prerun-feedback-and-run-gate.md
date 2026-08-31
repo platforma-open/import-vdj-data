@@ -43,7 +43,7 @@ a file nobody had read yet, against headers it might not even contain.
   booleans the UI mirrored back from `validationResult`, keyed on the *format* alone and never on
   the dataset. Switching between two datasets of the same format left the previous one's verdict
   standing, so Run armed at once while the panel was still scanning. The five `*ColumnsPresent`
-  fields and their watcher are gone, replaced by `prerunDatasetCheck` — the same shape the
+  fields and their watcher are gone, replaced by a second case of `prerunCheck` — the same shape the
   collision check already uses: the verdict carries the dataset *and format* it was reached for,
   and one left over from an earlier selection reads as "not judged yet" rather than being applied.
   Run is refused both while a verdict is outstanding and when it reports missing columns.

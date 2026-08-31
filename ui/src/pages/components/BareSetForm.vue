@@ -160,7 +160,8 @@ const sequenceOptions = computed(() => {
 const columnChecksPending = computed(() => {
   const bare = app.model.data.bareSet;
   if (bare === undefined || !bareSetValid(bare)) return false;
-  return app.model.data.prerunChecks?.columns !== collisionCheckKey(bare);
+  const check = app.model.data.prerunCheck;
+  return check?.check !== "columns" || check.subject !== collisionCheckKey(bare);
 });
 
 /**

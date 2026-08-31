@@ -41,10 +41,16 @@ function blockData(fields: Record<string, unknown>): Record<string, unknown> {
     settingsOpen: true,
     // `args` refuses a bare set whose columns prerun has not cleared, and the verdict reaches data
     // through a UI watcher these tests never run. So stand in for it — clean unless the test passes
-    // its own `prerunChecks`, which `...fields` below lets it do. Keyed with the block's own rule,
+    // its own `prerunCheck`, which `...fields` below lets it do. Keyed with the block's own rule,
     // so a change to what a verdict covers fails here rather than silently passing.
     ...(collisionCheckKey(bareSet) !== undefined
-      ? { prerunChecks: { columns: collisionCheckKey(bareSet), identityCollides: false } }
+      ? {
+          prerunCheck: {
+            check: "columns" as const,
+            subject: collisionCheckKey(bareSet)!,
+            identityCollides: false,
+          },
+        }
       : {}),
     ...fields,
   };
@@ -315,11 +321,12 @@ blockTest(
         },
         // What the UI mirrors in once prerun answers. Stated here because the mirror is a UI
         // watcher and these tests drive the block directly.
-        prerunChecks: {
-          columns: collisionCheckKey({
+        prerunCheck: {
+          check: "columns" as const,
+          subject: collisionCheckKey({
             identity: "mAb ID",
             sequences: { IGHeavy: "VH", IGLight: "VL" },
-          }),
+          })!,
           identityCollides: true,
         },
       }),
