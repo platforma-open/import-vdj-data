@@ -24,7 +24,7 @@ wf.body(func(args) {
 		readable := workbook.toXsv(imported.file, args.fileSource.extension)
 
 		builder := pColumn.resourceMapBuilder(1)
-		builder.add([args.fileSource.sampleId], readable.file)
+		builder.add([args.fileSource.datasetId], readable.file)
 
 		// The mapping dropdowns need the file's headers, and on this door nothing upstream
 		// supplies them. The separator comes from what the UI read out of the file's own first
@@ -47,9 +47,11 @@ wf.body(func(args) {
 			// getImportProgress on this is what starts the upload.
 			fileImports: imported.handle,
 			columnProfile: profile.output("profile"),
-			// Which file the profile above describes. Stated here because nothing exposes the args
-			// a staging context was built with, so the model cannot work it out.
-			profiledSampleId: smart.createJsonResource(args.fileSource.sampleId)
+			// Which dataset the profile above describes. Stated here because nothing exposes the
+			// args a staging context was built with, so the model cannot work it out.
+			prerunDatasetValidationInfo: smart.createJsonResource({
+				datasetId: args.fileSource.datasetId
+			})
 		}
 
 		if args.bareSet != undefined {
@@ -151,10 +153,11 @@ wf.body(func(args) {
 			columnsInfo: columnsInfo,
 			columnDescriptions: columnDescriptions,
 			headerColumns: headerColumns,
-			// What the inference above was about. Same reason as the file door's profiledSampleId:
-			// the model cannot ask which args a staging context was built with, so the panel cannot
-			// otherwise tell this dataset's columns from the last one's, still on screen.
-			inferredFor: smart.createJsonResource({
+			// What the inference above was about — the same stamp the file door emits, under the
+			// same name, because it answers the same question: the model cannot ask which args a
+			// staging context was built with, so without it the panel cannot tell this dataset's
+			// columns from the last one's, still on screen. Exactly one door is ever live.
+			prerunDatasetValidationInfo: smart.createJsonResource({
 				datasetRef: args.datasetRef,
 				format: args.format
 			})

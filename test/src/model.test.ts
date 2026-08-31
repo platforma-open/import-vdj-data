@@ -67,7 +67,7 @@ describe("upgradeLegacyData", () => {
       args: {
         fileSource: {
           handle: "index://x" as never,
-          sampleId: "S1",
+          datasetId: "S1",
           label: "panel",
           extension: "tsv",
         },

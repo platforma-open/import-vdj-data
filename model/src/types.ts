@@ -15,10 +15,15 @@ export type CountType = "read" | "umi";
 export type FileSource = {
   handle: ImportFileHandle;
   /**
-   * Minted in the UI at the moment the file is picked, not derived from the handle, so the
-   * sample keeps its identity across runs even if the same file is re-selected.
+   * Identifies the dataset this file holds. Minted in the UI at the moment the file is picked,
+   * not derived from the handle, so the identity survives re-selecting the same file.
+   *
+   * Named for the dataset rather than the sample because that is what it is: one file is one
+   * dataset, and today that dataset happens to be one sample, so this value also mints the
+   * `pl7.app/sampleId` key. A file carrying several samples would name them from its own
+   * contents while this stayed the identity of the file they came from.
    */
-  sampleId: string;
+  datasetId: string;
   /** The filename stem — exactly what samples-and-data would have labelled the sample. */
   label: string;
   /**

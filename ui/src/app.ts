@@ -43,7 +43,7 @@ function syncPrerunChecks(model: AppModel) {
   // refs, so a server patch swapping the data object does not clear it spuriously.
   watch(
     () => [
-      model.data.fileSource?.sampleId,
+      model.data.fileSource?.datasetId,
       model.data.datasetRef?.blockId,
       model.data.datasetRef?.name,
     ],

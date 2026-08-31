@@ -279,21 +279,33 @@ export const platforma = BlockModelV3.create(blockDataModel)
   })
 
   /**
-   * Which file the profile the UI currently sees was taken from, so a mismatch with
-   * `data.fileSource.sampleId` means "the panel is showing the last file's columns".
+   * What the prerun results the UI currently sees were computed for, so a mismatch with what is
+   * selected now means "the panel is showing the last one's columns".
    *
-   * Keyed to the file, not to whether prerun is busy: `prerunArgs` carries `bareSet`, so prerun
+   * One output for both doors, because it is one question. The file door answers with the
+   * `datasetId` its profile was taken from; the dataset door with the ref and format its column
+   * inference was run for. Exactly one door is ever live — `projectArgs` refuses both at once —
+   * so the two shapes never overlap.
+   *
+   * Keyed to the input, not to whether prerun is busy: `prerunArgs` carries `bareSet`, so prerun
    * re-runs on every mapping edit to re-check the identity column for collisions.
    */
-  .retentiveOutput("profiledSampleId", (ctx) => {
-    const profile = ctx.prerun?.resolve({ field: "columnProfile", allowPermanentAbsence: true });
-    if (profile === undefined) return undefined;
-    // Marks the read unstable (pl-tree/src/accessors.ts:347), so `retentive` keeps reporting the
-    // previous file's id until the new profile lands — the id and the profile can never disagree.
-    if (!profile.getIsReadyOrError()) return undefined;
+  .retentiveOutput("prerunDatasetValidationInfo", (ctx) => {
+    // Gate on the result the stamp describes, whichever door produced it. Reading it marks the
+    // read unstable (pl-tree/src/accessors.ts:347), so `retentive` keeps reporting the previous
+    // input until the new result lands — stamp and result can never disagree.
+    const backing =
+      ctx.prerun?.resolve({ field: "columnProfile", allowPermanentAbsence: true }) ??
+      ctx.prerun?.resolve({ field: "headerColumns", allowPermanentAbsence: true });
+    if (backing === undefined) return undefined;
+    if (!backing.getIsReadyOrError()) return undefined;
     return ctx.prerun
-      ?.resolve({ field: "profiledSampleId", allowPermanentAbsence: true })
-      ?.getDataAsJsonOrUndefined<string>();
+      ?.resolve({ field: "prerunDatasetValidationInfo", allowPermanentAbsence: true })
+      ?.getDataAsJsonOrUndefined<{
+        datasetId?: string;
+        datasetRef?: PlRef;
+        format?: ImportFormat;
+      }>();
   })
 
   /**
@@ -301,20 +313,6 @@ export const platforma = BlockModelV3.create(blockDataModel)
    * block, and prerun re-runs while the settings panel is being edited.
    */
   .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
-
-  /**
-   * Which dataset and format the inference on screen was run for — the dataset door's twin of
-   * {@link profiledSampleId}, paired with the headers the same way. Absent on the bare-set path,
-   * where prerun answers with collisions instead of columns.
-   */
-  .retentiveOutput("inferredFor", (ctx) => {
-    const headers = ctx.prerun?.resolve({ field: "headerColumns", allowPermanentAbsence: true });
-    if (headers === undefined) return undefined;
-    if (!headers.getIsReadyOrError()) return undefined;
-    return ctx.prerun
-      ?.resolve({ field: "inferredFor", allowPermanentAbsence: true })
-      ?.getDataAsJsonOrUndefined<{ datasetRef?: PlRef; format?: ImportFormat }>();
-  })
 
   /** Headers of the dataset selected from the pool. Absent on the file door. */
   .retentiveOutput("datasetColumns", (ctx) => {

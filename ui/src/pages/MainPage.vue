@@ -226,7 +226,7 @@ const loadFromFile = computed(() => app.model.data.fileSource !== undefined);
 const fileScanning = computed(() => {
   const file = app.model.data.fileSource;
   if (file === undefined) return false;
-  return app.model.outputs.profiledSampleId !== file.sampleId;
+  return app.model.outputs.prerunDatasetValidationInfo?.datasetId !== file.datasetId;
 });
 
 /**
@@ -242,7 +242,7 @@ const datasetScanning = computed(() => {
   const ref = app.model.data.datasetRef;
   if (ref === undefined || app.model.data.format === undefined) return false;
   if (app.model.data.bareSet !== undefined) return false;
-  const inferred = app.model.outputs.inferredFor;
+  const inferred = app.model.outputs.prerunDatasetValidationInfo;
   if (inferred?.datasetRef === undefined) return true;
   return !plRefsEqual(inferred.datasetRef, ref) || inferred.format !== app.model.data.format;
 });
@@ -277,11 +277,11 @@ async function setFile(handle: ImportFileHandle | undefined) {
       : "tsv";
 
   // The id is minted here, at the user's gesture, rather than derived from the handle, so the
-  // sample keeps its identity across runs. The label is the filename stem, which is exactly
+  // dataset keeps its identity across runs. The label is the filename stem, which is exactly
   // what samples-and-data would have produced.
   a.fileSource = {
     handle,
-    sampleId: uniquePlId(),
+    datasetId: uniquePlId(),
     label: name.replace(/\.[^.]+$/, ""),
     extension,
   };

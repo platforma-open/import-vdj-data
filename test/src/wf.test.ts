@@ -486,7 +486,7 @@ blockTest(
         chains: ["IGHeavy", "IGLight"],
         fileSource: {
           handle,
-          sampleId: "SDIRECT000000000000000001",
+          datasetId: "SDIRECT000000000000000001",
           label: "bare-paired-set",
           extension: "tsv",
         },
@@ -593,7 +593,7 @@ blockTest(
         },
         fileSource: {
           handle,
-          sampleId: "SDIRECT000000000000000001",
+          datasetId: "SDIRECT000000000000000001",
           label: "bare-paired-set",
           extension: "tsv",
         },
@@ -648,7 +648,7 @@ blockTest(
         chains: ["IGHeavy", "IGLight"],
         fileSource: {
           handle,
-          sampleId: "SCHAIN0000000000000000001",
+          datasetId: "SCHAIN0000000000000000001",
           label: "bare-paired-set",
           extension: "tsv",
         },
@@ -711,7 +711,7 @@ blockTest(
         format: "custom",
         fileSource: {
           handle,
-          sampleId: "STCR00000000000000000001",
+          datasetId: "STCR00000000000000000001",
           label: "bare-tcrab-set",
           extension: "tsv",
         },
@@ -795,7 +795,7 @@ blockTest(
         chains: ["IGHeavy", "IGLight"],
         fileSource: {
           handle,
-          sampleId: "SXLSX00000000000000000001",
+          datasetId: "SXLSX00000000000000000001",
           label: "bare-paired-set",
           extension: "xlsx",
         },
