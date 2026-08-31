@@ -48,7 +48,7 @@ import BareSetForm from "./components/BareSetForm.vue";
 const app = useApp();
 
 const emptySamplesMessage = computed(() =>
-  buildEmptySamplesMessage(app.model.outputs.emptyChainSamples?.emptySamples ?? []),
+  buildEmptySamplesMessage(app.model.outputs.emptyChainSamples),
 );
 
 // updating defaultBlockLabel
@@ -301,17 +301,7 @@ function setMapping(key: string, value: string | undefined) {
   else a.customMapping[key] = value;
 }
 
-const validationResult = computed(() => {
-  // Access format to create dependency and ensure reactivity when format changes
-  const format = app.model.data.format;
-  // Access outputs - Vue should track this if outputs is reactive
-  const outputs = app.model.outputs;
-  const result = (
-    outputs as { validationResult?: { isValid: boolean; missingColumns: string[]; format: string } }
-  )?.validationResult;
-  // Return result - format dependency ensures recomputation when format changes
-  return format ? result : result;
-});
+const validationResult = computed(() => app.model.outputs.validationResult);
 
 const validationMessage = computed(() => missingColumnsMessage(validationResult.value));
 

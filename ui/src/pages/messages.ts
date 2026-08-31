@@ -1,3 +1,11 @@
+import type {
+  BareSetMapping,
+  ImportedProperty,
+} from "@platforma-open/milaboratories.import-vdj.model";
+import {
+  collisionCheckKey,
+  propertyCollisions,
+} from "@platforma-open/milaboratories.import-vdj.model";
 import { formatOptions } from "./constants";
 
 /**
@@ -33,7 +41,10 @@ export function formatLabel(format: string | undefined): string {
  * Samples left with no clonotypes once the chosen chains were filtered for. `undefined` when
  * every sample kept something, which is the caller's signal not to raise a banner at all.
  */
-export function emptySamplesMessage(empty: string[]): string | undefined {
+export function emptySamplesMessage(
+  found: { emptySamples?: string[] } | undefined,
+): string | undefined {
+  const empty = found?.emptySamples ?? [];
   if (empty.length === 0) return undefined;
   return `After receptor chain filtering, no clonotypes found in sample(s) ${andMore(empty, EMPTY_SAMPLES_SHOWN)}`;
 }
@@ -54,7 +65,14 @@ export function missingColumnsMessage(
  * The identity column repeats on rows that are not identical, so two rows would merge into one
  * record. Empty when it does not.
  */
-export function identityCollisionMessage(values: string[]): string {
+export function identityCollisionMessage(
+  found: { key: string; values: string[] } | undefined,
+  mapping: BareSetMapping | undefined,
+): string {
+  // A verdict reached for a different mapping is not this mapping's answer, so it says nothing
+  // rather than accusing the column now selected.
+  if (found === undefined || found.key !== collisionCheckKey(mapping)) return "";
+  const values = found.values;
   if (values.length === 0) return "";
   return (
     `Repeated on rows that are not identical: ${andMore(values, COLLISIONS_SHOWN)}. ` +
@@ -66,7 +84,8 @@ export function identityCollisionMessage(values: string[]): string {
  * Two accepted property headers that sanitize to the same column name. Refused rather than
  * disambiguated: a generated suffix would name nothing in the scientist's file.
  */
-export function propertyCollisionMessage(groups: string[][]): string {
+export function propertyCollisionMessage(properties: ImportedProperty[] | undefined): string {
+  const groups = Object.values(propertyCollisions(properties ?? []));
   if (groups.length === 0) return "";
   const pairs = groups.map((headers) => headers.join(" / ")).join("; ");
   return (

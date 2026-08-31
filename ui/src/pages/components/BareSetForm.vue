@@ -161,13 +161,6 @@ const sequenceOptions = computed(() => {
  * so a repeat merges two records into one. Empty unless the verdict is about the mapping now
  * selected; anything else is about one the scientist has moved on from.
  */
-const identityCollisions = computed<string[]>(() => {
-  const found = app.model.outputs.identityCollisions;
-  if (found === undefined) return [];
-  if (found.key !== collisionCheckKey(app.model.data.bareSet)) return [];
-  return found.values;
-});
-
 /**
  * The mapping is finished but prerun has not yet cleared the columns it names. Run is disabled
  * meanwhile and this layout does not surface the args error, so the reason is said here.
@@ -179,7 +172,7 @@ const columnChecksPending = computed(() => {
 });
 
 const identityCollisionMessage = computed(() =>
-  buildIdentityCollisionMessage(identityCollisions.value),
+  buildIdentityCollisionMessage(app.model.outputs.identityCollisions, app.model.data.bareSet),
 );
 
 /**
@@ -213,9 +206,7 @@ const acceptedProperties = computed<string[]>({
 });
 
 const propertyCollisionMessage = computed(() =>
-  buildPropertyCollisionMessage(
-    Object.values(propertyCollisions(app.model.data.bareSet?.properties ?? [])),
-  ),
+  buildPropertyCollisionMessage(app.model.data.bareSet?.properties),
 );
 </script>
 
