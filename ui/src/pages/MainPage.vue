@@ -30,7 +30,6 @@ import { useApp } from "../app";
 import {
   chainsOptions,
   countTypeOptions,
-  EMPTY_SAMPLES_SHOWN,
   formatOptions,
   LOAD_FROM_FILE,
   optionalCanonical,
@@ -39,20 +38,18 @@ import {
   receptorOptions,
   requiredCanonicalBase,
 } from "./constants";
+import {
+  emptySamplesMessage as buildEmptySamplesMessage,
+  formatLabel,
+  missingColumnsMessage,
+} from "./messages";
 import BareSetForm from "./components/BareSetForm.vue";
 
 const app = useApp();
 
-const emptySamplesMessage = computed(() => {
-  const empty = app.model.outputs.emptyChainSamples?.emptySamples ?? [];
-  if (empty.length === 0) return undefined;
-
-  const shown = empty.slice(0, EMPTY_SAMPLES_SHOWN).join(", ");
-  const overflow = empty.length - EMPTY_SAMPLES_SHOWN;
-  const samples = overflow > 0 ? `${shown} and ${overflow} more` : shown;
-
-  return `After receptor chain filtering, no clonotypes found in sample(s) ${samples}`;
-});
+const emptySamplesMessage = computed(() =>
+  buildEmptySamplesMessage(app.model.outputs.emptyChainSamples?.emptySamples ?? []),
+);
 
 // updating defaultBlockLabel
 watchEffect(() => {
@@ -119,14 +116,6 @@ const fileSourceError = ref("");
 
 /**
  * What the block is reading: a dataset from the pool, or a file this block loads itself.
- *
- * One dropdown rather than a checkbox plus a dropdown. The two doors are alternatives, and a
- * checkbox made that a second question — the scientist had to know they were on the right door
- * before the dropdown in front of them meant anything.
- *
- * Values are strings because the list mixes two kinds of entry: a canonicalised PlRef per pool
- * dataset, and one sentinel that opens a file dialog instead of selecting anything. `PlDropdownRef`
- * cannot express the sentinel — its value is a PlRef — so this is a plain dropdown that maps back.
  */
 const datasetOptions = computed(() => app.model.outputs.datasetOptions ?? []);
 
@@ -150,13 +139,6 @@ const selectedSource = computed<string | undefined>(() => {
   return ref ? (canonicalize(ref) as string) : undefined;
 });
 
-/**
- * The platform's own file browser, not the OS one — the same dialog PlFileInput opens.
- *
- * It lists every storage the scientist has, remote ones included, so a file on S3 can be loaded
- * the same way as one on the desktop. `lsDriver.showOpenSingleFileDialog` opens the operating
- * system's picker instead, which can only see the local disk.
- */
 const fileDialogOpen = ref(false);
 
 function onFilesImported(imported: ImportedFiles) {
@@ -257,12 +239,6 @@ async function setFile(handle: ImportFileHandle | undefined) {
   // handle is derived from the path, so an unchanged handle means the same file.
   const isSwap = previous?.handle !== handle;
 
-  // The id is minted at the user's gesture rather than derived from the handle, so it survives a
-  // re-read — minting unconditionally would hand the same file a new identity, and since this
-  // value mints the `pl7.app/sampleId` key that silently orphans every downstream join. Two
-  // different files that happen to share a name still get different ids: they have different
-  // handles, so this is a swap. The label is the filename stem, which is exactly what
-  // samples-and-data would have produced — two such files do share that.
   a.fileSource = {
     handle,
     datasetId: isSwap ? uniquePlId() : previous.datasetId,
@@ -337,19 +313,7 @@ const validationResult = computed(() => {
   return format ? result : result;
 });
 
-/** The display name for a format id, from the same list the dropdown is built from. */
-function formatLabel(format: string | undefined): string {
-  if (!format) return "";
-  const key = format.toLowerCase();
-  return formatOptions.find((o) => o.value.toLowerCase() === key)?.label ?? format;
-}
-
-const validationMessage = computed(() => {
-  const result = validationResult.value;
-  if (!result || result.isValid) return "";
-
-  return `The selected dataset is missing required ${formatLabel(result.format)} columns: ${result.missingColumns.join(", ")}. Please verify the format selection or choose a different dataset.`;
-});
+const validationMessage = computed(() => missingColumnsMessage(validationResult.value));
 
 watch(
   () => app.model.data,
@@ -386,11 +350,6 @@ watch(
   },
   { immediate: true },
 );
-
-// The panel closes whenever the scientist closes it, finished or not. It used to refuse while
-// the mapping was incomplete, which left no way to look at the table, re-read the file or check
-// an upstream block without finishing first. Nothing needs the refusal: the args projection
-// already keeps Run disabled until the mapping is valid, and Settings reopens the panel.
 </script>
 
 <template>

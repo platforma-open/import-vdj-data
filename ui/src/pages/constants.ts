@@ -20,13 +20,13 @@ export const formatOptions: Option<ImportFormat>[] = [
 ];
 
 /** Chains to import from the selected dataset. Values are the `pl7.app/vdj/chain` vocabulary. */
-export const chainsOptions: Option<string>[] = [
+export const chainsOptions: Option<ChainSelection>[] = [
   { label: "IG Heavy", value: "IGHeavy" },
   { label: "IG Light", value: "IGLight" },
-  { label: "TRA", value: "TCRAlpha" },
-  { label: "TRB", value: "TCRBeta" },
-  { label: "TRD", value: "TCRDelta" },
-  { label: "TRG", value: "TCRGamma" },
+  { label: "TCR-α", value: "TCRAlpha" },
+  { label: "TCR-β", value: "TCRBeta" },
+  { label: "TCR-ɣ", value: "TCRDelta" },
+  { label: "TCR-δ", value: "TCRGamma" },
 ];
 
 /** Receptors offered on the direct-file door, where the scientist declares what they are importing. */
@@ -40,12 +40,6 @@ export const countTypeOptions: Option<CountType>[] = [
   { label: "Reads", value: "read" },
   { label: "UMIs", value: "umi" },
 ];
-
-/**
- * How many sample names the "no clonotypes left after chain filtering" banner lists before it
- * summarises the rest, so a large dataset cannot flood it.
- */
-export const EMPTY_SAMPLES_SHOWN = 5;
 
 /**
  * Sentinel for the "load from file" entry in the dataset dropdown. `PlDropdownRef` cannot express

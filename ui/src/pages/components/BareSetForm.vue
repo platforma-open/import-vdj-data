@@ -25,6 +25,11 @@ import {
 import { PlAlert, PlDropdown, PlDropdownMulti, PlSectionSeparator } from "@platforma-sdk/ui-vue";
 import { computed } from "vue";
 import { useApp } from "../../app";
+import { chainsOptions, receptorOptions } from "../constants";
+import {
+  identityCollisionMessage as buildIdentityCollisionMessage,
+  propertyCollisionMessage as buildPropertyCollisionMessage,
+} from "../messages";
 
 const { headerOptions } = defineProps<{
   /** Every column of the loaded file. Computed by the parent, which needs it for the other door. */
@@ -46,32 +51,7 @@ const schemeOptions = computed(() => {
   return allowed.map((s) => ({ label: SCHEME_LABELS[s], value: s }));
 });
 
-// A bare set is not a mode the scientist declares up front — whether a set is bare is something
-// the block works out from what they mapped. So there is no toggle: the slots are always offered,
-// and filling the identity slot plus at least one chain is what makes it one.
-function getBare(): BareSetMapping | undefined {
-  return app.model.data.bareSet;
-}
-
-/**
- * What is being imported. Receptors expand to both their chains; a single chain is its own entry,
- * which is how a heavy-only panel is declared rather than inferred from an unfilled slot.
- *
- * The labels are the ones mixcr-clonotyping's combined receptor-or-chain list uses
- * (its SettingsPanel.vue) — the same control, so the same words. The more diverse chain, the
- * one recombining a D segment, comes first in every pair, which is MiXCR's rule.
- */
-const chainSelectionOptions = [
-  { label: "IG", value: "IG" },
-  { label: "TCR-αβ", value: "TCRAB" },
-  { label: "TCR-ɣδ", value: "TCRGD" },
-  { label: "IG Heavy", value: "IGHeavy" },
-  { label: "IG Light", value: "IGLight" },
-  { label: "TCR-α", value: "TCRAlpha" },
-  { label: "TCR-β", value: "TCRBeta" },
-  { label: "TCR-ɣ", value: "TCRGamma" },
-  { label: "TCR-δ", value: "TCRDelta" },
-];
+const chainSelectionOptions = [...receptorOptions, ...chainsOptions];
 
 /** The slots the current declaration asks for, in emission order. */
 const chainSlots = computed<BareSetChain[]>(() => {
@@ -111,7 +91,7 @@ function setChainSelection(value: string | undefined) {
 }
 
 function bareField(field: "identity" | BareSetChain): string | undefined {
-  const bare = getBare();
+  const bare = app.model.data.bareSet;
   if (!bare) return undefined;
   if (field !== "identity") return bare.sequences?.[field];
   // `identity` is a required string, so "nothing chosen" is stored as "". A dropdown counts any
@@ -198,18 +178,9 @@ const columnChecksPending = computed(() => {
   return app.model.data.prerunChecks?.columns !== collisionCheckKey(bare);
 });
 
-// Enough to recognise the problem, not enough to bury the advice. Printed whole and left to
-// scroll: the id column can hold sequences, and trimming those hides what tells them apart.
-const COLLISIONS_SHOWN = 3;
-
-const identityCollisionMessage = computed(() => {
-  const values = identityCollisions.value;
-  if (values.length === 0) return "";
-  const shown = values.slice(0, COLLISIONS_SHOWN).join(", ");
-  const rest =
-    values.length > COLLISIONS_SHOWN ? ` and ${values.length - COLLISIONS_SHOWN} more` : "";
-  return `Repeated on rows that are not identical: ${shown}${rest}. Two rows sharing an id become one record — pick a different column, or fix the file.`;
-});
+const identityCollisionMessage = computed(() =>
+  buildIdentityCollisionMessage(identityCollisions.value),
+);
 
 /**
  * Headers not taken by a sequence or the identity — offered as record properties rather than
@@ -241,13 +212,11 @@ const acceptedProperties = computed<string[]>({
   },
 });
 
-const propertyCollisionMessage = computed(() => {
-  const collisions = propertyCollisions(app.model.data.bareSet?.properties ?? []);
-  const groups = Object.values(collisions);
-  if (groups.length === 0) return "";
-  const pairs = groups.map((hs) => hs.join(" / ")).join("; ");
-  return `These headers would become the same column: ${pairs}. Rename one in the file — importing both is not possible, and dropping one silently would lose a column you asked for.`;
-});
+const propertyCollisionMessage = computed(() =>
+  buildPropertyCollisionMessage(
+    Object.values(propertyCollisions(app.model.data.bareSet?.properties ?? [])),
+  ),
+);
 </script>
 
 <template>
