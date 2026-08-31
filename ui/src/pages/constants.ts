@@ -1,9 +1,3 @@
-/**
- * Fixed option lists and sentinels for the import panel.
- *
- * Only values that do not depend on block state live here. Anything derived from `app.model` stays
- * a computed beside the code that reads it, so this file never needs the app instance.
- */
 import type {
   ChainSelection,
   CountType,

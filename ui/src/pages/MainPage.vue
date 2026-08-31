@@ -38,7 +38,7 @@ import {
   optionalSequence,
   receptorOptions,
   requiredCanonicalBase,
-} from "../constants";
+} from "./constants";
 import BareSetForm from "./components/BareSetForm.vue";
 
 const app = useApp();
