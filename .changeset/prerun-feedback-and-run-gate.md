@@ -54,8 +54,10 @@ a file nobody had read yet, against headers it might not even contain.
 - **One provenance stamp, not two, and it names a dataset.** The file door emitted
   `profiledSampleId` and the dataset door `inferredFor`; both answered the same question — what the
   prerun results on screen were computed for — and only one door is ever live. They are now a
-  single `prerunDatasetValidationInfo`, carrying `datasetId` on the file door and `datasetRef` +
-  `format` on the dataset door. `FileSource.sampleId` is renamed `datasetId` to match: one file is
+  single `prerunDatasetValidationInfo`, tagged by door: `{ door: "file", datasetId }` or
+  `{ door: "dataset", datasetRef, format }`. Tagged rather than flattened because the two answers
+  are not interchangeable — the file door names a dataset that *is* the file, the dataset door
+  names one already in the pool — and side by side they otherwise read as one id in two formats. `FileSource.sampleId` is renamed `datasetId` to match: one file is
   one dataset, and it is only *today* that the dataset is also one sample, which is why that value
   also mints the `pl7.app/sampleId` key. A file carrying several samples would name those from its
   own contents while this stayed the identity of the file they came from. The value mints an axis
@@ -63,6 +65,13 @@ a file nobody had read yet, against headers it might not even contain.
   relying on the old key being absent — without it a saved project would key its records on
   `undefined` and lose every join a downstream block had made.
 
+- **Re-reading a file no longer changes its identity.** The id was minted on every pick, so
+  re-selecting the same file — which is also how a file gets re-read — handed it a new one. Since
+  that value mints the `pl7.app/sampleId` key, the re-read silently orphaned every join a
+  downstream block had made against the old key, with nothing on screen to say so. It is now minted
+  only when the handle changes, which is the same test that decides whether the mapping is dropped,
+  and which the field's own contract had claimed all along. Two different files that share a name
+  are still a swap: their handles differ. They do share a label, since that is the filename stem.
 - **Alert headings appear.** Four alerts passed their heading to a slot `PlAlert` does not have, so
   the headings had never rendered — a warning about a non-unique id column read as an unlabelled
   wall of values.

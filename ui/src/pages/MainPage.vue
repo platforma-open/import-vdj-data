@@ -226,7 +226,8 @@ const loadFromFile = computed(() => app.model.data.fileSource !== undefined);
 const fileScanning = computed(() => {
   const file = app.model.data.fileSource;
   if (file === undefined) return false;
-  return app.model.outputs.prerunDatasetValidationInfo?.datasetId !== file.datasetId;
+  const stamp = app.model.outputs.prerunDatasetValidationInfo;
+  return !(stamp?.door === "file" && stamp.datasetId === file.datasetId);
 });
 
 /**
@@ -242,9 +243,9 @@ const datasetScanning = computed(() => {
   const ref = app.model.data.datasetRef;
   if (ref === undefined || app.model.data.format === undefined) return false;
   if (app.model.data.bareSet !== undefined) return false;
-  const inferred = app.model.outputs.prerunDatasetValidationInfo;
-  if (inferred?.datasetRef === undefined) return true;
-  return !plRefsEqual(inferred.datasetRef, ref) || inferred.format !== app.model.data.format;
+  const stamp = app.model.outputs.prerunDatasetValidationInfo;
+  if (stamp?.door !== "dataset" || stamp.datasetRef === undefined) return true;
+  return !plRefsEqual(stamp.datasetRef, ref) || stamp.format !== app.model.data.format;
 });
 
 /**
@@ -276,21 +277,27 @@ async function setFile(handle: ImportFileHandle | undefined) {
       ? "csv"
       : "tsv";
 
-  // The id is minted here, at the user's gesture, rather than derived from the handle, so the
-  // dataset keeps its identity across runs. The label is the filename stem, which is exactly
-  // what samples-and-data would have produced.
+  // Re-picking the same file is not a swap: the dialog is also how a file gets re-read, and the
+  // handle is derived from the path, so an unchanged handle means the same file.
+  const isSwap = previous?.handle !== handle;
+
+  // The id is minted at the user's gesture rather than derived from the handle, so it survives a
+  // re-read — minting unconditionally would hand the same file a new identity, and since this
+  // value mints the `pl7.app/sampleId` key that silently orphans every downstream join. Two
+  // different files that happen to share a name still get different ids: they have different
+  // handles, so this is a swap. The label is the filename stem, which is exactly what
+  // samples-and-data would have produced — two such files do share that.
   a.fileSource = {
     handle,
-    datasetId: uniquePlId(),
+    datasetId: isSwap ? uniquePlId() : previous.datasetId,
     label: name.replace(/\.[^.]+$/, ""),
     extension,
   };
   a.datasetRef = undefined;
 
   // This is what disables Run: a mapping that passed against the last file still satisfies
-  // `bareSetValid`. Re-picking the same file is not a swap — the dialog is also how a file gets
-  // re-read.
-  if (previous?.handle !== handle) a.bareSet = forgetMappedColumns(a.bareSet);
+  // `bareSetValid`.
+  if (isSwap) a.bareSet = forgetMappedColumns(a.bareSet);
 }
 
 function setReceptors(selected: string[]) {

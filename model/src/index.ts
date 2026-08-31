@@ -282,10 +282,14 @@ export const platforma = BlockModelV3.create(blockDataModel)
    * What the prerun results the UI currently sees were computed for, so a mismatch with what is
    * selected now means "the panel is showing the last one's columns".
    *
-   * One output for both doors, because it is one question. The file door answers with the
-   * `datasetId` its profile was taken from; the dataset door with the ref and format its column
-   * inference was run for. Exactly one door is ever live — `projectArgs` refuses both at once —
-   * so the two shapes never overlap.
+   * One output for both doors, because it is one question — but tagged by door, because the two
+   * answers are not interchangeable. The file door names a dataset that IS the file, by an id
+   * minted when it was picked; the dataset door names one already in the result pool, by a ref
+   * to the column it comes from. Both say "which dataset", neither is the other in a different
+   * format, and the tag is what stops them reading that way.
+   *
+   * Exactly one door is ever live — `projectArgs` refuses both at once — so the tag is a
+   * statement of that rule rather than a new degree of freedom.
    *
    * Keyed to the input, not to whether prerun is busy: `prerunArgs` carries `bareSet`, so prerun
    * re-runs on every mapping edit to re-check the identity column for collisions.
@@ -301,11 +305,10 @@ export const platforma = BlockModelV3.create(blockDataModel)
     if (!backing.getIsReadyOrError()) return undefined;
     return ctx.prerun
       ?.resolve({ field: "prerunDatasetValidationInfo", allowPermanentAbsence: true })
-      ?.getDataAsJsonOrUndefined<{
-        datasetId?: string;
-        datasetRef?: PlRef;
-        format?: ImportFormat;
-      }>();
+      ?.getDataAsJsonOrUndefined<
+        | { door: "file"; datasetId: string }
+        | { door: "dataset"; datasetRef?: PlRef; format?: ImportFormat }
+      >();
   })
 
   /**

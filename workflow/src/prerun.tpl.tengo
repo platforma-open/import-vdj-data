@@ -50,6 +50,7 @@ wf.body(func(args) {
 			// Which dataset the profile above describes. Stated here because nothing exposes the
 			// args a staging context was built with, so the model cannot work it out.
 			prerunDatasetValidationInfo: smart.createJsonResource({
+				door: "file",
 				datasetId: args.fileSource.datasetId
 			})
 		}
@@ -158,6 +159,7 @@ wf.body(func(args) {
 			// staging context was built with, so without it the panel cannot tell this dataset's
 			// columns from the last one's, still on screen. Exactly one door is ever live.
 			prerunDatasetValidationInfo: smart.createJsonResource({
+				door: "dataset",
 				datasetRef: args.datasetRef,
 				format: args.format
 			})
