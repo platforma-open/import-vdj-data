@@ -24,7 +24,7 @@ wf.body(func(args) {
 		readable := workbook.toXsv(imported.file, args.fileSource.extension)
 
 		builder := pColumn.resourceMapBuilder(1)
-		builder.add([args.fileSource.sampleId], readable.file)
+		builder.add([args.fileSource.datasetId], readable.file)
 
 		// The mapping dropdowns need the file's headers, and on this door nothing upstream
 		// supplies them. The separator comes from what the UI read out of the file's own first
@@ -46,7 +46,13 @@ wf.body(func(args) {
 		outputs := {
 			// getImportProgress on this is what starts the upload.
 			fileImports: imported.handle,
-			columnProfile: profile.output("profile")
+			columnProfile: profile.output("profile"),
+			// Which dataset the profile above describes. Stated here because nothing exposes the
+			// args a staging context was built with, so the model cannot work it out.
+			prerunDatasetValidationInfo: smart.createJsonResource({
+				door: "file",
+				datasetId: args.fileSource.datasetId
+			})
 		}
 
 		if args.bareSet != undefined {
@@ -60,6 +66,13 @@ wf.body(func(args) {
 			}
 
 			if bare.identity != "" && len(mappedChains) > 0 {
+				// What the collisions below are about: the identity AND the sequence columns, because a
+				// collision is a repeated identity whose other mapped cells differ. Naming only the
+				// identity let a verdict outlive the mapping it was reached for.
+				outputs.collisionsFor = smart.createJsonResource({
+					identity: bare.identity,
+					sequences: specs.mappedSequences(bare, mappedChains)
+				})
 				outputs.identityCollisions = render.create(collisionsTpl, {
 					dataset: {
 						spec: {
@@ -114,7 +127,11 @@ wf.body(func(args) {
 
 			return {
 				outputs: {
-					identityCollisions: collisions
+					identityCollisions: collisions,
+					collisionsFor: smart.createJsonResource({
+						identity: bare.identity,
+						sequences: specs.mappedSequences(bare, mappedChains)
+					})
 				},
 				exports: {}
 			}
@@ -136,7 +153,16 @@ wf.body(func(args) {
 		outputs: {
 			columnsInfo: columnsInfo,
 			columnDescriptions: columnDescriptions,
-			headerColumns: headerColumns
+			headerColumns: headerColumns,
+			// What the inference above was about — the same stamp the file door emits, under the
+			// same name, because it answers the same question: the model cannot ask which args a
+			// staging context was built with, so without it the panel cannot tell this dataset's
+			// columns from the last one's, still on screen. Exactly one door is ever live.
+			prerunDatasetValidationInfo: smart.createJsonResource({
+				door: "dataset",
+				datasetRef: args.datasetRef,
+				format: args.format
+			})
 		},
 		exports: {}
 	}

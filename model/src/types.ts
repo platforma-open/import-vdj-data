@@ -14,11 +14,8 @@ export type CountType = "read" | "umi";
 
 export type FileSource = {
   handle: ImportFileHandle;
-  /**
-   * Minted in the UI at the moment the file is picked, not derived from the handle, so the
-   * sample keeps its identity across runs even if the same file is re-selected.
-   */
-  sampleId: string;
+  /** Unique id for the dataset this file holds. Minted when the file is picked. */
+  datasetId: string;
   /** The filename stem — exactly what samples-and-data would have labelled the sample. */
   label: string;
   /**
@@ -79,7 +76,7 @@ export const CHAIN_SLOTS: Record<ChainSelection, BareSetChain[]> = {
  * IMGT is position-unified and chain-agnostic — ANARCI's `number_imgt` takes no chain type at
  * all. Kabat, Chothia, Martin and Wolfguy were defined on antibody structures and ANARCI
  * implements them for `H`/`K`/`L` only, raising "Unimplemented numbering scheme" for a TCR chain
- * (anarci.py:558-592). So a TCR selection can only be numbered under IMGT, and offering the
+ * (anarci.py). So a TCR selection can only be numbered under IMGT, and offering the
  * others would hand the scientist a choice that fails the run.
  */
 export const SCHEMES_FOR_SELECTION: Record<ChainSelection, BareSetScheme[]> = {
@@ -108,6 +105,13 @@ export const CHAIN_SLOT_LABELS: Record<BareSetChain, string> = {
   TCRAlpha: "TCR-α",
   TCRDelta: "TCR-δ",
   TCRGamma: "TCR-ɣ",
+};
+
+/** What to call each numbering scheme in front of the scientist. */
+export const SCHEME_LABELS: Record<BareSetScheme, string> = {
+  imgt: "IMGT",
+  kabat: "Kabat",
+  chothia: "Chothia",
 };
 
 /** What a column can hold, decided by profiling every row of the file. */
@@ -222,14 +226,33 @@ export type BlockData = {
   // --- bare set. Its presence is what selects the bare path in the workflow.
   bareSet?: BareSetMapping;
 
+  /**
+   * What prerun found, kept here so the args projection — which sees only `data` — can gate the run
+   * on it. Written by the UI (`ui/src/app.ts`).
+   *
+   * The verdict carries what it is *about*, so one reached for something no longer selected is
+   * ignored rather than applied. Tagged by which check it is: the two paths through `projectArgs`
+   * that consult a verdict return before reaching each other, so only ever one is live.
+   */
+  prerunCheck?:
+    | {
+        check: "columns";
+        /** The mapping the verdict was reached for — see {@link collisionCheckKey}. */
+        subject: string;
+        /** The id column repeats on rows whose other mapped cells differ, so two records merge. */
+        identityCollides: boolean;
+      }
+    | {
+        check: "dataset";
+        /** The dataset and format the verdict was reached for — see {@link datasetCheckKey}. */
+        subject: string;
+        /** The dataset carries the columns its declared format needs. */
+        columnsPresent: boolean;
+      };
+
   // --- view state. None of this is projected anywhere.
   tableState: PlDataTableStateV2;
   settingsOpen: boolean;
-  qiagenColumnsPresent: boolean;
-  immunoSeqColumnsPresent: boolean;
-  mixcrColumnsPresent: boolean;
-  crColumnsPresent: boolean;
-  airrColumnsPresent: boolean;
 };
 
 /** The V1 `args` bucket, as it sits in projects saved before the V3 migration. */
@@ -250,17 +273,12 @@ export type LegacyBlockArgs = {
 export type LegacyUiState = {
   tableState?: PlDataTableStateV2;
   settingsOpen?: boolean;
-  qiagenColumnsPresent?: boolean;
-  immunoSeqColumnsPresent?: boolean;
-  mixcrColumnsPresent?: boolean;
-  crColumnsPresent?: boolean;
-  airrColumnsPresent?: boolean;
 };
 
 /**
  * The SDK's `substituteSpecialCharacters` class, mirrored so the model can refuse a collision
  * without a round trip to the workflow. Kept in step with
- * `sdk/workflow-tengo/src/strings.lib.tengo:4`.
+ * the SDK's `strings.lib.tengo`.
  */
 const SPECIAL_CHARACTERS = /[-_,.:; +()!<>[\]}{"\\/:$%^#@*&]+/g;
 
@@ -276,6 +294,51 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
     (byToken[token] ??= []).push(p.header);
   }
   return Object.fromEntries(Object.entries(byToken).filter(([, hs]) => hs.length > 1));
+}
+
+/**
+ * What a collision verdict is about. A collision is an identity repeated on rows whose *other
+ * mapped cells* differ, so the sequence columns are part of the question and remapping a chain
+ * invalidates the answer. Sorted, so the key does not depend on the order columns were picked in.
+ */
+export function collisionCheckKey(
+  mapping: Pick<BareSetMapping, "identity" | "sequences"> | undefined,
+): string | undefined {
+  if (mapping === undefined || !mapping.identity) return undefined;
+  const mapped = Object.entries(mapping.sequences ?? {})
+    .filter(([, column]) => Boolean(column))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([slot, column]) => `${slot}=${column}`);
+  return [mapping.identity, ...mapped].join("\u0000");
+}
+
+/**
+ * What a dataset-door verdict is about: the dataset picked and the format it was declared to be.
+ * Both, because the same dataset answers differently under a different format.
+ *
+ * `undefined` when there is nothing to check yet — no dataset, or no format — which is also how
+ * the caller tells the dataset door from the file door.
+ */
+export function datasetCheckKey(
+  data: Pick<BlockData, "datasetRef" | "format">,
+): string | undefined {
+  const ref = data.datasetRef;
+  if (ref === undefined || data.format === undefined) return undefined;
+  return [ref.blockId, ref.name, data.format].join("\u0000");
+}
+
+/**
+ * The mapping with everything that names a column dropped. The receptor declaration and the
+ * numbering scheme describe the biology and outlive any one file; the column names do not.
+ */
+export function forgetMappedColumns(bare: BareSetMapping | undefined): BareSetMapping | undefined {
+  if (bare === undefined) return undefined;
+  return {
+    identity: "",
+    chainSelection: bare.chainSelection,
+    sequences: {},
+    scheme: bare.scheme,
+  };
 }
 
 /**

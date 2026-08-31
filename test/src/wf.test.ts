@@ -14,6 +14,7 @@
   real panel a sequence-derived key merges 119 of 1,243 antibodies.
 */
 
+import { collisionCheckKey } from "@platforma-open/milaboratories.import-vdj.model";
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
 import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
 import type { PTableHandle } from "@platforma-sdk/model";
@@ -29,17 +30,28 @@ import { ImportVdjBlockPointer } from "this-block";
  * visibly `tableState`, which the stats table is built from.
  */
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
+  const bareSet = fields.bareSet as
+    | { identity: string; sequences: Record<string, string> }
+    | undefined;
   return {
     defaultBlockLabel: "",
     customBlockLabel: "",
     chains: [],
     tableState: createPlDataTableStateV2(),
     settingsOpen: true,
-    qiagenColumnsPresent: false,
-    immunoSeqColumnsPresent: false,
-    mixcrColumnsPresent: false,
-    crColumnsPresent: false,
-    airrColumnsPresent: false,
+    // `args` refuses a bare set whose columns prerun has not cleared, and the verdict reaches data
+    // through a UI watcher these tests never run. So stand in for it — clean unless the test passes
+    // its own `prerunCheck`, which `...fields` below lets it do. Keyed with the block's own rule,
+    // so a change to what a verdict covers fails here rather than silently passing.
+    ...(collisionCheckKey(bareSet) !== undefined
+      ? {
+          prerunCheck: {
+            check: "columns" as const,
+            subject: collisionCheckKey(bareSet)!,
+            identityCollides: false,
+          },
+        }
+      : {}),
     ...fields,
   };
 }
@@ -307,33 +319,57 @@ blockTest(
           sequences: { IGHeavy: "VH", IGLight: "VL" },
           scheme: SCHEME,
         },
+        // What the UI mirrors in once prerun answers. Stated here because the mirror is a UI
+        // watcher and these tests drive the block directly.
+        prerunCheck: {
+          check: "columns" as const,
+          subject: collisionCheckKey({
+            identity: "mAb ID",
+            sequences: { IGHeavy: "VH", IGLight: "VL" },
+          })!,
+          identityCollides: true,
+        },
       }),
     });
 
     const state = (await awaitStableState(project.getBlockState(blockId), 300000)) as {
       outputs?: Record<string, unknown>;
-      inputsValid?: boolean;
-      canRun?: boolean;
     };
 
-    const wrapped = state.outputs?.identityCollisions as
-      | { value?: string[] }
-      | string[]
-      | undefined;
-    const collisions = (Array.isArray(wrapped) ? wrapped : (wrapped?.value ?? [])) as string[];
+    // The refusal the block's name promises: a colliding id column makes args invalid, so the
+    // interface offers no Run. Read from the overview, not the block state — the block state
+    // carries outputs, and runnability lives on the overview.
+    const overview = (await project.overview.getValue())!;
+    const blockOverview = overview.blocks.find((b) => b.id === blockId)!;
+    expect(blockOverview.inputsValid).toBe(false);
+    expect(blockOverview.canRun).toBe(false);
+
+    type Verdict = { key: string; values: string[] };
+    const wrapped = state.outputs?.identityCollisions as { value?: Verdict } | Verdict | undefined;
+    const found = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Verdict | undefined;
+
+    // The verdict names the mapping it is about — the id column AND the sequence columns, since a
+    // collision is a repeated id whose other mapped cells differ. Keyed on the id alone, a clean
+    // verdict outlived a remapped chain and the run gate accepted it, merging records.
+    expect(found?.key).toBe(
+      collisionCheckKey({ identity: "mAb ID", sequences: { IGHeavy: "VH", IGLight: "VL" } }),
+    );
+    // Remapping a chain is a different question, so the old verdict must not answer it.
+    expect(found?.key).not.toBe(
+      collisionCheckKey({ identity: "mAb ID", sequences: { IGHeavy: "VH", IGLight: "VL2" } }),
+    );
+    const collisions = found?.values ?? [];
 
     // The differing pair is reported, so the scientist is told which value to fix.
     expect(collisions).toContain("AB-001");
     // The identical pair is not: repeating a record verbatim discards nothing.
     expect(collisions).not.toContain("AB-002");
 
-    // GAP, verified here rather than assumed: `argsValid` disables Run in the interface, but
-    // the platform does not enforce it — `project.runBlock` resolves happily on an invalid
-    // block. So "the run does not start" holds for a scientist clicking Run and not for an API
-    // caller, and a colliding set driven through the API would still import and merge records.
-    // Closing that needs a workflow-side refusal, which is data-dependent and therefore a
-    // separate awaiting template.
-    await expect(project.runBlock(blockId)).resolves.toBeUndefined();
+    // Enforced by the platform, not only by the interface: invalid args means no args to render a
+    // production from, so an API caller cannot drive a colliding set through either. This was a
+    // documented gap while the collision verdict sat outside the gate — args stayed valid, and
+    // `runBlock` imported a set that merged records without complaint.
+    await expect(project.runBlock(blockId)).rejects.toThrow(/currentArgs not set/);
   },
 );
 
@@ -458,7 +494,7 @@ blockTest(
         chains: ["IGHeavy", "IGLight"],
         fileSource: {
           handle,
-          sampleId: "SDIRECT000000000000000001",
+          datasetId: "SDIRECT000000000000000001",
           label: "bare-paired-set",
           extension: "tsv",
         },
@@ -511,6 +547,16 @@ blockTest(
       "Affinity (nM)": "Double",
     });
 
+    // The profile names the dataset it came from. The panel reads this to tell this file's columns
+    // from the previous file's, still retained while the new one is scanned.
+    expect(
+      (
+        state.outputs?.prerunDatasetValidationInfo as
+          | { value?: { door?: string; datasetId?: string } }
+          | undefined
+      )?.value,
+    ).toEqual({ door: "file", datasetId: "SDIRECT000000000000000001" });
+
     // Indistinguishable from the pool door: same axes, same key, same columns — abundance
     // alone on [sampleId, variantKey], every property of the record on the record axis.
     for (const c of columns) {
@@ -559,7 +605,7 @@ blockTest(
         },
         fileSource: {
           handle,
-          sampleId: "SDIRECT000000000000000001",
+          datasetId: "SDIRECT000000000000000001",
           label: "bare-paired-set",
           extension: "tsv",
         },
@@ -614,7 +660,7 @@ blockTest(
         chains: ["IGHeavy", "IGLight"],
         fileSource: {
           handle,
-          sampleId: "SCHAIN0000000000000000001",
+          datasetId: "SCHAIN0000000000000000001",
           label: "bare-paired-set",
           extension: "tsv",
         },
@@ -677,7 +723,7 @@ blockTest(
         format: "custom",
         fileSource: {
           handle,
-          sampleId: "STCR00000000000000000001",
+          datasetId: "STCR00000000000000000001",
           label: "bare-tcrab-set",
           extension: "tsv",
         },
@@ -761,7 +807,7 @@ blockTest(
         chains: ["IGHeavy", "IGLight"],
         fileSource: {
           handle,
-          sampleId: "SXLSX00000000000000000001",
+          datasetId: "SXLSX00000000000000000001",
           label: "bare-paired-set",
           extension: "xlsx",
         },

@@ -1,4 +1,4 @@
-import type { InferOutputsType, PColumnKey, PColumnValue } from "@platforma-sdk/model";
+import type { InferOutputsType, PColumnKey, PColumnValue, PlRef } from "@platforma-sdk/model";
 import {
   BlockModelV3,
   DataColumn,
@@ -6,8 +6,15 @@ import {
   TreeNodeAccessor,
 } from "@platforma-sdk/model";
 import { blockDataModel } from "./data-model";
-import type { BlockArgs, BlockData, ColumnDescription, ColumnProfile } from "./types";
-import { bareSetValid } from "./types";
+import type {
+  BareSetMapping,
+  BlockArgs,
+  BlockData,
+  ColumnDescription,
+  ColumnProfile,
+  ImportFormat,
+} from "./types";
+import { bareSetValid, collisionCheckKey, datasetCheckKey } from "./types";
 
 export * from "./types";
 export { upgradeLegacyData } from "./data-model";
@@ -39,14 +46,42 @@ function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
 }
 
 /**
- * The workflow's view of the block, and the only place validation lives.
- *
- * Three jobs, in order: refuse what cannot run (by throwing), drop the door that is not in
- * use, and drop the fields the chosen path never reads. What it deliberately does NOT do is
- * reorder `chains`: canonicalising a set the user picked in their own order would change the
- * args of every project already on disk, and buys only the rare case of someone re-picking the
- * same chains in a different order.
+ * Refuse a bare set whose mapped columns prerun has not cleared — including when there is no
+ * verdict yet. The record key is the identity's hash, so running before the answer is in is how two
+ * different records silently become one.
  */
+function requireCheckedColumns(data: BlockData): void {
+  const columns = collisionCheckKey(data.bareSet);
+  if (columns === undefined) return; // bareSetValid has already refused
+  const check = data.prerunCheck;
+  if (check?.check !== "columns" || check.subject !== columns) {
+    throw new Error("Validating the selected columns");
+  }
+  if (check.identityCollides) {
+    throw new Error(`"${data.bareSet?.identity}" repeats on rows that are not identical`);
+  }
+}
+
+/**
+ * Refuse the run until prerun has judged the dataset and format actually selected.
+ *
+ * The verdict carries the dataset it was reached for, so one left over from a previous selection
+ * reads as "not judged yet" rather than being applied to this one. That is the whole of the rule
+ * the old per-format flags broke: they were keyed on the format alone, so switching between two
+ * datasets of the same format left the previous verdict standing and Run armed on it.
+ */
+function requireCheckedDataset(data: BlockData): void {
+  const dataset = datasetCheckKey(data);
+  if (dataset === undefined) return; // the file door, or nothing picked yet
+  const check = data.prerunCheck;
+  if (check?.check !== "dataset" || check.subject !== dataset) {
+    throw new Error("Validating the selected columns");
+  }
+  if (!check.columnsPresent) {
+    throw new Error(`The dataset does not carry the columns a ${data.format} dataset needs`);
+  }
+}
+
 function projectArgs(data: BlockData): BlockArgs {
   const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
 
@@ -60,6 +95,8 @@ function projectArgs(data: BlockData): BlockArgs {
     datasetRef,
     fileSource,
     format,
+    // Not sorted: canonicalising an order the user chose would change the args of every project
+    // already on disk, to buy the rare re-pick of the same chains in a different order.
     chains,
     customMapping,
     primaryCountType,
@@ -72,6 +109,7 @@ function projectArgs(data: BlockData): BlockArgs {
   // mapping unfurled under a format nobody had chosen.
   if (fileSource !== undefined) {
     if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the file's columns");
+    requireCheckedColumns(data);
     return withoutDatasetDoorMapping(args);
   }
 
@@ -85,6 +123,7 @@ function projectArgs(data: BlockData): BlockArgs {
     // identity column, because the key is the identity's hash and the label is its value.
     if (data.bareSet !== undefined) {
       if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
+      requireCheckedColumns(data);
       return withoutDatasetDoorMapping(args);
     }
 
@@ -100,21 +139,10 @@ function projectArgs(data: BlockData): BlockArgs {
     return args;
   }
 
-  // The per-format flags are written by the UI from the `validationResult` output. They are a
-  // mirror of a derivation, which is a hairpin, but replacing them is a separate change: the
-  // check they stand for needs the file's headers, and the args lambda cannot reach prerun.
-  const presentByFormat: Record<string, boolean> = {
-    qiagen: data.qiagenColumnsPresent === true,
-    immunoSeq: data.immunoSeqColumnsPresent === true,
-    mixcr: data.mixcrColumnsPresent === true,
-    "mixcr-sc": data.mixcrColumnsPresent === true,
-    cellranger: data.crColumnsPresent === true,
-    airr: data.airrColumnsPresent === true,
-    "airr-sc": data.airrColumnsPresent === true,
-  };
-  if (format in presentByFormat && !presentByFormat[format]) {
-    throw new Error(`The file does not carry the columns a ${format} dataset needs`);
-  }
+  // The check needs the dataset's headers, which live in prerun, and a V3 args lambda receives
+  // `data` only. So the verdict is mirrored in — the same hairpin the collision check uses, under
+  // the same contract, which is what keeps it from repeating the per-format flags' mistake.
+  requireCheckedDataset(data);
 
   return args;
 }
@@ -144,15 +172,6 @@ export const platforma = BlockModelV3.create(blockDataModel)
   }))
 
   /**
-   * Identity values that appear on rows which are not identical to each other.
-   *
-   * Not `retentive`: this gates the run, so a stale value is worse than a briefly absent one.
-   *
-   * Read straight from prerun here, and *not* mirrored into `uiState` from a UI watcher. That
-   * mirror is what the format-validity flags do, and it is a hairpin — an output written back
-   * into state that a derivation then reads. It survives on one client and races on two.
-   */
-  /**
    * Drives the upload for a directly-loaded file.
    *
    * `getImportProgress()` is what *starts* the transfer — retrieving the progress is the side
@@ -177,7 +196,19 @@ export const platforma = BlockModelV3.create(blockDataModel)
     { isActive: true },
   )
 
+  /**
+   * Identity values repeated on rows that are not identical, with the mapping they were found
+   * under. One value, so the two can never be read from different runs.
+   *
+   * Not `retentive`: this reports a defect, so a briefly absent verdict beats a stale one.
+   */
   .output("identityCollisions", (ctx) => {
+    const mapping = ctx.prerun
+      ?.resolve({ field: "collisionsFor", allowPermanentAbsence: true })
+      ?.getDataAsJsonOrUndefined<Pick<BareSetMapping, "identity" | "sequences">>();
+    const key = collisionCheckKey(mapping);
+    if (key === undefined) return undefined;
+
     const raw = ctx.prerun
       ?.resolve({ field: "identityCollisions", allowPermanentAbsence: true })
       ?.getDataAsString();
@@ -188,7 +219,7 @@ export const platforma = BlockModelV3.create(blockDataModel)
       .split("\n")
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
-    return lines.slice(1);
+    return { key, values: lines.slice(1) };
   })
 
   .retentiveOutput("datasetOptions", (ctx) => {
@@ -264,6 +295,40 @@ export const platforma = BlockModelV3.create(blockDataModel)
     }
   })
 
+  /**
+   * What the prerun results on screen were computed for. A mismatch with what is selected now
+   * means the panel is still showing the previous one's columns.
+   *
+   * Tagged by door because the two answers are not interchangeable: the file door names a dataset
+   * that IS the file, by a minted id; the dataset door names one already in the result pool, by a
+   * ref. Exactly one door is ever live — `projectArgs` refuses both at once.
+   *
+   * Keyed to the input rather than to "prerun is busy": prerun also re-runs on every mapping edit,
+   * to re-check the identity column.
+   */
+  .retentiveOutput("prerunDatasetValidationInfo", (ctx) => {
+    // Gate on the result the stamp describes, whichever door produced it. The read is marked
+    // unstable, so `retentive` keeps reporting the previous input until the new result lands and
+    // the two can never disagree.
+    const backing =
+      ctx.prerun?.resolve({ field: "columnProfile", allowPermanentAbsence: true }) ??
+      ctx.prerun?.resolve({ field: "headerColumns", allowPermanentAbsence: true });
+    if (backing === undefined) return undefined;
+    if (!backing.getIsReadyOrError()) return undefined;
+    return ctx.prerun
+      ?.resolve({ field: "prerunDatasetValidationInfo", allowPermanentAbsence: true })
+      ?.getDataAsJsonOrUndefined<
+        | { door: "file"; datasetId: string }
+        | { door: "dataset"; datasetRef?: PlRef; format?: ImportFormat }
+      >();
+  })
+
+  /**
+   * Drives the block's loader (`ui/src/app.ts`). Excludes prerun: the loader covers the whole
+   * block, and prerun re-runs while the settings panel is being edited.
+   */
+  .output("isRunning", (ctx) => ctx.outputs?.getIsReadyOrError() === false)
+
   /** Headers of the dataset selected from the pool. Absent on the file door. */
   .retentiveOutput("datasetColumns", (ctx) => {
     const headers = ctx.prerun
@@ -286,143 +351,156 @@ export const platforma = BlockModelV3.create(blockDataModel)
       })
       ?.getDataAsJson<string[]>();
 
-    if (!headerColumns || !ctx.data.format) {
+    // The format comes from prerun's own stamp, not from `ctx.data`. Both halves of the question
+    // then come from the same staging context, so a verdict cannot pair one dataset's headers with
+    // another's format while a switch is in flight — which it could when the format was read live.
+    const stamp = ctx.prerun
+      ?.resolve({ field: "prerunDatasetValidationInfo", allowPermanentAbsence: true })
+      ?.getDataAsJsonOrUndefined<{ door?: string; datasetRef?: PlRef; format?: ImportFormat }>();
+
+    if (!headerColumns || stamp?.door !== "dataset" || !stamp.format || !stamp.datasetRef) {
       return undefined;
     }
 
-    const format = ctx.data.format;
+    const format = stamp.format;
     const headers = headerColumns;
+    // The verdict carries what it is about, so the UI mirrors it in without matching anything.
+    const dataset = datasetCheckKey({ datasetRef: stamp.datasetRef, format });
 
-    if (format === "qiagen") {
-      const qiagenColumns = [
-        "read set",
-        "chain",
-        "V-region",
-        "J-region",
-        "CDR3 nucleotide seq",
-        "CDR3 amino acid seq",
-        "frequency",
-        "rank",
-        "UMIs with analytical threshold",
-        "nucleotide length",
-        "amino acid length",
-      ];
+    const verdict = ((): { isValid: boolean; missingColumns: string[]; format: string } => {
+      if (format === "qiagen") {
+        const qiagenColumns = [
+          "read set",
+          "chain",
+          "V-region",
+          "J-region",
+          "CDR3 nucleotide seq",
+          "CDR3 amino acid seq",
+          "frequency",
+          "rank",
+          "UMIs with analytical threshold",
+          "nucleotide length",
+          "amino acid length",
+        ];
 
-      const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
+        const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
 
-      return {
-        isValid: missingColumns.length === 0,
-        missingColumns,
-        format: "qiagen",
-      };
-    }
-
-    if (format === "immunoSeq") {
-      const hasAny = (aliases: string[]) => aliases.some((alias) => headers.includes(alias));
-      const missingColumns: string[] = [];
-      if (!hasAny(["rearrangement", "nucleotide"])) missingColumns.push("sequence");
-      if (!hasAny(["amino_acid_sequence", "amino_acid", "aminoAcid"]))
-        missingColumns.push("cdr3-aa");
-      if (!hasAny(["v_gene", "v-gene", "vGene", "vGeneName"])) missingColumns.push("v-gene");
-      if (!hasAny(["d_gene", "d-gene", "dGene", "dGeneName"])) missingColumns.push("d-gene");
-      if (!hasAny(["j_gene", "j-gene", "jGene", "jGeneName"])) missingColumns.push("j-gene");
-      if (!hasAny(["v-index", "v_index", "vIndex"])) missingColumns.push("v-begin");
-      if (!hasAny(["count (templates/reads)", "count (reads)", "seq_reads", "reads", "count"])) {
-        missingColumns.push("read-count");
+        return {
+          isValid: missingColumns.length === 0,
+          missingColumns,
+          format: "qiagen",
+        };
       }
 
-      return {
-        isValid: missingColumns.length === 0,
-        missingColumns,
-        format: "immunoSeq",
-      };
-    }
-
-    if (format === "mixcr") {
-      // MiXCR minimal requirements aligned with infer-columns-mixcr.lib.tengo
-      const mixcrRequiredHeaders = ["readCount", "nSeqCDR3", "aaSeqCDR3"];
-
-      const missingColumns = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
-
-      return {
-        isValid: missingColumns.length === 0,
-        missingColumns,
-        format: "mixcr",
-      };
-    }
-
-    if (format === "mixcr-sc") {
-      // Same as MiXCR plus at least one tagValueCELL* column
-      const mixcrRequiredHeaders = ["readCount", "nSeqCDR3", "aaSeqCDR3"];
-      const missingBase = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
-      const hasTagValueCell = headers.some((h) => h.startsWith("tagValueCELL"));
-      const missingColumns = [
-        ...missingBase,
-        ...(hasTagValueCell ? ([] as string[]) : ["tagValueCELL*"]),
-      ];
-      return {
-        isValid: missingColumns.length === 0,
-        missingColumns,
-        format: "mixcr-sc",
-      };
-    }
-
-    if (format === "cellranger") {
-      // Cell Ranger VDJ clones per-chain table minimal required headers
-      const cellrangerRequired = ["cdr3_nt", "cdr3", "v_gene", "j_gene", "barcode"];
-      const missingColumns = cellrangerRequired.filter((col) => !headers.includes(col));
-      return {
-        isValid: missingColumns.length === 0,
-        missingColumns,
-        format: "cellranger",
-      };
-    }
-
-    if (format === "airr" || format === "airr-sc") {
-      // AIRR format uses case-insensitive column names
-      // Required: duplicate_count, junction (CDR3 nt), v_call, j_call
-      // For single-cell: also requires cell_id
-      // Handle case where headerColumns might be a single comma-separated string or array of strings
-      const flattenedHeaders: string[] = [];
-      for (const h of headers) {
-        const str = String(h).trim();
-        // If the string contains commas, split it
-        if (str.includes(",")) {
-          flattenedHeaders.push(
-            ...str
-              .split(",")
-              .map((s) => s.trim())
-              .filter((s) => s.length > 0),
-          );
-        } else {
-          flattenedHeaders.push(str);
+      if (format === "immunoSeq") {
+        const hasAny = (aliases: string[]) => aliases.some((alias) => headers.includes(alias));
+        const missingColumns: string[] = [];
+        if (!hasAny(["rearrangement", "nucleotide"])) missingColumns.push("sequence");
+        if (!hasAny(["amino_acid_sequence", "amino_acid", "aminoAcid"]))
+          missingColumns.push("cdr3-aa");
+        if (!hasAny(["v_gene", "v-gene", "vGene", "vGeneName"])) missingColumns.push("v-gene");
+        if (!hasAny(["d_gene", "d-gene", "dGene", "dGeneName"])) missingColumns.push("d-gene");
+        if (!hasAny(["j_gene", "j-gene", "jGene", "jGeneName"])) missingColumns.push("j-gene");
+        if (!hasAny(["v-index", "v_index", "vIndex"])) missingColumns.push("v-begin");
+        if (!hasAny(["count (templates/reads)", "count (reads)", "seq_reads", "reads", "count"])) {
+          missingColumns.push("read-count");
         }
-      }
-      const headersLower = flattenedHeaders.map((h) => h.toLowerCase());
-      const airrRequired = ["duplicate_count", "junction", "v_call", "j_call"];
-      const missingColumns = airrRequired.filter((req) => !headersLower.includes(req));
 
-      // For single-cell AIRR, also require cell_id
-      if (format === "airr-sc") {
-        const hasCellId = headersLower.includes("cell_id");
-        if (!hasCellId) {
-          missingColumns.push("cell_id");
+        return {
+          isValid: missingColumns.length === 0,
+          missingColumns,
+          format: "immunoSeq",
+        };
+      }
+
+      if (format === "mixcr") {
+        // MiXCR minimal requirements aligned with infer-columns-mixcr.lib.tengo
+        const mixcrRequiredHeaders = ["readCount", "nSeqCDR3", "aaSeqCDR3"];
+
+        const missingColumns = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
+
+        return {
+          isValid: missingColumns.length === 0,
+          missingColumns,
+          format: "mixcr",
+        };
+      }
+
+      if (format === "mixcr-sc") {
+        // Same as MiXCR plus at least one tagValueCELL* column
+        const mixcrRequiredHeaders = ["readCount", "nSeqCDR3", "aaSeqCDR3"];
+        const missingBase = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
+        const hasTagValueCell = headers.some((h) => h.startsWith("tagValueCELL"));
+        const missingColumns = [
+          ...missingBase,
+          ...(hasTagValueCell ? ([] as string[]) : ["tagValueCELL*"]),
+        ];
+        return {
+          isValid: missingColumns.length === 0,
+          missingColumns,
+          format: "mixcr-sc",
+        };
+      }
+
+      if (format === "cellranger") {
+        // Cell Ranger VDJ clones per-chain table minimal required headers
+        const cellrangerRequired = ["cdr3_nt", "cdr3", "v_gene", "j_gene", "barcode"];
+        const missingColumns = cellrangerRequired.filter((col) => !headers.includes(col));
+        return {
+          isValid: missingColumns.length === 0,
+          missingColumns,
+          format: "cellranger",
+        };
+      }
+
+      if (format === "airr" || format === "airr-sc") {
+        // AIRR format uses case-insensitive column names
+        // Required: duplicate_count, junction (CDR3 nt), v_call, j_call
+        // For single-cell: also requires cell_id
+        // Handle case where headerColumns might be a single comma-separated string or array of strings
+        const flattenedHeaders: string[] = [];
+        for (const h of headers) {
+          const str = String(h).trim();
+          // If the string contains commas, split it
+          if (str.includes(",")) {
+            flattenedHeaders.push(
+              ...str
+                .split(",")
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0),
+            );
+          } else {
+            flattenedHeaders.push(str);
+          }
         }
+        const headersLower = flattenedHeaders.map((h) => h.toLowerCase());
+        const airrRequired = ["duplicate_count", "junction", "v_call", "j_call"];
+        const missingColumns = airrRequired.filter((req) => !headersLower.includes(req));
+
+        // For single-cell AIRR, also require cell_id
+        if (format === "airr-sc") {
+          const hasCellId = headersLower.includes("cell_id");
+          if (!hasCellId) {
+            missingColumns.push("cell_id");
+          }
+        }
+
+        return {
+          isValid: missingColumns.length === 0,
+          missingColumns,
+          format: format,
+        };
       }
 
+      // For other formats, validation is handled elsewhere or not needed
       return {
-        isValid: missingColumns.length === 0,
-        missingColumns,
+        isValid: true,
+        missingColumns: [],
         format: format,
       };
-    }
+    })();
 
-    // For other formats, validation is handled elsewhere or not needed
-    return {
-      isValid: true,
-      missingColumns: [],
-      format: format,
-    };
+    return { ...verdict, dataset };
   })
 
   /**
