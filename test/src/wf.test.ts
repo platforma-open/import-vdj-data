@@ -14,12 +14,13 @@
   real panel a sequence-derived key merges 119 of 1,243 antibodies.
 */
 
+import { collisionCheckKey } from "@platforma-open/milaboratories.import-vdj.model";
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
 import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
 import type { PTableHandle } from "@platforma-sdk/model";
 import { createPlDataTableStateV2, uniquePlId } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
-import { collisionCheckKey, ImportVdjBlockPointer } from "this-block";
+import { ImportVdjBlockPointer } from "this-block";
 
 /**
  * A complete `BlockData` from the fields a test actually cares about.
