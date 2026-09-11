@@ -13,6 +13,7 @@ import type {
   ImportFileHandle,
   ImportFormat,
 } from "./types";
+import { SCHEMES_FOR_SELECTION } from "./types";
 
 /**
  * The contract at runtime, for params that arrive from a template file rather than from typed
@@ -149,6 +150,13 @@ const isImportedProperty: Guard<ImportedProperty> = (v): v is ImportedProperty =
  * `bareSetValid` in the model decides that, and it decides it about a mapping the panel is
  * still being filled in -- a declaration whose slots are not all mapped yet is a state the UI
  * reaches, and refusing it would refuse a template exported from that state.
+ *
+ * The scheme is the exception, and it is not a completeness question. A TCR selection can only
+ * be numbered under IMGT, and the panel enforces that from both ends -- the scheme dropdown
+ * offers only what the selection allows, and changing the selection resets a scheme the new
+ * chains cannot carry. So an unnumberable pair is a state the UI cannot reach: refusing it
+ * costs no reachable state, and accepting it would let a hand-written template start a run that
+ * dies in ANARCI with "Unimplemented numbering scheme".
  */
 const isBareSetMapping: Guard<BareSetMapping> = (v): v is BareSetMapping =>
   isPlainObject(v) &&
@@ -156,6 +164,7 @@ const isBareSetMapping: Guard<BareSetMapping> = (v): v is BareSetMapping =>
   oneOf(CHAIN_SELECTIONS)(v.chainSelection) &&
   isSequenceMap(v.sequences) &&
   oneOf(BARE_SET_SCHEMES)(v.scheme) &&
+  SCHEMES_FOR_SELECTION[v.chainSelection].includes(v.scheme) &&
   (isUndefined(v.properties) || arrayOf(isImportedProperty)(v.properties));
 
 /**
@@ -187,7 +196,8 @@ const CONTRACT = {
   bareSet: check(
     isBareSetMapping,
     `a bare set mapping with an identity column, one of: ${vocabularyList(CHAIN_SELECTIONS)}, ` +
-      `its sequence columns, and one of: ${vocabularyList(BARE_SET_SCHEMES)}`,
+      `its sequence columns, and a numbering scheme that selection can carry ` +
+      `(a TCR selection can only be numbered under imgt)`,
   ),
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof BlockParams]-?: Check<NonNullable<BlockParams[K]>> };

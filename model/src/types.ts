@@ -4,7 +4,6 @@ import type { PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
 import type {
   BareSetChain,
   BareSetMapping,
-  BareSetScheme,
   ChainSelection,
   ColumnValueType,
   CountType,
@@ -29,26 +28,9 @@ export const CHAIN_SLOTS: Record<ChainSelection, BareSetChain[]> = {
   TCRGamma: ["TCRGamma"],
 };
 
-/**
- * The numbering schemes each selection can be numbered under.
- *
- * IMGT is position-unified and chain-agnostic — ANARCI's `number_imgt` takes no chain type at
- * all. Kabat, Chothia, Martin and Wolfguy were defined on antibody structures and ANARCI
- * implements them for `H`/`K`/`L` only, raising "Unimplemented numbering scheme" for a TCR chain
- * (anarci.py:558-592). So a TCR selection can only be numbered under IMGT, and offering the
- * others would hand the scientist a choice that fails the run.
- */
-export const SCHEMES_FOR_SELECTION: Record<ChainSelection, BareSetScheme[]> = {
-  IG: ["imgt", "kabat", "chothia"],
-  IGHeavy: ["imgt", "kabat", "chothia"],
-  IGLight: ["imgt", "kabat", "chothia"],
-  TCRAB: ["imgt"],
-  TCRBeta: ["imgt"],
-  TCRAlpha: ["imgt"],
-  TCRGD: ["imgt"],
-  TCRDelta: ["imgt"],
-  TCRGamma: ["imgt"],
-};
+// The scheme/selection pairing lives in the kind: its contract enforces it, and the panel
+// reads the same table so the two can never disagree.
+export { SCHEMES_FOR_SELECTION } from "@platforma-open/milaboratories.import-vdj.kind";
 
 /**
  * What to call each slot in front of the scientist — the same words the receptor/chain list

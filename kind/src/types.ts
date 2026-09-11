@@ -46,6 +46,31 @@ export type ChainSelection =
 /** Numbering conventions the block offers. */
 export type BareSetScheme = "imgt" | "kabat" | "chothia";
 
+/**
+ * The numbering schemes each selection can be numbered under.
+ *
+ * IMGT is position-unified and chain-agnostic — ANARCI's `number_imgt` takes no chain type at
+ * all. Kabat, Chothia, Martin and Wolfguy were defined on antibody structures and ANARCI
+ * implements them for `H`/`K`/`L` only, raising "Unimplemented numbering scheme" for a TCR chain
+ * (anarci.py:558-592). So a TCR selection can only be numbered under IMGT, and offering the
+ * others would hand the scientist a choice that fails the run.
+ *
+ * Lives here rather than in the model because the contract enforces it: the panel cannot
+ * produce an unnumberable pair, so refusing one costs no reachable state and spares a
+ * hand-written template a run that dies in ANARCI.
+ */
+export const SCHEMES_FOR_SELECTION: Record<ChainSelection, BareSetScheme[]> = {
+  IG: ["imgt", "kabat", "chothia"],
+  IGHeavy: ["imgt", "kabat", "chothia"],
+  IGLight: ["imgt", "kabat", "chothia"],
+  TCRAB: ["imgt"],
+  TCRBeta: ["imgt"],
+  TCRAlpha: ["imgt"],
+  TCRGD: ["imgt"],
+  TCRDelta: ["imgt"],
+  TCRGamma: ["imgt"],
+};
+
 /** What a column can hold, decided by profiling every row of the file. */
 export type ColumnValueType = "Long" | "Double" | "String";
 

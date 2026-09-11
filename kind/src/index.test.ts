@@ -120,9 +120,35 @@ describe("bareSet", () => {
     expect(parse({ bareSet })).toEqual({ bareSet });
   });
 
-  it.each(["imgt", "kabat", "chothia"])("accepts the %s scheme", (scheme) => {
+  it.each(["imgt", "kabat", "chothia"])("accepts an IG selection numbered under %s", (scheme) => {
     const bareSet = { ...BARE_SET, scheme };
     expect(parse({ bareSet })).toEqual({ bareSet });
+  });
+
+  it.each(["TCRAB", "TCRBeta", "TCRAlpha", "TCRGD", "TCRDelta", "TCRGamma"])(
+    "accepts a %s selection under imgt",
+    (chainSelection) => {
+      const bareSet = {
+        ...BARE_SET,
+        chainSelection,
+        sequences: { TCRBeta: "CDR3 aa" },
+        scheme: "imgt",
+      };
+      expect(parse({ bareSet })).toEqual({ bareSet });
+    },
+  );
+
+  // ANARCI implements kabat and chothia for H/K/L only and raises "Unimplemented numbering
+  // scheme" for a TCR chain. The panel cannot produce these pairs -- the scheme dropdown is
+  // filtered by the selection, and changing the selection resets an incompatible scheme -- so
+  // refusing them here costs no reachable state.
+  it.each([
+    ["TCRAB", "kabat"],
+    ["TCRBeta", "chothia"],
+    ["TCRGamma", "kabat"],
+  ])("rejects a %s selection numbered under %s", (chainSelection, scheme) => {
+    const bareSet = { ...BARE_SET, chainSelection, sequences: { TCRBeta: "CDR3 aa" }, scheme };
+    expect(() => parse({ bareSet })).toThrow("'bareSet' must be a bare set mapping");
   });
 
   it.each([
