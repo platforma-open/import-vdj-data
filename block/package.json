@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "files": [
     "dist",
     "block-pack"
@@ -27,6 +27,7 @@
   "devDependencies": {
     "@milaboratories/ts-builder": "catalog:",
     "@milaboratories/ts-configs": "catalog:",
+    "@platforma-open/milaboratories.import-vdj.kind": "workspace:*",
     "@platforma-open/milaboratories.import-vdj.model": "workspace:*",
     "@platforma-open/milaboratories.import-vdj.ui": "workspace:*",
     "@platforma-open/milaboratories.import-vdj.workflow": "workspace:*",

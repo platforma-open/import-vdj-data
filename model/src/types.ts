@@ -1,60 +1,19 @@
-import type { ImportFileHandle, PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
+import type { PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
+// The import vocabularies, the file source and the bare-set mapping live in the kind: its
+// init-params contract names them and a kind cannot import from the model.
+import type {
+  BareSetChain,
+  BareSetMapping,
+  BareSetScheme,
+  ChainSelection,
+  ColumnValueType,
+  CountType,
+  FileSource,
+  ImportedProperty,
+  ImportFormat,
+} from "@platforma-open/milaboratories.import-vdj.kind";
 
-export type ImportFormat =
-  | "immunoSeq"
-  | "qiagen"
-  | "mixcr"
-  | "mixcr-sc"
-  | "cellranger"
-  | "airr"
-  | "airr-sc"
-  | "custom";
-
-export type CountType = "read" | "umi";
-
-export type FileSource = {
-  handle: ImportFileHandle;
-  /** Unique id for the dataset this file holds. Minted when the file is picked. */
-  datasetId: string;
-  /** The filename stem — exactly what samples-and-data would have labelled the sample. */
-  label: string;
-  /**
-   * What kind of file this is. `xlsx` is converted to csv by the workflow before anything
-   * reads it, so the pipeline only ever sees csv or tsv.
-   */
-  extension: "csv" | "tsv" | "xlsx";
-};
-
-/**
- * The mapping slots a scientist can assign a sequence column to.
- *
- * Named in the `pl7.app/vdj/chain` vocabulary the block's bulk path already uses, rather than
- * the A/B of `pl7.app/vdj/scClonotypeChain`: a mapped chain is a locus, and one mapped chain is
- * a bulk shape. The workflow translates to A/B where the paired-chain domain needs it.
- */
-export type BareSetChain = "IGHeavy" | "IGLight" | "TCRBeta" | "TCRAlpha" | "TCRDelta" | "TCRGamma";
-
-/**
- * What the scientist declares they are importing — a receptor, or one of its chains.
- *
- * The declaration decides how many sequence columns the panel asks for, and it is a statement
- * rather than an inference. Before this, "paired or single-chain" was read off how many slots
- * happened to be filled, so a paired panel with the light column not yet mapped was
- * indistinguishable from a deliberately heavy-only one — and the two emit different shapes.
- */
-export type ChainSelection =
-  | "IG"
-  | "IGHeavy"
-  | "IGLight"
-  | "TCRAB"
-  | "TCRBeta"
-  | "TCRAlpha"
-  | "TCRGD"
-  | "TCRDelta"
-  | "TCRGamma";
-
-/** Numbering conventions the block offers. */
-export type BareSetScheme = "imgt" | "kabat" | "chothia";
+export type * from "@platforma-open/milaboratories.import-vdj.kind";
 
 /** The sequence columns each selection asks for, in emission order. */
 export const CHAIN_SLOTS: Record<ChainSelection, BareSetChain[]> = {
@@ -70,26 +29,9 @@ export const CHAIN_SLOTS: Record<ChainSelection, BareSetChain[]> = {
   TCRGamma: ["TCRGamma"],
 };
 
-/**
- * The numbering schemes each selection can be numbered under.
- *
- * IMGT is position-unified and chain-agnostic — ANARCI's `number_imgt` takes no chain type at
- * all. Kabat, Chothia, Martin and Wolfguy were defined on antibody structures and ANARCI
- * implements them for `H`/`K`/`L` only, raising "Unimplemented numbering scheme" for a TCR chain
- * (anarci.py). So a TCR selection can only be numbered under IMGT, and offering the
- * others would hand the scientist a choice that fails the run.
- */
-export const SCHEMES_FOR_SELECTION: Record<ChainSelection, BareSetScheme[]> = {
-  IG: ["imgt", "kabat", "chothia"],
-  IGHeavy: ["imgt", "kabat", "chothia"],
-  IGLight: ["imgt", "kabat", "chothia"],
-  TCRAB: ["imgt"],
-  TCRBeta: ["imgt"],
-  TCRAlpha: ["imgt"],
-  TCRGD: ["imgt"],
-  TCRDelta: ["imgt"],
-  TCRGamma: ["imgt"],
-};
+// The scheme/selection pairing lives in the kind: its contract enforces it, and the panel
+// reads the same table so the two can never disagree.
+export { SCHEMES_FOR_SELECTION } from "@platforma-open/milaboratories.import-vdj.kind";
 
 /**
  * What to call each slot in front of the scientist — the same words the receptor/chain list
@@ -114,9 +56,6 @@ export const SCHEME_LABELS: Record<BareSetScheme, string> = {
   chothia: "Chothia",
 };
 
-/** What a column can hold, decided by profiling every row of the file. */
-export type ColumnValueType = "Long" | "Double" | "String";
-
 /**
  * Every column of a directly-loaded file, profiled over the whole file.
  *
@@ -127,46 +66,6 @@ export type ColumnProfile = {
   headers: string[];
   types: Record<string, ColumnValueType>;
   aminoAcid: string[];
-};
-
-export type ImportedProperty = {
-  /** The source header, exactly as the file wrote it. It becomes the column's label. */
-  header: string;
-  /**
-   * Detected, never chosen. Written when the scientist accepts the column, from the profile the
-   * whole-file scan produced — so the panel asks no type question and the answer cannot be
-   * wrong about a value it never saw.
-   */
-  valueType: ColumnValueType;
-};
-
-export type BareSetMapping = {
-  /**
-   * The column whose value identifies the record. Required, never inferred: the record key
-   * is its hash and the record label is its value, so a set without one has nothing to key on.
-   */
-  identity: string;
-  /**
-   * What is being imported. Decides which sequence slots the panel offers, and therefore
-   * whether the emitted set is paired or bulk-shaped.
-   */
-  chainSelection: ChainSelection;
-  /**
-   * Amino-acid variable domain per chain, keyed by the slot the column was assigned to — so the
-   * file needs no chain column and nothing is matched against a locus map. A row carrying both
-   * chains is unpivoted into one record, not split into two.
-   */
-  sequences: Partial<Record<BareSetChain, string>>;
-  /** The numbering convention ANARCI is asked for, and the one recorded on every region. */
-  scheme: BareSetScheme;
-  /**
-   * Non-sequence columns the scientist accepted as record properties. Offered rather than
-   * discarded: a column holding anything the canonical vocabulary never anticipated has no slot
-   * to be given, however ordinary the value is.
-   *
-   * Each carries the type the whole-file profile detected for it.
-   */
-  properties?: ImportedProperty[];
 };
 
 export type ColumnDescription = {

@@ -5,6 +5,7 @@ import {
   createPlDataTableV3,
   TreeNodeAccessor,
 } from "@platforma-sdk/model";
+import { kind } from "@platforma-open/milaboratories.import-vdj.kind";
 import { blockDataModel } from "./data-model";
 import type {
   BareSetMapping,
@@ -149,7 +150,7 @@ function projectArgs(data: BlockData): BlockArgs {
 
 // Named `platforma` because the structurer-generated block facade
 // (block/src/index.ts) imports that name. Every V3 block uses it too.
-export const platforma = BlockModelV3.create(blockDataModel)
+export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind })
 
   .args<BlockArgs>(projectArgs)
 
@@ -169,6 +170,30 @@ export const platforma = BlockModelV3.create(blockDataModel)
     customMapping: data.customMapping,
     primaryCountType: data.primaryCountType,
     bareSet: data.bareSet,
+  }))
+
+  /**
+   * The import as it was set up, for a project exported as a template.
+   *
+   * Not the exact inverse of the contract: `fileSource` is accepted there but is not sent
+   * here. The setup travels, the data does not -- a handle names a file on the installation
+   * that picked it (`upload://` is signed with that installation's own secret) and even an
+   * `index://` reference resolves only where its storage is mounted, so a template carrying
+   * one would mean a different import for the next project than for this one. What does travel
+   * is how the columns are read: the block a template seeds is this import waiting for its
+   * file, and the mapping is already the one that was set up.
+   *
+   * `defaultBlockLabel` is not sent either -- the panel derives it from the chosen source.
+   */
+  .templateParams((data) => ({
+    datasetRef: data.datasetRef,
+    format: data.format,
+    chains: data.chains,
+    customMapping: data.customMapping,
+    primaryCountType: data.primaryCountType,
+    secondaryCountType: data.secondaryCountType,
+    bareSet: data.bareSet,
+    customBlockLabel: data.customBlockLabel,
   }))
 
   /**

@@ -1,5 +1,15 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.9.0
+
+### Minor Changes
+
+- 9fac67b: Add the block kind.
+
+  The block gains an init-params contract, so a project template can create it
+  with the import already mapped. The import vocabularies, the file source and
+  the bare-set mapping now live in the kind and are re-exported by the model.
+
 ## 1.8.1
 
 ### Patch Changes

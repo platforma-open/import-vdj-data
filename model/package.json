@@ -1,6 +1,6 @@
 {
   "name": "@platforma-open/milaboratories.import-vdj.model",
-  "version": "1.12.0",
+  "version": "1.13.0",
   "private": true,
   "description": "Block model",
   "type": "module",
@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@milaboratories/helpers": "catalog:",
+    "@platforma-open/milaboratories.import-vdj.kind": "workspace:*",
     "@platforma-sdk/model": "catalog:"
   },
   "devDependencies": {

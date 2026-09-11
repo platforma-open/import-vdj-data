@@ -2,6 +2,7 @@
 '@platforma-open/milaboratories.import-vdj.workflow': patch
 '@platforma-open/milaboratories.import-vdj.model': patch
 '@platforma-open/milaboratories.import-vdj.ui': patch
+'@platforma-open/milaboratories.import-vdj.kind': patch
 '@platforma-open/milaboratories.import-vdj': patch
 ---
 
@@ -77,7 +78,8 @@ a file nobody had read yet, against headers it might not even contain.
   single `prerunDatasetValidationInfo`, tagged by door: `{ door: "file", datasetId }` or
   `{ door: "dataset", datasetRef, format }`. Tagged rather than flattened because the two answers
   are not interchangeable — the file door names a dataset that *is* the file, the dataset door
-  names one already in the pool — and side by side they otherwise read as one id in two formats. `FileSource.sampleId` is renamed `datasetId` to match: one file is
+  names one already in the pool — and side by side they otherwise read as one id in two formats. `FileSource.sampleId` is renamed `datasetId` to match — in the kind's
+  init-params contract as well as in block data, since the type now lives there: one file is
   one dataset, and it is only *today* that the dataset is also one sample, which is why that value
   also mints the `pl7.app/sampleId` key. A file carrying several samples would name those from its
   own contents while this stayed the identity of the file they came from. The value mints an axis
