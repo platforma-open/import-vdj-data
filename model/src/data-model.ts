@@ -1,4 +1,5 @@
 import { createPlDataTableStateV2, DataModelBuilder } from "@platforma-sdk/model";
+import { kind } from "@platforma-open/milaboratories.import-vdj.kind";
 import type { BlockData, LegacyBlockArgs, LegacyUiState } from "./types";
 
 /** The six chains a fresh block offers. Unchanged from V1's `withArgs` default. */
@@ -59,12 +60,21 @@ export function upgradeLegacyData({
   };
 }
 
-export const blockDataModel = new DataModelBuilder()
+export const blockDataModel = new DataModelBuilder({ kind })
   .from<BlockData>("v1")
   .upgradeLegacy<LegacyBlockArgs, LegacyUiState>(upgradeLegacyData)
-  .init(() => ({
+  .init(({ params }) => ({
     ...viewStateDefaults(),
+    // Left empty on purpose: the panel derives it from the chosen source, so a
+    // value put here could only disagree with what the block is showing.
     defaultBlockLabel: "",
-    customBlockLabel: "",
-    chains: DEFAULT_CHAINS,
+    customBlockLabel: params?.customBlockLabel ?? "",
+    datasetRef: params?.datasetRef,
+    fileSource: params?.fileSource,
+    format: params?.format,
+    chains: params?.chains ?? DEFAULT_CHAINS,
+    customMapping: params?.customMapping,
+    primaryCountType: params?.primaryCountType,
+    secondaryCountType: params?.secondaryCountType,
+    bareSet: params?.bareSet,
   }));

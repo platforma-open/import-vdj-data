@@ -2,6 +2,9 @@
   "name": "@platforma-open/milaboratories.import-vdj.xlsx-to-csv",
   "version": "1.1.1",
   "description": "Convert the first worksheet of a workbook to CSV so the pipeline only ever sees csv/tsv",
+  "files": [
+    "./dist/**/*"
+  ],
   "type": "module",
   "scripts": {
     "build": "block-tools software build",
@@ -9,9 +12,6 @@
     "changeset": "changeset",
     "version-packages": "changeset version"
   },
-  "files": [
-    "./dist/**/*"
-  ],
   "dependencies": {},
   "devDependencies": {
     "@platforma-open/milaboratories.runenv-python-3": "catalog:",

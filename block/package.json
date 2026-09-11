@@ -27,6 +27,7 @@
   "devDependencies": {
     "@milaboratories/ts-builder": "catalog:",
     "@milaboratories/ts-configs": "catalog:",
+    "@platforma-open/milaboratories.import-vdj.kind": "workspace:*",
     "@platforma-open/milaboratories.import-vdj.model": "workspace:*",
     "@platforma-open/milaboratories.import-vdj.ui": "workspace:*",
     "@platforma-open/milaboratories.import-vdj.workflow": "workspace:*",
