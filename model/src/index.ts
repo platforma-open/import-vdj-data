@@ -205,7 +205,7 @@ export const platforma = BlockModelV3.create(blockDataModel)
   .output("identityCollisions", (ctx) => {
     const mapping = ctx.prerun
       ?.resolve({ field: "collisionsFor", allowPermanentAbsence: true })
-      ?.getDataAsJsonOrUndefined<Pick<BareSetMapping, "identity" | "sequences">>();
+      ?.getDataAsJsonOrUndefined<Pick<BareSetMapping, "identity">>();
     const key = collisionCheckKey(mapping);
     if (key === undefined) return undefined;
 

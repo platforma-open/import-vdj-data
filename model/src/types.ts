@@ -239,7 +239,7 @@ export type BlockData = {
         check: "columns";
         /** The mapping the verdict was reached for — see {@link collisionCheckKey}. */
         subject: string;
-        /** The id column repeats on rows whose other mapped cells differ, so two records merge. */
+        /** The id column repeats on rows that are not identical, so two records would merge. */
         identityCollides: boolean;
       }
     | {
@@ -297,19 +297,19 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
 }
 
 /**
- * What a collision verdict is about. A collision is an identity repeated on rows whose *other
- * mapped cells* differ, so the sequence columns are part of the question and remapping a chain
- * invalidates the answer. Sorted, so the key does not depend on the order columns were picked in.
+ * What a collision verdict is about: the id column, and nothing else in the mapping.
+ *
+ * A collision is an id repeated on rows that are not identical, compared over *every* column of
+ * the raw file (`bare-set-collisions.tpl.tengo`), so remapping a chain or accepting a property
+ * cannot change the answer — naming them would discard a sound verdict on every mapping edit and
+ * re-scan the file to reach it again. The file is not in the key either: `prerunCheck` is dropped
+ * outright when the file or dataset changes.
  */
 export function collisionCheckKey(
-  mapping: Pick<BareSetMapping, "identity" | "sequences"> | undefined,
+  mapping: Pick<BareSetMapping, "identity"> | undefined,
 ): string | undefined {
   if (mapping === undefined || !mapping.identity) return undefined;
-  const mapped = Object.entries(mapping.sequences ?? {})
-    .filter(([, column]) => Boolean(column))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([slot, column]) => `${slot}=${column}`);
-  return [mapping.identity, ...mapped].join("\u0000");
+  return mapping.identity;
 }
 
 /**

@@ -32,11 +32,29 @@ a file nobody had read yet, against headers it might not even contain.
   and the panel always warned, but the warning was only a warning, and a run driven through the API
   imported the merged set without complaint. Run is now refused both while the verdict is
   outstanding and when it reports a repeat, and the platform enforces it as well as the interface.
+- **The rows are compared whole.** The check compared the id column and the mapped sequences,
+  but the import carries the accepted properties too and collapses on the id's hash alone, so two
+  rows agreeing on their id and both sequences while disagreeing on a property passed the check —
+  and the import then kept the first row's values, dropped the other's, and said nothing. The
+  comparison is now over every column of the raw file, not the ones the import happens to keep:
+  two rows given one name while disagreeing anywhere are two different things, and that is worth
+  the scientist's attention whether or not the disagreeing column is one they asked to import.
+  Files that imported before may now be refused — where they are, the id column has failed to
+  identify the record, and the fix is the file or a different id column. The flip side is that a
+  column nobody looks at now decides the verdict: a row counter or a stray trailing space makes
+  every repeated id a conflict, so the verbatim-repeat allowance is rare in files carrying a
+  per-row unique column.
+- **The id column is checked as soon as it is picked.** The check needed at least one sequence
+  mapped, because it compared the sequence columns. Comparing whole rows removed that dependency,
+  so a column that does not identify the records is reported at the moment it is chosen rather
+  than after the rest of the mapping is finished.
 - **The warning names the mapping it is about.** It used to compare against the freshly picked
   column while the verdict was still the previous mapping's, so changing an offending column flashed
-  the old accusation under the new selection. What a verdict covers is the id column *and* the
-  sequence columns, since a collision is a repeated id whose other mapped cells differ — keyed on
-  the id alone, a clean verdict outlived a remapped chain and the run gate accepted it. It also listed up to ten repeated values; it now lists three and a count,
+  the old accusation under the new selection. What a verdict covers is the id column, and — now
+  that whole rows are compared — nothing else: the answer is a property of the file and the column
+  chosen to identify its records, so remapping a chain or accepting another property reaches the
+  same verdict instead of discarding a sound one and re-running a whole-file scan to be told the
+  same thing. It also listed up to ten repeated values; it now lists three and a count,
   printed whole, since the id column can hold sequences and trimming those hides what tells them
   apart.
 - **Run waits for the dataset to be judged.** For the seven non-custom formats Run was gated on

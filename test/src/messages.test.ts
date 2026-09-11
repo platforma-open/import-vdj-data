@@ -58,9 +58,26 @@ describe("ui messages", () => {
     expect(identityCollisionMessage(undefined, mapping)).toBe("");
   });
 
-  test("a verdict for a different mapping says nothing", () => {
+  test("a verdict for a different id column says nothing", () => {
     const other = { identity: "other", sequences: { IGHeavy: "VH" } } as never;
     expect(identityCollisionMessage({ key: keyFor(other), values: ["x"] }, mapping)).toBe("");
+  });
+
+  test("the rest of the mapping is not part of the question", () => {
+    // Whole rows are compared, so a remapped chain or a new property reaches the same verdict;
+    // discarding it would re-scan the file to be told the same thing.
+    const remapped = { identity: "id", sequences: { IGHeavy: "VH2" } } as never;
+    const withProperty = {
+      identity: "id",
+      sequences: { IGHeavy: "VH" },
+      properties: [{ header: "Assay", valueType: "String" }],
+    } as never;
+    expect(keyFor(remapped)).toBe(keyFor(mapping));
+    expect(keyFor(withProperty)).toBe(keyFor(mapping));
+    expect(identityCollisionMessage({ key: keyFor(mapping), values: ["x"] }, withProperty)).toBe(
+      "Repeated on rows that are not identical: x. Two rows sharing an id become one record — " +
+        "pick a different column, or fix the file.",
+    );
   });
   test("property collisions", () => {
     const props = [

@@ -13,7 +13,6 @@ inferColumnsTpl := assets.importTemplate(":infer-columns")
 profileColumnsTpl := assets.importTemplate(":profile-columns")
 collisionsTpl := assets.importTemplate(":bare-set-collisions")
 workbook := import(":workbook")
-specs := import(":bare-set-specs")
 
 wf.body(func(args) {
 
@@ -55,38 +54,25 @@ wf.body(func(args) {
 			})
 		}
 
-		if args.bareSet != undefined {
-			bare := args.bareSet
-			mappedChains := []
-			for chain in specs.CHAINS {
-				source := bare.sequences[chain]
-				if source != undefined && source != "" {
-					mappedChains = append(mappedChains, chain)
+		// Checked the moment an id is picked: the check compares whole rows, so no sequence has
+		// to be mapped for the question to have an answer.
+		if args.bareSet != undefined && args.bareSet.identity != "" {
+			// The verdict is about the id column and nothing else — naming the rest of the mapping
+			// would discard a sound answer on every edit and re-scan the file to reach it again.
+			outputs.collisionsFor = smart.createJsonResource({
+				identity: args.bareSet.identity
+			})
+			outputs.identityCollisions = render.create(collisionsTpl, {
+				dataset: {
+					spec: {
+						domain: { "pl7.app/fileExtension": readable.extension }
+					},
+					data: builder.build()
+				},
+				mapping: {
+					identity: args.bareSet.identity
 				}
-			}
-
-			if bare.identity != "" && len(mappedChains) > 0 {
-				// What the collisions below are about: the identity AND the sequence columns, because a
-				// collision is a repeated identity whose other mapped cells differ. Naming only the
-				// identity let a verdict outlive the mapping it was reached for.
-				outputs.collisionsFor = smart.createJsonResource({
-					identity: bare.identity,
-					sequences: specs.mappedSequences(bare, mappedChains)
-				})
-				outputs.identityCollisions = render.create(collisionsTpl, {
-					dataset: {
-						spec: {
-							domain: { "pl7.app/fileExtension": readable.extension }
-						},
-						data: builder.build()
-					},
-					mapping: {
-						identity: bare.identity,
-						sequences: bare.sequences
-					},
-					chains: mappedChains
-				}).output("collisions")
-			}
+			}).output("collisions")
 		}
 
 		return {
@@ -102,39 +88,26 @@ wf.body(func(args) {
 		}
 	}
 
-	// A bare set is gated on its identity column being unique, and that must be known before
-	// the run starts rather than reported after it. The check reads the whole file, which is
-	// what prerun is for.
-	if args.bareSet != undefined {
-		bare := args.bareSet
-		mappedChains := []
-		for chain in specs.CHAINS {
-			source := bare.sequences[chain]
-			if source != undefined && source != "" {
-				mappedChains = append(mappedChains, chain)
+	// A bare set is gated on no identity repeating across rows that are not identical, and that
+	// must be known before the run starts. The check reads the whole file, which is what prerun
+	// is for. It runs as soon as an id is picked; the early return below cannot starve the panel
+	// of headers, since `datasetColumns` is retentive.
+	if args.bareSet != undefined && args.bareSet.identity != "" {
+		collisions := render.create(collisionsTpl, {
+			dataset: wf.resolve(args.datasetRef),
+			mapping: {
+				identity: args.bareSet.identity
 			}
-		}
+		}).output("collisions")
 
-		if bare.identity != "" && len(mappedChains) > 0 {
-			collisions := render.create(collisionsTpl, {
-				dataset: wf.resolve(args.datasetRef),
-				mapping: {
-					identity: bare.identity,
-					sequences: bare.sequences
-				},
-				chains: mappedChains
-			}).output("collisions")
-
-			return {
-				outputs: {
-					identityCollisions: collisions,
-					collisionsFor: smart.createJsonResource({
-						identity: bare.identity,
-						sequences: specs.mappedSequences(bare, mappedChains)
-					})
-				},
-				exports: {}
-			}
+		return {
+			outputs: {
+				identityCollisions: collisions,
+				collisionsFor: smart.createJsonResource({
+					identity: args.bareSet.identity
+				})
+			},
+			exports: {}
 		}
 	}
 

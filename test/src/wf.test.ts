@@ -6,12 +6,11 @@
   key comes from the identity column rather than the sequences, and that ANARCI actually runs
   inside the import and lands its regions on the emitted columns.
 
-  The fixture is five hand-authored rows of published INN reference sequences, not the
-  customer panel the acceptance run is measured on. It carries the four cases that matter:
-  a fully annotatable pair, a heavy-only row, a row whose "sequence" cannot be numbered, and
-  — the important one — two rows with IDENTICAL sequences under different names, which must
-  stay two records. That last case is the whole reason the key is the identity's hash: on the
-  real panel a sequence-derived key merges 119 of 1,243 antibodies.
+  The fixture is five hand-authored rows of published INN reference sequences. It carries the
+  four cases that matter: a fully annotatable pair, a heavy-only row, a row whose "sequence"
+  cannot be numbered, and — the important one — two rows with IDENTICAL sequences under
+  different names, which must stay two records. That last case is the whole reason the key is
+  the identity's hash: a sequence-derived key would merge antibodies that share a sequence.
 */
 
 import { collisionCheckKey } from "@platforma-open/milaboratories.import-vdj.model";
@@ -30,9 +29,7 @@ import { ImportVdjBlockPointer } from "this-block";
  * visibly `tableState`, which the stats table is built from.
  */
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
-  const bareSet = fields.bareSet as
-    | { identity: string; sequences: Record<string, string> }
-    | undefined;
+  const bareSet = fields.bareSet as { identity: string } | undefined;
   return {
     defaultBlockLabel: "",
     customBlockLabel: "",
@@ -260,9 +257,11 @@ blockTest(
   "refuses to start when the identity column repeats on rows that differ",
   { timeout: 400000 },
   async ({ rawPrj: project, helpers, expect }) => {
-    // AB-001 appears twice with different light chains — a genuine conflict, because the key is
-    // the identity's hash and the two would merge. AB-002 also appears twice but the rows are
-    // identical, which states the same record twice and is not a conflict.
+    // Whole rows are compared, so all three cases are decided by the file rather than by the
+    // mapping. AB-001 twice with different light chains: a conflict. AB-002 twice differing only
+    // in `Assay`, a column no property accepts: a conflict too — the id fails to identify the
+    // record, and the import would have dropped the second row's values silently. AB-003 twice
+    // verbatim: one record stated twice, so it collapses.
     const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
     const sampleId = uniquePlId();
     const datasetId = uniquePlId();
@@ -323,10 +322,7 @@ blockTest(
         // watcher and these tests drive the block directly.
         prerunCheck: {
           check: "columns" as const,
-          subject: collisionCheckKey({
-            identity: "mAb ID",
-            sequences: { IGHeavy: "VH", IGLight: "VL" },
-          })!,
+          subject: collisionCheckKey({ identity: "mAb ID" })!,
           identityCollides: true,
         },
       }),
@@ -348,28 +344,70 @@ blockTest(
     const wrapped = state.outputs?.identityCollisions as { value?: Verdict } | Verdict | undefined;
     const found = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Verdict | undefined;
 
-    // The verdict names the mapping it is about — the id column AND the sequence columns, since a
-    // collision is a repeated id whose other mapped cells differ. Keyed on the id alone, a clean
-    // verdict outlived a remapped chain and the run gate accepted it, merging records.
-    expect(found?.key).toBe(
-      collisionCheckKey({ identity: "mAb ID", sequences: { IGHeavy: "VH", IGLight: "VL" } }),
-    );
-    // Remapping a chain is a different question, so the old verdict must not answer it.
-    expect(found?.key).not.toBe(
-      collisionCheckKey({ identity: "mAb ID", sequences: { IGHeavy: "VH", IGLight: "VL2" } }),
-    );
+    // The verdict names the id column and only that — that the rest of the mapping cannot enter
+    // the key is carried by `collisionCheckKey`'s signature, not by a case here.
+    expect(found?.key).toBe(collisionCheckKey({ identity: "mAb ID" }));
+    // A different id column is a different question.
+    expect(found?.key).not.toBe(collisionCheckKey({ identity: "VH" }));
     const collisions = found?.values ?? [];
 
-    // The differing pair is reported, so the scientist is told which value to fix.
     expect(collisions).toContain("AB-001");
-    // The identical pair is not: repeating a record verbatim discards nothing.
-    expect(collisions).not.toContain("AB-002");
+    // Nothing downstream would have shown this one's difference, which is why the check must.
+    expect(collisions).toContain("AB-002");
+    // Not the verbatim repeat: stating one record twice discards nothing.
+    expect(collisions).not.toContain("AB-003");
 
     // Enforced by the platform, not only by the interface: invalid args means no args to render a
     // production from, so an API caller cannot drive a colliding set through either. This was a
     // documented gap while the collision verdict sat outside the gate — args stayed valid, and
     // `runBlock` imported a set that merged records without complaint.
     await expect(project.runBlock(blockId)).rejects.toThrow(/currentArgs not set/);
+
+    // Drop every sequence and leave only the id: the check does not need them, so a column that
+    // does not identify the records is reported at the point it is picked.
+    const idOnly = {
+      identity: "mAb ID",
+      chainSelection: "IG" as const,
+      sequences: {},
+      scheme: SCHEME,
+    };
+
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "duplicate-id",
+        customBlockLabel: "",
+        datasetRef: datasetOptions[0].ref,
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        bareSet: idOnly,
+        prerunCheck: {
+          check: "columns" as const,
+          subject: collisionCheckKey(idOnly)!,
+          identityCollides: true,
+        },
+      }),
+    });
+
+    const afterIdOnly = (await awaitStableState(project.getBlockState(blockId), 300000)) as {
+      outputs?: Record<string, unknown>;
+    };
+
+    const wrappedAfter = afterIdOnly.outputs?.identityCollisions as
+      | { value?: Verdict }
+      | Verdict
+      | undefined;
+    const foundAfter = (
+      wrappedAfter && "key" in wrappedAfter ? wrappedAfter : wrappedAfter?.value
+    ) as Verdict | undefined;
+
+    // The same verdict under the same key, so it carries over as the mapping is finished rather
+    // than being re-scanned.
+    expect(foundAfter?.key).toBe(found?.key);
+    const afterCollisions = foundAfter?.values ?? [];
+    expect(afterCollisions).toContain("AB-001");
+    expect(afterCollisions).toContain("AB-002");
+    expect(afterCollisions).not.toContain("AB-003");
   },
 );
 

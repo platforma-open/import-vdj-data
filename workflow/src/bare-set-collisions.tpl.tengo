@@ -1,19 +1,17 @@
 // Find identity values that appear on rows which are not identical.
 //
-// Runs in prerun, before the import, because the answer decides whether the run may start at
-// all. The record key is the hash of the identity column, so a repeated identity is a repeated
-// key: two different antibodies would collapse into one and the scientist would never see it.
-// That silent loss is the whole reason the check exists — on the acceptance panel it is 119 of
-// 1,243 records.
+// Runs in prerun because the answer decides whether the run may start. The record key is the
+// hash of the identity column, so a repeated identity merges two antibodies silently.
 //
-// The line is exact, and it is not "identity repeats":
+// Rows are compared over EVERY column of the file, not the ones the import keeps: the question
+// is whether the chosen column identifies a record, and two rows given one name while
+// disagreeing anywhere are two different things. Only a verbatim repeat collapses. So the
+// verdict depends on the file and the id column alone — nothing else in the mapping — which is
+// why `collisionCheckKey` names just the id and why this runs before any sequence is mapped.
 //
-//   - same identity, any other mapped cell differing  -> a collision, the run is refused
-//   - identical in every mapped cell                  -> not a collision, the rows state the
-//                                                        same record twice and collapse to one
-//
-// So whole-row duplicates are removed first, and only then are identities counted. What
-// survives with a count above one is a genuine conflict.
+// The cost: a column nobody imports decides the verdict, so a row counter or a stray trailing
+// space makes every repeated id a conflict. Intended, but it leaves the verbatim-repeat branch
+// rare in files carrying a per-row unique column.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 ll := import("@platforma-sdk/workflow-tengo:ll")
@@ -28,7 +26,6 @@ self.defineOutputs("collisions")
 self.body(func(inputs) {
 	dataset := inputs.dataset
 	mapping := inputs.mapping
-	chains := inputs.chains
 
 	ll.assert(mapping != undefined, "bare-set-collisions: mapping is required")
 	ll.assert(
@@ -50,6 +47,8 @@ self.body(func(inputs) {
 		frames = append(frames, wf.frame(inputMap[key], {
 			xsvType: xsvType,
 			id: "table_" + key,
+			// Every column as a string, so the comparison is over what the file actually wrote.
+			// Inference would let a guess about the schema decide whether "1" and "1.0" differ.
 			inferSchema: false
 		}))
 	}
@@ -57,35 +56,18 @@ self.body(func(inputs) {
 
 	df := pt.concat(frames)
 
-	renames := []
-	addRename := func(source, canonical) {
-		if source != undefined && source != "" && source != canonical {
-			renames = append(renames, pt.col(source).alias(canonical))
-		}
-	}
-	addRename(mapping.identity, specs.labelColumn)
-	for chain in chains {
-		addRename(mapping.sequences[chain], specs.sequenceColumn(chain))
-	}
-	if len(renames) > 0 {
-		df = df.withColumns(renames...)
-	}
+	// No `select` before this: the subset is every column the file has. keep and maintainOrder
+	// are pinned — the default keep is order-dependent, which makes the polars plan
+	// non-reproducible and silently breaks dedup downstream.
+	df = df.unique({ keep: "first", maintainOrder: true })
 
-	mapped := [specs.labelColumn]
-	for chain in chains {
-		mapped = append(mapped, specs.sequenceColumn(chain))
-	}
-
-	// keep and maintainOrder are pinned rather than left to default: the default keep is
-	// order-dependent, which makes the polars plan non-reproducible and silently breaks dedup
-	// of everything downstream of it.
-	df = df.select(mapped...).unique({ keep: "first", maintainOrder: true })
-
-	df = df.groupBy(specs.labelColumn).agg(
-		pt.col(specs.labelColumn).count().alias(COUNT_COLUMN)
+	// Grouped on the source header: renaming the id column would replace a column of the raw row
+	// and change the very thing compared above.
+	df = df.groupBy(mapping.identity).agg(
+		pt.col(mapping.identity).count().alias(COUNT_COLUMN)
 	)
 	df = df.filter(pt.col(COUNT_COLUMN).gt(pt.lit(1)))
-	df = df.select(specs.labelColumn)
+	df = df.select(pt.col(mapping.identity).alias(specs.labelColumn))
 
 	df.saveContent("collisions.tsv")
 	wf = wf.run()
