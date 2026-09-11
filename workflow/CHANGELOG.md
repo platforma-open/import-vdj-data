@@ -1,5 +1,14 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.16.3
+
+### Patch Changes
+
+- Updated dependencies [9fac67b]
+  - @platforma-open/milaboratories.import-vdj.column-profile@1.1.2
+  - @platforma-open/milaboratories.import-vdj.region-annotation@1.1.2
+  - @platforma-open/milaboratories.import-vdj.xlsx-to-csv@1.1.2
+
 ## 1.16.2
 
 ### Patch Changes
