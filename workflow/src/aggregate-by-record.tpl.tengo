@@ -9,7 +9,7 @@
 //
 // That split is not cosmetic. Every consumer's sequence selector matches axes *positionally*:
 // a query naming one axis is compared against the candidate column's axis 0
-// (BQueryAxesKeys.Accept, core/pl controllers/shared/resources/block_resolver_request.go:244).
+// (BQueryAxesKeys.Accept, core/pl's block_resolver_request.go).
 // Leave the sample axis on a property column and axis 0 is `pl7.app/sampleId`, so the query
 // matches nothing and the consumer reports a missing column rather than a mismatched one.
 // Collapsing here is what makes a bare set readable by `sequence-properties`,

@@ -6,7 +6,7 @@
 // The conversion happens here, in the workflow, rather than in the browser. The atom describes
 // it as a UI-boundary conversion and cites `immune-assay-data`, but that block converts in a
 // workflow software package too (`software/xlsx-to-csv`, invoked at
-// `workflow/src/analysis.tpl.tengo:28-38`); its UI-side xlsx reader only builds a column list
+// its `analysis.tpl.tengo`); its UI-side xlsx reader only builds a column list
 // for the mapping panel. Converting workflow-side buys two things: no vendored JavaScript xlsx
 // dependency, and one converted file that the header list, the identity check and the import
 // all read — rather than the browser parsing the original and the pipeline parsing it again.

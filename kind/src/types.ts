@@ -78,10 +78,11 @@ export type ColumnValueType = "Long" | "Double" | "String";
 export type FileSource = {
   handle: ImportFileHandle;
   /**
-   * Minted in the UI at the moment the file is picked, not derived from the handle, so the
-   * sample keeps its identity across runs even if the same file is re-selected.
+   * Unique id for the dataset this file holds. Minted only when the handle changes — the same
+   * test that decides whether the column mapping is dropped — so re-reading the same file keeps
+   * its identity and the axis keys it minted.
    */
-  sampleId: string;
+  datasetId: string;
   /** The filename stem — exactly what samples-and-data would have labelled the sample. */
   label: string;
   /**

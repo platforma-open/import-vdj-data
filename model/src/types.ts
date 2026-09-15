@@ -4,6 +4,7 @@ import type { PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
 import type {
   BareSetChain,
   BareSetMapping,
+  BareSetScheme,
   ChainSelection,
   ColumnValueType,
   CountType,
@@ -46,6 +47,13 @@ export const CHAIN_SLOT_LABELS: Record<BareSetChain, string> = {
   TCRAlpha: "TCR-α",
   TCRDelta: "TCR-δ",
   TCRGamma: "TCR-ɣ",
+};
+
+/** What to call each numbering scheme in front of the scientist. */
+export const SCHEME_LABELS: Record<BareSetScheme, string> = {
+  imgt: "IMGT",
+  kabat: "Kabat",
+  chothia: "Chothia",
 };
 
 /**
@@ -117,14 +125,33 @@ export type BlockData = {
   // --- bare set. Its presence is what selects the bare path in the workflow.
   bareSet?: BareSetMapping;
 
+  /**
+   * What prerun found, kept here so the args projection — which sees only `data` — can gate the run
+   * on it. Written by the UI (`ui/src/app.ts`).
+   *
+   * The verdict carries what it is *about*, so one reached for something no longer selected is
+   * ignored rather than applied. Tagged by which check it is: the two paths through `projectArgs`
+   * that consult a verdict return before reaching each other, so only ever one is live.
+   */
+  prerunCheck?:
+    | {
+        check: "columns";
+        /** The mapping the verdict was reached for — see {@link collisionCheckKey}. */
+        subject: string;
+        /** The id column repeats on rows that are not identical, so two records would merge. */
+        identityCollides: boolean;
+      }
+    | {
+        check: "dataset";
+        /** The dataset and format the verdict was reached for — see {@link datasetCheckKey}. */
+        subject: string;
+        /** The dataset carries the columns its declared format needs. */
+        columnsPresent: boolean;
+      };
+
   // --- view state. None of this is projected anywhere.
   tableState: PlDataTableStateV2;
   settingsOpen: boolean;
-  qiagenColumnsPresent: boolean;
-  immunoSeqColumnsPresent: boolean;
-  mixcrColumnsPresent: boolean;
-  crColumnsPresent: boolean;
-  airrColumnsPresent: boolean;
 };
 
 /** The V1 `args` bucket, as it sits in projects saved before the V3 migration. */
@@ -145,17 +172,12 @@ export type LegacyBlockArgs = {
 export type LegacyUiState = {
   tableState?: PlDataTableStateV2;
   settingsOpen?: boolean;
-  qiagenColumnsPresent?: boolean;
-  immunoSeqColumnsPresent?: boolean;
-  mixcrColumnsPresent?: boolean;
-  crColumnsPresent?: boolean;
-  airrColumnsPresent?: boolean;
 };
 
 /**
  * The SDK's `substituteSpecialCharacters` class, mirrored so the model can refuse a collision
  * without a round trip to the workflow. Kept in step with
- * `sdk/workflow-tengo/src/strings.lib.tengo:4`.
+ * the SDK's `strings.lib.tengo`.
  */
 const SPECIAL_CHARACTERS = /[-_,.:; +()!<>[\]}{"\\/:$%^#@*&]+/g;
 
@@ -171,6 +193,51 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
     (byToken[token] ??= []).push(p.header);
   }
   return Object.fromEntries(Object.entries(byToken).filter(([, hs]) => hs.length > 1));
+}
+
+/**
+ * What a collision verdict is about: the id column, and nothing else in the mapping.
+ *
+ * A collision is an id repeated on rows that are not identical, compared over *every* column of
+ * the raw file (`bare-set-collisions.tpl.tengo`), so remapping a chain or accepting a property
+ * cannot change the answer — naming them would discard a sound verdict on every mapping edit and
+ * re-scan the file to reach it again. The file is not in the key either: `prerunCheck` is dropped
+ * outright when the file or dataset changes.
+ */
+export function collisionCheckKey(
+  mapping: Pick<BareSetMapping, "identity"> | undefined,
+): string | undefined {
+  if (mapping === undefined || !mapping.identity) return undefined;
+  return mapping.identity;
+}
+
+/**
+ * What a dataset-door verdict is about: the dataset picked and the format it was declared to be.
+ * Both, because the same dataset answers differently under a different format.
+ *
+ * `undefined` when there is nothing to check yet — no dataset, or no format — which is also how
+ * the caller tells the dataset door from the file door.
+ */
+export function datasetCheckKey(
+  data: Pick<BlockData, "datasetRef" | "format">,
+): string | undefined {
+  const ref = data.datasetRef;
+  if (ref === undefined || data.format === undefined) return undefined;
+  return [ref.blockId, ref.name, data.format].join("\u0000");
+}
+
+/**
+ * The mapping with everything that names a column dropped. The receptor declaration and the
+ * numbering scheme describe the biology and outlive any one file; the column names do not.
+ */
+export function forgetMappedColumns(bare: BareSetMapping | undefined): BareSetMapping | undefined {
+  if (bare === undefined) return undefined;
+  return {
+    identity: "",
+    chainSelection: bare.chainSelection,
+    sequences: {},
+    scheme: bare.scheme,
+  };
 }
 
 /**

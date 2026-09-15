@@ -11,7 +11,7 @@ const UPLOAD_HANDLE = "upload://upload/eyJsb2NhbFBhdGgiOiIvdG1wL2Nsb25lcy50c3Yif
 
 const FILE_SOURCE = {
   handle: INDEX_HANDLE,
-  sampleId: "smpl1",
+  datasetId: "smpl1",
   label: "clones",
   extension: "tsv" as const,
 };
@@ -56,8 +56,8 @@ describe("fileSource", () => {
     ["a bare handle string", INDEX_HANDLE],
     ["a handle of neither scheme", { ...FILE_SOURCE, handle: "/tmp/clones.tsv" }],
     ["an unknown extension", { ...FILE_SOURCE, extension: "parquet" }],
-    ["a missing sampleId", { handle: INDEX_HANDLE, label: "clones", extension: "tsv" }],
-    ["a missing label", { handle: INDEX_HANDLE, sampleId: "smpl1", extension: "tsv" }],
+    ["a missing datasetId", { handle: INDEX_HANDLE, label: "clones", extension: "tsv" }],
+    ["a missing label", { handle: INDEX_HANDLE, datasetId: "smpl1", extension: "tsv" }],
   ])("rejects %s", (_label, fileSource) => {
     expect(() => parse({ fileSource })).toThrow("'fileSource' must be a file source");
   });

@@ -18,7 +18,7 @@
 //     split into two records.
 //   - the key is the hash of the identity column alone. The sequences take no part in it.
 //   - no groupBy collapse. Two rows sharing a sequence are two different antibodies here, and
-//     collapsing them is what loses 119 of the acceptance panel's 1,243 records.
+//     collapsing them would lose every antibody that shares a sequence with another.
 //   - one frame, not one per chain.
 
 self := import("@platforma-sdk/workflow-tengo:tpl.light")
@@ -101,9 +101,11 @@ self.body(func(inputs) {
 	// adopted for it is the block's own umi-count spec, which is Long.
 	df = df.withColumns(pt.lit(1).cast("Int64").alias(specs.abundanceColumn))
 
-	// A row identical in every mapped cell states the same record twice and collapses to one.
-	// A row sharing only its identity is refused before the run starts, so by the time this
-	// executes the only duplicates left are whole-row repeats and collapsing on the key is safe.
+	// An id sharing rows that differ anywhere in the raw file is refused before the run starts,
+	// so the only duplicates left here are verbatim repeats and collapsing on the key is safe.
+	// `bare-set-collisions` compares strictly more than is kept below, and has to keep doing so:
+	// while it compared only the id and the sequences, a differing property was cleared and this
+	// line then dropped one row's values with nothing said.
 	//
 	// keep and maintainOrder are pinned, not left to default. The default keep is
 	// order-dependent, which makes the polars plan non-reproducible; a processColumn body is

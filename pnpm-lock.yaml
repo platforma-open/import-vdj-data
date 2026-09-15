@@ -34,8 +34,8 @@ catalogs:
       specifier: 1.1.0
       version: 1.1.0
     '@platforma-sdk/block-tools':
-      specifier: 2.15.0
-      version: 2.15.0
+      specifier: 2.15.1
+      version: 2.15.1
     '@platforma-sdk/model':
       specifier: 1.83.9
       version: 1.83.9
@@ -89,7 +89,7 @@ importers:
         version: 1.7.2(@microsoft/api-extractor@7.55.2(@types/node@25.0.1))(@types/node@25.0.1)(@volar/typescript@2.4.28)(@vue/language-core@3.3.10)(rollup@4.53.3)(vue@3.5.25(typescript@7.0.2))(yaml@2.8.2)
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
-        version: 2.15.0(@types/node@25.0.1)
+        version: 2.15.1(@types/node@25.0.1)
       shx:
         specifier: 'catalog:'
         version: 0.4.0
@@ -119,7 +119,7 @@ importers:
         version: link:../workflow
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
-        version: 2.15.0(@types/node@25.0.1)
+        version: 2.15.1(@types/node@25.0.1)
       '@platforma-sdk/model':
         specifier: 'catalog:'
         version: 1.83.9
@@ -153,7 +153,7 @@ importers:
         version: 1.4.0
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
-        version: 2.15.0(@types/node@25.0.1)
+        version: 2.15.1(@types/node@25.0.1)
       vitest:
         specifier: 'catalog:'
         version: 4.0.18(@types/node@25.0.1)(lightningcss@1.32.0)(yaml@2.8.2)
@@ -184,7 +184,7 @@ importers:
         version: 1.4.0
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
-        version: 2.15.0(@types/node@25.0.1)
+        version: 2.15.1(@types/node@25.0.1)
 
   software/column-profile:
     devDependencies:
@@ -193,7 +193,7 @@ importers:
         version: 1.11.6
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
-        version: 2.15.0(@types/node@25.0.1)
+        version: 2.15.1(@types/node@25.0.1)
 
   software/region-annotation:
     devDependencies:
@@ -202,7 +202,7 @@ importers:
         version: 1.11.6
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
-        version: 2.15.0(@types/node@25.0.1)
+        version: 2.15.1(@types/node@25.0.1)
 
   software/xlsx-to-csv:
     devDependencies:
@@ -211,7 +211,7 @@ importers:
         version: 1.11.6
       '@platforma-sdk/block-tools':
         specifier: 'catalog:'
-        version: 2.15.0(@types/node@25.0.1)
+        version: 2.15.1(@types/node@25.0.1)
 
   test:
     dependencies:
@@ -1180,6 +1180,10 @@ packages:
     resolution: {integrity: sha512-5gZGDLWQUYWjEuRxJb0Vlt/siBI3Y+kkRNKC9bl3knm+BJkJ3sAROPrCViJNpA73I8IrOdxX/dC49cqNzEaHxQ==}
     engines: {node: '>=22.19.0'}
 
+  '@milaboratories/pl-client@3.16.1':
+    resolution: {integrity: sha512-0L00ttBIRyr1vT8HGSwFeW/iBLyUprDTCQd2Da/Bpa9RWcMmU0sXwXF3m754Ortlwy+ZyY5Pg6404/EV7Ph76A==}
+    engines: {node: '>=22.19.0'}
+
   '@milaboratories/pl-config@1.8.5':
     resolution: {integrity: sha512-XnfYXSSkRxeImQ21k6I8y5apisvagcSgMGfEeyRxNdSGwUVJbbI8TwJk+XBEDQ4lErW8oqtLxKjFQuHJMzRUoQ==}
 
@@ -1213,6 +1217,9 @@ packages:
 
   '@milaboratories/pl-model-backend@1.4.23':
     resolution: {integrity: sha512-r1xBRXyDdvyWo+9SQZCmMVvItoP8BSbHRN7ikTQpIpFdWyE5FgfSKgrJEhutVzghNnYyhd1+Ea/owasaOy2jkg==}
+
+  '@milaboratories/pl-model-backend@1.4.24':
+    resolution: {integrity: sha512-nexeamWHa5CdIcPWxBQihUWJi6VYFAiiFeoR+UVrprmDTMmF1xsnFixgrSjH/VwFttpfRl0sJt66XrYfgviROw==}
 
   '@milaboratories/pl-model-common@1.46.2':
     resolution: {integrity: sha512-VEeauisApYScvCS8lnK3zpFJ520xuTAodKJmjR8ulHcMrWMyWMfHEdGb7j5OMD0mM/OwTgmQrrJ5eB7Xd+xoOQ==}
@@ -1716,6 +1723,10 @@ packages:
 
   '@platforma-sdk/block-tools@2.15.0':
     resolution: {integrity: sha512-4HPRntfJx1alyJIvrq//cGQNs4ELVypH0AQ8JveeH0UAg1p9jW8/PIAdQzTTjT8VTB3Mphl3zqIzydz4hBfXvQ==}
+    hasBin: true
+
+  '@platforma-sdk/block-tools@2.15.1':
+    resolution: {integrity: sha512-RNL9uZuWoc6aU9F9O7wbANDn2cpghyfL4UIfcOQ6FJ38IhUo2eJhcmSY1ns++2SqKp6T5vZg8OZUC9rtW+m1ww==}
     hasBin: true
 
   '@platforma-sdk/blocks-deps-updater@2.2.0':
@@ -8313,6 +8324,24 @@ snapshots:
       utility-types: 3.11.0
       yaml: 2.8.2
 
+  '@milaboratories/pl-client@3.16.1':
+    dependencies:
+      '@grpc/grpc-js': 1.14.4
+      '@milaboratories/pl-http': 1.2.4
+      '@milaboratories/pl-model-common': 1.48.0
+      '@milaboratories/ts-helpers': 1.8.6
+      '@protobuf-ts/grpc-transport': 2.11.1(@grpc/grpc-js@1.14.4)
+      '@protobuf-ts/runtime': 2.11.1
+      '@protobuf-ts/runtime-rpc': 2.11.1
+      canonicalize: 2.1.0
+      denque: 2.1.0
+      long: 5.3.2
+      lru-cache: 11.2.4
+      openapi-fetch: 0.15.0
+      undici: 7.16.0
+      utility-types: 3.11.0
+      yaml: 2.8.2
+
   '@milaboratories/pl-config@1.8.5':
     dependencies:
       '@milaboratories/ts-helpers': 1.8.6
@@ -8433,6 +8462,12 @@ snapshots:
   '@milaboratories/pl-model-backend@1.4.23':
     dependencies:
       '@milaboratories/pl-client': 3.16.0
+      canonicalize: 2.1.0
+      zod: 3.25.76
+
+  '@milaboratories/pl-model-backend@1.4.24':
+    dependencies:
+      '@milaboratories/pl-client': 3.16.1
       canonicalize: 2.1.0
       zod: 3.25.76
 
@@ -9186,6 +9221,33 @@ snapshots:
       '@inquirer/prompts': 7.10.1(@types/node@25.0.1)
       '@milaboratories/pl-http': 1.2.4
       '@milaboratories/pl-model-backend': 1.4.23
+      '@milaboratories/pl-model-common': 1.48.0
+      '@milaboratories/pl-model-middle-layer': 1.32.0
+      '@milaboratories/resolve-helper': 1.1.3
+      '@milaboratories/ts-helpers': 1.8.6
+      '@platforma-sdk/blocks-deps-updater': 2.2.0
+      '@platforma-sdk/package-builder-lib': 1.4.0
+      canonicalize: 2.1.0
+      commander: 15.0.0
+      lru-cache: 11.2.4
+      mime-types: 2.1.35
+      tar: 7.5.2
+      undici: 7.16.0
+      yaml: 2.8.2
+      zod: 3.25.76
+    transitivePeerDependencies:
+      - '@types/node'
+      - aws-crt
+      - bare-abort-controller
+      - react-native-b4a
+
+  '@platforma-sdk/block-tools@2.15.1(@types/node@25.0.1)':
+    dependencies:
+      '@aws-sdk/client-ecr-public': 3.859.0
+      '@aws-sdk/client-s3': 3.859.0
+      '@inquirer/prompts': 7.10.1(@types/node@25.0.1)
+      '@milaboratories/pl-http': 1.2.4
+      '@milaboratories/pl-model-backend': 1.4.24
       '@milaboratories/pl-model-common': 1.48.0
       '@milaboratories/pl-model-middle-layer': 1.32.0
       '@milaboratories/resolve-helper': 1.1.3

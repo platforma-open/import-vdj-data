@@ -26,11 +26,10 @@ strings := import("@platforma-sdk/workflow-tengo:strings")
 // `pl7.app/vdj/scClonotypeChain`, which `sequence-properties` already reads.
 CHAINS := ["IGHeavy", "IGLight", "TCRBeta", "TCRAlpha", "TCRDelta", "TCRGamma"]
 
-// Labels use Heavy/Light while domains use A/B. The atoms write `<chain>` in both
-// positions, but the workspace's one shipped paired producer renders labels as
-// "Heavy CDR3 aa" and keeps A/B for the domain
-// (blocks/mixcr-scfv-clonotyping/workflow/src/mixcr-exports.lib.tengo:173-178,271).
-// Following it: a literal reading would put "A CDR3 aa" in front of the scientist.
+// Labels use Heavy/Light while domains use A/B. The atoms write `<chain>` in both positions, but
+// the workspace's one shipped paired producer — mixcr-scfv-clonotyping — renders labels as
+// "Heavy CDR3 aa" and keeps A/B for the domain. Following it: a literal reading would put
+// "A CDR3 aa" in front of the scientist.
 // What the mapping panel calls each locus, mirrored from the UI's receptor/chain list so the
 // statistics table and the dropdown that produced it use one vocabulary.
 CHAIN_DISPLAY := {
@@ -58,7 +57,7 @@ CHAIN_LABELS := {
 // `scClonotypeChain` is the separate, positional vocabulary for chains sharing one frame, and
 // A/B is what every producer puts in it — so the slot name does not belong there.
 // A is the more diverse chain — the one that recombines a D segment. That is MiXCR's rule,
-// stated at mixcr-clonotyping process.tpl.tengo:695 ("A" chain is always the one that is more
+// stated at mixcr-clonotyping's process.tpl.tengo ("A" chain is always the one that is more
 // diverse) and encoded in its receptorInfos chain order: IGHeavy/IGLight, TCRBeta/TCRAlpha,
 // TCRDelta/TCRGamma. This block's own single-cell path already follows it.
 PAIRED_CHAIN_DOMAIN := {
@@ -176,9 +175,8 @@ validateScheme := func(scheme) {
  * No `…/structure` domain key: that belongs to the `scClonotypeKey` vocabulary this axis no
  * longer uses, and no `variantKey` producer in the workspace emits one.
  *
- * The annotation set mirrors peptide-extraction's `variantKey` axis
- * (blocks/peptide-extraction/workflow/src/column-specs.lib.tengo:15-35) with the peptide run
- * id exchanged for the VDJ one.
+ * The annotation set mirrors peptide-extraction's `variantKey` axis, with the peptide run id
+ * exchanged for the VDJ one.
  */
 keyAxis := func(blockId, chains) {
 	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")

@@ -534,7 +534,7 @@ Test_keyAxis_derivesTheReceptorFromTheChains := func() {
 
 
 // A is the more diverse chain — the one recombining a D segment. MiXCR states the rule
-// (process.tpl.tengo:695) and encodes it in receptorInfos: IGHeavy/IGLight, TCRBeta/TCRAlpha,
+// (process.tpl.tengo) and encodes it in receptorInfos: IGHeavy/IGLight, TCRBeta/TCRAlpha,
 // TCRDelta/TCRGamma. This block's single-cell path already follows it, and a bare set must agree
 // or the same dataset would mean different things depending on which door it came through.
 Test_pairedChainDomain_putsTheDiverseChainInSlotA := func() {

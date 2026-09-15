@@ -130,7 +130,7 @@ const isFileHandle: Guard<ImportFileHandle> = (v): v is ImportFileHandle =>
 const isFileSource: Guard<FileSource> = (v): v is FileSource =>
   isPlainObject(v) &&
   isFileHandle(v.handle) &&
-  isString(v.sampleId) &&
+  isString(v.datasetId) &&
   isString(v.label) &&
   oneOf(FILE_EXTENSIONS)(v.extension);
 

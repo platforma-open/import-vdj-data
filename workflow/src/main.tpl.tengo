@@ -80,7 +80,7 @@ wf.body(func(args) {
 			readable := workbook.toXsv(imported.file, fileSource.extension)
 
 			builder := pColumn.resourceMapBuilder(1)
-			builder.add([fileSource.sampleId], readable.file)
+			builder.add([fileSource.datasetId], readable.file)
 			datasetData = builder.build()
 
 			datasetSpec = {
@@ -134,7 +134,7 @@ wf.body(func(args) {
 			// the pool door samples-and-data emits this column, and on the direct door nobody
 			// else will.
 			labelData := {}
-			labelData[string(json.encode([fileSource.sampleId]))] = fileSource.label
+			labelData[string(json.encode([fileSource.datasetId]))] = fileSource.label
 			bareExports["sampleLabel"] = {
 				spec: {
 					kind: "PColumn",
