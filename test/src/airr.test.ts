@@ -75,6 +75,8 @@ const FIXTURES = [
   // No junction column, so it has to be rebuilt from cdr3 and the framework flanks
   { asset: "airr-igblast-nojunction.tsv", label: "igblast-nojunction" },
   { asset: "airr-mixcr-nojunction.tsv", label: "mixcr-nojunction" },
+  // One dataset, two samples, two boundary conventions: the vote has to be taken per sample
+  { asset: "airr-conv-imgt.tsv", label: "twoconv", extra: "airr-conv-mixcr.tsv" },
 ];
 
 /** Unwraps a model output, which arrives as `{ ok, value, stable }` rather than bare. */
@@ -99,17 +101,17 @@ async function loadFixtures(ctx: TestCtx): Promise<string> {
   const sampleLabels: Record<string, string> = {};
   const datasets = [];
   for (const f of FIXTURES) {
-    const sampleId = uniquePlId();
-    sampleIds.push(sampleId);
-    sampleLabels[sampleId] = f.label;
+    const data: Record<string, unknown> = {};
+    for (const asset of f.extra ? [f.asset, f.extra] : [f.asset]) {
+      const sampleId = uniquePlId();
+      sampleIds.push(sampleId);
+      sampleLabels[sampleId] = f.label;
+      data[sampleId] = await helpers.getLocalFileHandle(`./assets/${asset}`);
+    }
     datasets.push({
       id: uniquePlId(),
       label: f.label,
-      content: {
-        type: "Xsv",
-        xsvType: "tsv",
-        data: { [sampleId]: await helpers.getLocalFileHandle(`./assets/${f.asset}`) },
-      },
+      content: { type: "Xsv", xsvType: "tsv", data },
     });
   }
 
@@ -147,7 +149,7 @@ async function importFrom(
     format?: "airr" | "airr-sc" | "mixcr";
     chains?: string[];
   },
-): Promise<{ columns: Emitted[]; stats: Emitted[] }> {
+): Promise<{ columns: Emitted[]; stats: Emitted[]; emptySamples: string[] }> {
   const { rawPrj: project, helpers, expect } = ctx;
 
   const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
@@ -198,8 +200,12 @@ async function importFrom(
   const columns = unwrap<Emitted>(state.outputs?.importedColumns);
   // The two frames are separate: `result` is what was imported, `stats` what the import counted.
   const stats = unwrap<Emitted>(state.outputs?.statColumns);
+  // Samples that produced no clonotype at all, read straight off the per-sample counts.
+  const empty = (state.outputs?.emptyChainSamples as { value?: { emptySamples?: string[] } })
+    ?.value;
+  const emptySamples = empty?.emptySamples ?? [];
   expect(columns.length).toBeGreaterThan(0);
-  return { columns, stats };
+  return { columns, stats, emptySamples };
 }
 
 /** The feature the import actually assembled on, read off the column it marked as the main one. */
@@ -306,6 +312,17 @@ blockTest(
       // Every row then fails to cover it and is discarded, which is the counter's whole job --
       // an empty import the scientist can explain beats a full one they did not ask for.
       expect(has(stats, "pl7.app/vdj/stat/recordsNotCoveringAssemblingFeature")).toBe(true);
+    }
+
+    // --- two conventions in one dataset ------------------------------------------------
+    {
+      // The IMGT sample outnumbers the other 4 rows to 2. Pooled, its fwr4 would carry the vote,
+      // trim the second sample's single-codon fwr4 to nothing and leave it with no clonotype.
+      const { emptySamples } = await importFrom(ctx, {
+        label: "twoconv",
+        assemblingFeature: "VDJRegion",
+      });
+      expect(emptySamples, "each sample votes on its own rows").toEqual([]);
     }
 
     // --- no junction column, in both boundary conventions ------------------------------
