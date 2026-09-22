@@ -149,7 +149,11 @@ async function importFrom(
     format?: "airr" | "airr-sc" | "mixcr";
     chains?: string[];
   },
-): Promise<{ columns: Emitted[]; stats: Emitted[]; emptySamples: string[] }> {
+): Promise<{
+  columns: Emitted[];
+  stats: Emitted[];
+  emptyChains?: { emptySamples: string[]; sampleCount: number };
+}> {
   const { rawPrj: project, helpers, expect } = ctx;
 
   const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
@@ -200,12 +204,15 @@ async function importFrom(
   const columns = unwrap<Emitted>(state.outputs?.importedColumns);
   // The two frames are separate: `result` is what was imported, `stats` what the import counted.
   const stats = unwrap<Emitted>(state.outputs?.statColumns);
-  // Samples that produced no clonotype at all, read straight off the per-sample counts.
-  const empty = (state.outputs?.emptyChainSamples as { value?: { emptySamples?: string[] } })
-    ?.value;
-  const emptySamples = empty?.emptySamples ?? [];
+  // Samples that produced no clonotype at all. Passed on undecoded: the model returns nothing
+  // when the counts are unavailable, and that must not read as "no sample was empty".
+  const emptyChains = (
+    state.outputs?.emptyChainSamples as
+      | { value?: { emptySamples: string[]; sampleCount: number } }
+      | undefined
+  )?.value;
   expect(columns.length).toBeGreaterThan(0);
-  return { columns, stats, emptySamples };
+  return { columns, stats, emptyChains };
 }
 
 /** The feature the import actually assembled on, read off the column it marked as the main one. */
@@ -318,11 +325,13 @@ blockTest(
     {
       // The IMGT sample outnumbers the other 4 rows to 2. Pooled, its fwr4 would carry the vote,
       // trim the second sample's single-codon fwr4 to nothing and leave it with no clonotype.
-      const { emptySamples } = await importFrom(ctx, {
+      const { emptyChains } = await importFrom(ctx, {
         label: "twoconv",
         assemblingFeature: "VDJRegion",
       });
-      expect(emptySamples, "each sample votes on its own rows").toEqual([]);
+      expect(emptyChains, "per-sample clonotype counts resolved").toBeDefined();
+      expect(emptyChains!.sampleCount, "both samples counted").toBe(2);
+      expect(emptyChains!.emptySamples, "each sample votes on its own rows").toEqual([]);
     }
 
     // --- no junction column, in both boundary conventions ------------------------------
