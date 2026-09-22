@@ -54,6 +54,71 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 	return statsColumns
 }
 
+// The trace the dataset-level stats carry. Named after what was read, as the bare-set path is:
+// the label is what a downstream dropdown shows, and it has no chain to name.
+recordStatsTrace := func(blockId, formatSpec) {
+	return [{ type: "milaboratories.importVDJ", id: blockId, importance: 81, label: formatSpec.label }]
+}
+
+// Whether a gene call reaches the frame at all, by mapping or by MiXCR's own derivation.
+// Shared so the specs and the expressions filling them cannot disagree about which exist.
+hasGene := func(columnsInfo, alleleMode, prefix) {
+	m := columnsInfo.columnMapping
+	if m[prefix + "-gene"] != undefined { return true }
+	if alleleMode != "mixcr" { return false }
+	upper := prefix == "v" ? "V" : prefix == "d" ? "D" : prefix == "j" ? "J" : "C"
+	for key in [prefix + "-allele", "all" + upper + "HitsWithScore", "all" + upper + "Hits", "all" + upper + "Genes"] {
+		if m[key] != undefined { return true }
+	}
+	return false
+}
+
+// What the row filters discarded, per sample and across every chain -- a row with no V call
+// belongs to no chain, and each count is its own filter's cost, not an overlapping total.
+buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
+	d := { "pl7.app/vdj/clonotypingRunId": blockId }
+	col := func(id, name, label, description, visibility) {
+		return {
+			id: id,
+			column: id,
+			spec: {
+				name: "pl7.app/vdj/stat/" + name,
+				valueType: "Long",
+				domain: d,
+				annotations: {
+					"pl7.app/label": label,
+					"pl7.app/description": description,
+					"pl7.app/table/visibility": visibility
+				}
+			}
+		}
+	}
+
+	cols := [col("record-count", "recordCount", "Rearrangements Read",
+		"Rows reaching the row filters, after the files of one sample are merged.", "default")]
+	if hasGene(columnsInfo, alleleMode, "v") {
+		cols += [col("records-no-v", "recordsWithoutVGene", "Discarded: No V Gene",
+			"Rows discarded because no V gene was called.", "optional")]
+	}
+	if hasGene(columnsInfo, alleleMode, "j") {
+		cols += [col("records-no-j", "recordsWithoutJGene", "Discarded: No J Gene",
+			"Rows discarded because no J gene was called, among those that had a V gene.", "optional")]
+	}
+	if columnsInfo.columnMapping["cdr3-nt"] != undefined {
+		cols += [col("records-no-cdr3", "recordsWithoutCdr3", "Discarded: No CDR3",
+			"Rows discarded because no CDR3 could be read, so they could not be keyed.", "optional")]
+	}
+	// Emitted only when a feature was assembled: with a CDR3 key nothing can fail to cover it
+	if !is_undefined(columnsInfo.spanNt) {
+		feature := columnsInfo.assemblingFeature
+		cols += [col("records-not-covering", "recordsNotCoveringAssemblingFeature",
+			"Discarded: Not Covering " + feature,
+			"Rows that carried a CDR3 but do not span " + feature + ", the feature clonotypes are assembled by, and so were discarded. A high share means the library does not reach that far and a narrower feature would keep the data.",
+			"default")]
+	}
+	return cols
+}
+
 toCombinedDomainValue := func(spec) {
 	result := [spec.name]
 	if is_undefined(spec.domain) { return result }
@@ -95,6 +160,9 @@ applyXsvType := func(importCfg, datasetSpec) {
 export {
 	columnsToSchema: columnsToSchema,
 	buildStatsColumns: buildStatsColumns,
+	buildRecordStatsColumns: buildRecordStatsColumns,
+	hasGene: hasGene,
+	recordStatsTrace: recordStatsTrace,
 	buildClonotypeKeyStructure: buildClonotypeKeyStructure,
 	applyXsvType: applyXsvType
 }

@@ -155,7 +155,7 @@ propertyColumnSpecs := {
 	"is-productive": {
 		id: "is-productive",
 		column: "is-productive",
-		allowNA: false,
+		allowNA: true,
 		spec: {
 			name: "pl7.app/vdj/sequence/productive",
 			valueType: "String",
@@ -533,6 +533,73 @@ propertyColumnSpecs := {
 			})
 		}
 	},
+	// AIRR alignments: gapped, so deliberately not pl7.app/vdj/sequence
+	"sequence-alignment": {
+		id: "sequence-alignment",
+		column: "sequence-alignment",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequenceAlignment",
+			valueType: "String",
+			domain: {
+				"pl7.app/alphabet": "nucleotide"
+			},
+			annotations: a(46860, false, {
+				"pl7.app/label": "Sequence alignment",
+				"pl7.app/description": "Aligned portion of the query sequence as exported by the source tool, including indel corrections and numbering spacers such as IMGT gaps. Positionally aligned with the germline alignment.",
+				"pl7.app/table/fontFamily": "monospace"
+			})
+		}
+	},
+	"germline-alignment": {
+		id: "germline-alignment",
+		column: "germline-alignment",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/germlineAlignment",
+			valueType: "String",
+			domain: {
+				"pl7.app/alphabet": "nucleotide"
+			},
+			annotations: a(46850, false, {
+				"pl7.app/label": "Germline alignment",
+				"pl7.app/description": "Assembled germline (V, N-masked junction, J) aligned position-by-position to the sequence alignment, as exported by the source tool.",
+				"pl7.app/table/fontFamily": "monospace"
+			})
+		}
+	},
+	"sequence-alignment-aa": {
+		id: "sequence-alignment-aa",
+		column: "sequence-alignment-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequenceAlignment",
+			valueType: "String",
+			domain: {
+				"pl7.app/alphabet": "aminoacid"
+			},
+			annotations: a(46840, false, {
+				"pl7.app/label": "Sequence alignment aa",
+				"pl7.app/table/fontFamily": "monospace"
+			})
+		}
+	},
+	"germline-alignment-aa": {
+		id: "germline-alignment-aa",
+		column: "germline-alignment-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/germlineAlignment",
+			valueType: "String",
+			domain: {
+				"pl7.app/alphabet": "aminoacid"
+			},
+			annotations: a(46830, false, {
+				"pl7.app/label": "Germline alignment aa",
+				"pl7.app/table/fontFamily": "monospace"
+			})
+		}
+	},
 	"isotype": {
 		id: "isotype",
 		column: "isotype",
@@ -548,8 +615,31 @@ propertyColumnSpecs := {
 	}
 }
 
+// Assembled region span; the feature names the span, so a partial one stays honest
+spanColumnSpec := func(alphabet, feature) {
+	isNt := alphabet == "nucleotide"
+	return {
+		id: isNt ? "vdj-nt" : "vdj-aa",
+		column: isNt ? "vdj-nt" : "vdj-aa",
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/sequence",
+			valueType: "String",
+			domain: {
+				"pl7.app/alphabet": alphabet,
+				"pl7.app/vdj/feature": feature
+			},
+			annotations: a(isNt ? 46880 : 46870, false, {
+				"pl7.app/label": feature + (isNt ? " nt" : " aa"),
+				"pl7.app/table/fontFamily": "monospace"
+			})
+		}
+	}
+}
+
 export {
 	a: a,
+	spanColumnSpec: spanColumnSpec,
 	readColumnSpecs: readColumnSpecs,
 	umiColumnSpecs: umiColumnSpecs,
 	propertyColumnSpecs: propertyColumnSpecs

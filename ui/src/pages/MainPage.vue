@@ -28,6 +28,7 @@ import type { ImportedFiles } from "@platforma-sdk/ui-vue";
 import { computed, ref, watch, watchEffect } from "vue";
 import { useApp } from "../app";
 import {
+  assemblingFeatureOptions,
   chainsOptions,
   countTypeOptions,
   formatOptions,
@@ -93,6 +94,11 @@ const secondaryTypeOptions = computed(() => {
   if (p === "umi") return [{ label: "Reads", value: "read" }];
   return countTypeOptions;
 });
+
+// The AIRR formats alone: every other format's producer states its own assembling feature
+const isAirr = computed(
+  () => app.model.data.format === "airr" || app.model.data.format === "airr-sc",
+);
 
 const isSingleCell = computed(
   () =>
@@ -394,6 +400,19 @@ watch(
           label="Data format"
           required
         />
+
+        <PlDropdown
+          v-if="isAirr"
+          v-model="app.model.data.assemblingFeature"
+          :options="assemblingFeatureOptions"
+          label="Assemble clonotypes by"
+        >
+          <template #tooltip>
+            AIRR files do not say which part of the receptor the protocol covered, so this is asked
+            rather than guessed. A wider feature separates clonotypes that share a CDR3, and drops
+            any rearrangement that does not cover it. CDR3 when unset.
+          </template>
+        </PlDropdown>
 
         <PlDropdownMulti
           v-if="!isSingleCell"

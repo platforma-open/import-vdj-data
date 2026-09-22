@@ -12,6 +12,33 @@ export type ImportFormat =
   | "airr-sc"
   | "custom";
 
+/**
+ * The gene feature a clonotype is assembled by, in MiXCR's own vocabulary — the same twelve
+ * values the mixcr-clonotyping panel offers (`ui/src/SettingsPanel.vue`).
+ *
+ * AIRR files do not declare which region their protocol covers, so this is asked rather than
+ * inferred. It reaches the clonotype key's `pl7.app/vdj/clonotypeKey/structure` domain, which
+ * decides whether two imports join — a value read off the data could drift between two exports
+ * of the same experiment and silently stop them joining.
+ */
+export type AssemblingFeature = keyof typeof ASSEMBLING_FEATURES;
+
+/** The vocabulary itself, in the order the panel lists it. */
+export const ASSEMBLING_FEATURES = {
+  CDR3: true,
+  VDJRegion: true,
+  FR2_TO_FR4: true,
+  "{FR1Begin:CDR3End}": true,
+  CDR1_TO_FR4: true,
+  "{CDR1Begin:CDR3End}": true,
+  "{FR2Begin:CDR3End}": true,
+  CDR2_TO_FR4: true,
+  "{CDR2Begin:CDR3End}": true,
+  FR3_TO_FR4: true,
+  "{FR3Begin:CDR3End}": true,
+  CDR3_TO_FR4: true,
+} as const;
+
 /** Which abundance a mapped count column holds. */
 export type CountType = "read" | "umi";
 
@@ -159,6 +186,7 @@ export type BlockParams = Partial<{
   customMapping: Record<string, string | undefined>;
   primaryCountType: CountType;
   secondaryCountType: CountType;
+  assemblingFeature: AssemblingFeature;
   bareSet: BareSetMapping;
   customBlockLabel: string;
 }>;

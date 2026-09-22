@@ -117,10 +117,14 @@ specs := {
 			productivityMode: "none",
 			primaryAbundancePolicy: "args",
 			byCell: { enabled: false },
-			geneNormalization: "stripAllele"
+			geneNormalization: "stripAllele",
+			regionBoundaries: "auto",
+			keepRowsWithEmptySequences: true
 		},
+		// A row without these three is not a rearrangement, so it does not count towards column fill
+		requiredColumns: ["v_call", "j_call", "junction,cdr3"],
 		infer: func(header, opts) {
-			return airr.getColumns(header)
+			return airr.getColumns(header, opts)
 		}
 	},
 	"airr-sc": {
@@ -138,10 +142,13 @@ specs := {
 				cellKeyMode: "direct",
 				exportStage: "after_productivity_filter"
 			},
-			geneNormalization: "stripAllele"
+			geneNormalization: "stripAllele",
+			regionBoundaries: "auto",
+			keepRowsWithEmptySequences: true
 		},
+		requiredColumns: ["v_call", "j_call", "junction,cdr3"],
 		infer: func(header, opts) {
-			return airr.getColumns(header)
+			return airr.getColumns(header, opts)
 		}
 	}
 }

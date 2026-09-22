@@ -32,7 +32,14 @@ self.body(func(inputs) {
 		addFile("input.txt", inputs.file).
 		arg("--input").arg("input.txt").
 		arg("--separator").arg(inputs.separator).
-		arg("--output").arg("profile.json").
+		arg("--output").arg("profile.json")
+	// Each group is one OR of column names; only rows satisfying all of them count towards fill
+	if !is_undefined(inputs.requiredColumns) {
+		for group in inputs.requiredColumns {
+			cmd = cmd.arg("--required").arg(group)
+		}
+	}
+	cmd = cmd.
 		saveFileContent("profile.json").
 		printErrStreamToStdout().
 		run()

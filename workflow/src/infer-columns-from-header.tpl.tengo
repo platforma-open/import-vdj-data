@@ -17,6 +17,14 @@ self.body(func(inputs) {
     customMapping := inputs.customMapping
     primaryCountType := inputs.primaryCountType
 
+    // A resource here, a decoded map there, depending on how the caller supplied it
+    columnFill := undefined
+    profile := inputs.columnProfile
+    if !is_undefined(profile) {
+        decoded := ll.methodExists(profile, "getDataAsJson") ? profile.getDataAsJson() : profile
+        columnFill = decoded.fill
+    }
+
     if format == "immunoSeq" {
         return {
             columnsInfo: immunoSeqImport.getColumns(header)
@@ -35,7 +43,10 @@ self.body(func(inputs) {
         }
     } else if format == "airr" || format == "airr-sc" {
         return {
-            columnsInfo: airrImport.getColumns(header)
+            columnsInfo: airrImport.getColumns(header, {
+                columnFill: columnFill,
+                assemblingFeature: inputs.assemblingFeature
+            })
         }
     } else if format == "custom" {
         // For custom format, downstream step will build columnsInfo from user mapping

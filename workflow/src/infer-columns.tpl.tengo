@@ -11,6 +11,8 @@ txt := import("@platforma-sdk/workflow-tengo:txt")
 inferColumnsTpl := assets.importTemplate(":infer-columns-from-header")
 columnInfoToLabelsTpl := assets.importTemplate(":column-info-to-labels")
 splitHeaderTpl := assets.importTemplate(":split-header")
+profileColumnsTpl := assets.importTemplate(":profile-columns")
+formats := import(":formats")
 
 self.defineOutputs("columnsInfo", "columnDescriptions", "headerColumns")
 
@@ -71,9 +73,22 @@ self.body(func(inputs) {
         }
     }
     
+    // Which optional columns a file really carries cannot be read off its header, so profile it
+    columnProfile := undefined
+    formatSpec := formats.mustGet(format)
+    if !is_undefined(formatSpec.requiredColumns) {
+        columnProfile = render.create(profileColumnsTpl, {
+            file: inputFile,
+            separator: separator == "," ? "comma" : "tab",
+            requiredColumns: formatSpec.requiredColumns
+        }).output("profile")
+    }
+
     columnsInfo := render.create(inferColumnsTpl, {
                         format: format,
                         header: header,
+                        columnProfile: columnProfile,
+                        assemblingFeature: inputs.assemblingFeature,
                         customMapping: inputs.customMapping,
                         primaryCountType: inputs.primaryCountType
     }).output("columnsInfo")

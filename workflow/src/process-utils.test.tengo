@@ -1,0 +1,15 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
+processUtils := import(":process-utils")
+formats := import(":formats")
+
+// makeTrace is what processColumn runs the steps through, and it is the only thing that
+// validates them -- a step missing its label builds and checks clean, then fails at run.
+Test_recordStatsTrace_passesTheSdksOwnValidation := func() {
+	for id in ["airr", "airr-sc", "mixcr", "cellranger", "immunoSeq", "qiagen", "custom"] {
+		steps := processUtils.recordStatsTrace("block-id", formats.mustGet(id))
+		trace := pSpec.makeTrace(undefined, steps...)
+		test.isEqual(1, len(trace.value), id + ": one step")
+		test.isTrue(trace.value[0].label != undefined && trace.value[0].label != "", id + ": step is labelled")
+	}
+}

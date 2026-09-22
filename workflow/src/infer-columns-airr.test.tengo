@@ -1,0 +1,169 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+airr := import(":infer-columns-airr")
+
+ids := func(columns) {
+	out := []
+	for c in columns { out = append(out, c.id) }
+	return out
+}
+
+has := func(arr, v) {
+	for x in arr { if x == v { return true } }
+	return false
+}
+
+// AIRR-C required set only: no count column anywhere
+requiredOnly := ["sequence_id", "sequence", "rev_comp", "productive", "v_call", "d_call", "j_call",
+	"sequence_alignment", "germline_alignment", "junction", "junction_aa", "v_cigar", "d_cigar", "j_cigar"]
+
+Test_noCountColumn_synthesizesReadCount := func() {
+	info := airr.getColumns(requiredOnly)
+	test.isTrue(info.syntheticReadCount, "synthetic count")
+	test.isFalse(info.hasUMIs, "no umis")
+	test.isEqual(["read-count", "read-fraction"], ids(info.abundanceColumns), "abundance columns")
+	test.isEqual("true", info.abundanceColumns[0].spec.annotations["pl7.app/isAnchor"], "read count is the anchor")
+	test.isEqual("Number of sequences", info.abundanceColumns[0].spec.annotations["pl7.app/label"], "label says sequences")
+}
+
+Test_countColumn_isNotSynthetic := func() {
+	info := airr.getColumns(requiredOnly + ["duplicate_count"])
+	test.isFalse(info.syntheticReadCount, "real count")
+	test.isEqual("duplicate_count", info.columnMapping["read-count"], "duplicate_count alone is the read count")
+}
+
+Test_alignmentsAndRegions_areMapped := func() {
+	info := airr.getColumns(requiredOnly + ["fwr1", "cdr1", "fwr2_aa", "sequence_alignment_aa"])
+	props := ids(info.propertyColumns)
+	for id in ["sequence-alignment", "germline-alignment", "sequence-alignment-aa", "fr1-nt", "cdr1-nt", "fr2-aa", "is-productive"] {
+		test.isTrue(has(props, id), id + " emitted")
+	}
+	test.isFalse(has(props, "germline-alignment-aa"), "absent header not emitted")
+}
+
+Test_junctionWinsOverCdr3_whateverTheHeaderOrder := func() {
+	info := airr.getColumns(["cdr3", "cdr3_aa", "junction", "junction_aa", "v_call", "j_call"])
+	test.isEqual("junction", info.columnMapping["cdr3-nt"], "junction preferred")
+	test.isEqual("junction_aa", info.columnMapping["cdr3-aa"], "junction_aa preferred")
+	test.isEqual("cdr3", info.columnMapping["airr-cdr3-nt"], "cdr3 kept for filling an empty junction")
+	fallback := airr.getColumns(["cdr3", "v_call", "j_call"])
+	test.isEqual("cdr3", fallback.columnMapping["cdr3-nt"], "cdr3 used when junction absent")
+}
+
+regions := ["fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "fwr4"]
+
+featureOf := func(columns, id) {
+	for c in columns { if c.id == id { return c.spec.domain["pl7.app/vdj/feature"] } }
+	return undefined
+}
+
+mainOf := func(columns, id) {
+	for c in columns { if c.id == id { return c.spec.annotations["pl7.app/vdj/isMainSequence"] } }
+	return undefined
+}
+
+Test_byDefault_clonotypesAreCdr3 := func() {
+	info := airr.getColumns(requiredOnly + regions)
+	test.isFalse(has(ids(info.propertyColumns), "vdj-nt"), "nothing assembled unless asked")
+	test.isEqual("CDR3", info.assemblingFeature, "CDR3 is the default")
+	test.isEqual(["cdr3-nt", "v-gene", "j-gene"], info.clonotypeKeyColumns, "key on CDR3")
+	test.isEqual("CDR3-nt-VGene-JGene", info.clonotypeKeyStructure, "key structure")
+	test.isEqual("true", mainOf(info.propertyColumns, "cdr3-nt"), "cdr3-nt is main")
+	test.isEqual("true", mainOf(info.propertyColumns, "cdr3-aa"), "cdr3-aa is main")
+}
+
+Test_requestedFeature_isAssembledAndKeyedOn := func() {
+	info := airr.getColumns(requiredOnly + regions, { assemblingFeature: "VDJRegion" })
+	test.isEqual("VDJRegion", featureOf(info.propertyColumns, "vdj-nt"), "the requested feature")
+	test.isEqual(["vdj-nt", "v-gene", "j-gene"], info.clonotypeKeyColumns, "key on it")
+	test.isEqual("VDJRegion-VGene-JGene", info.clonotypeKeyStructure, "key structure")
+	test.isEqual("true", mainOf(info.propertyColumns, "vdj-nt"), "vdj-nt is main")
+	test.isTrue(is_undefined(mainOf(info.propertyColumns, "cdr3-nt")), "cdr3-nt yields to it")
+	test.isEqual(["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "cdr3-nt", "fr4-nt"], info.spanNt, "regions")
+}
+
+Test_cdr3EndingFeature_usesMixcrsBraceForm := func() {
+	info := airr.getColumns(requiredOnly + regions, { assemblingFeature: "{FR3Begin:CDR3End}" })
+	test.isEqual("{FR3Begin:CDR3End}", featureOf(info.propertyColumns, "vdj-nt"), "MiXCR vocabulary, not FR3_TO_CDR3")
+	test.isEqual(["fr3-nt", "cdr3-nt"], info.spanNt, "regions")
+}
+
+Test_unknownFeature_fallsBackToCdr3 := func() {
+	info := airr.getColumns(requiredOnly + regions, { assemblingFeature: "FR3_TO_CDR3" })
+	test.isEqual("CDR3", info.assemblingFeature, "a name outside the vocabulary is not honoured")
+	test.isTrue(is_undefined(info.spanNt), "nothing assembled")
+}
+
+Test_featureTheFileCannotCover_fallsBackToCdr3 := func() {
+	info := airr.getColumns(requiredOnly + ["cdr1", "fwr2", "cdr2", "fwr3", "fwr4"], { assemblingFeature: "VDJRegion" })
+	test.isEqual("CDR3", info.assemblingFeature, "no fwr1 column, no VDJRegion")
+	test.isEqual(["cdr3-nt", "v-gene", "j-gene"], info.clonotypeKeyColumns, "key falls back too")
+
+	narrower := airr.getColumns(requiredOnly + ["cdr1", "fwr2", "cdr2", "fwr3", "fwr4"], { assemblingFeature: "CDR1_TO_FR4" })
+	test.isEqual("CDR1_TO_FR4", narrower.assemblingFeature, "a feature it can cover is honoured")
+}
+
+Test_aaRegions_carryTheSameFeature := func() {
+	info := airr.getColumns(requiredOnly + regions + ["fwr1_aa", "cdr1_aa", "fwr2_aa", "cdr2_aa", "fwr3_aa", "fwr4_aa"],
+		{ assemblingFeature: "VDJRegion" })
+	test.isEqual("VDJRegion", featureOf(info.propertyColumns, "vdj-nt"), "nt")
+	test.isEqual("VDJRegionInFrame", featureOf(info.propertyColumns, "vdj-aa"), "aa keeps MiXCR's in-frame name")
+}
+
+Test_cloneId_isNotACellTag := func() {
+	info := airr.getColumns(requiredOnly + ["clone_id", "cell_id"])
+	test.isEqual(["cell_id"], info.cellTagColumns, "only cell_id tags a cell")
+	test.isEqual("clone_id", info.columnMapping["clone-id"], "clone_id is kept for the cluster")
+	test.isFalse(has(ids(info.propertyColumns), "clone-id"), "clone_id is not a clonotype property")
+}
+
+Test_cellId_winsOverBarcode_whateverTheHeaderOrder := func() {
+	info := airr.getColumns(requiredOnly + ["barcode", "cell_id"])
+	test.isEqual(["cell_id"], info.cellTagColumns, "cell_id preferred")
+	test.isEqual(["barcode"], airr.getColumns(requiredOnly + ["barcode"]).cellTagColumns, "barcode as fallback")
+}
+
+// Fill rates as the column profiler reports them, over rows carrying v_call, j_call and a CDR3.
+mixcrFill := {
+	"v_call": 1.0, "j_call": 1.0, "junction": 1.0, "junction_aa": 1.0,
+	"fwr1": 0.0, "cdr1": 0.98, "fwr2": 0.98, "cdr2": 0.99, "fwr3": 0.99, "cdr3": 0.99, "fwr4": 0.98,
+	"c_call": 0.0, "d_call": 0.98
+}
+
+airrHeader := ["sequence_id", "v_call", "d_call", "j_call", "c_call", "junction", "junction_aa",
+	"cdr3", "fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "fwr4"]
+
+Test_unfilledRegion_isNotAColumnTheFeatureCanUse := func() {
+	byHeader := airr.getColumns(airrHeader, { assemblingFeature: "VDJRegion" })
+	test.isEqual("VDJRegion", byHeader.assemblingFeature, "the header alone would allow it")
+
+	info := airr.getColumns(airrHeader, { columnFill: mixcrFill, assemblingFeature: "VDJRegion" })
+	test.isEqual("CDR3", info.assemblingFeature, "an empty fwr1 cannot carry VDJRegion")
+	test.isTrue(is_undefined(info.columnMapping["fr1-nt"]), "fr1 is not mapped at all")
+
+	narrower := airr.getColumns(airrHeader, { columnFill: mixcrFill, assemblingFeature: "CDR1_TO_FR4" })
+	test.isEqual("CDR1_TO_FR4", narrower.assemblingFeature, "what the file does carry is honoured")
+}
+
+Test_unfilledCCall_leavesTheKey := func() {
+	full := airr.getColumns(airrHeader)
+	test.isEqual("CDR3-nt-VGene-JGene-CGene", full.clonotypeKeyStructure, "header alone keeps CGene")
+
+	info := airr.getColumns(airrHeader, { columnFill: mixcrFill })
+	test.isEqual(["cdr3-nt", "v-gene", "j-gene"], info.clonotypeKeyColumns, "an empty c_call is out of the key")
+	test.isEqual("CDR3-nt-VGene-JGene", info.clonotypeKeyStructure, "key structure follows")
+}
+
+Test_hardRequiredColumns_surviveAnyFill := func() {
+	starved := { "v_call": 0.0, "j_call": 0.0, "junction": 0.0, "cdr3": 0.0, "fwr1": 0.0 }
+	info := airr.getColumns(airrHeader, { columnFill: starved })
+	test.isEqual("v_call", info.columnMapping["v-gene"], "v_call is never dropped")
+	test.isEqual("j_call", info.columnMapping["j-gene"], "j_call is never dropped")
+	test.isEqual("junction", info.columnMapping["cdr3-nt"], "junction is never dropped")
+	test.isEqual("cdr3", info.columnMapping["airr-cdr3-nt"], "cdr3 is never dropped")
+}
+
+Test_unfilledCellId_doesNotMakeItSingleCell := func() {
+	header := airrHeader + ["cell_id"]
+	test.isEqual(["cell_id"], airr.getColumns(header).cellTagColumns, "header alone tags a cell")
+	test.isEqual([], airr.getColumns(header, { columnFill: { "cell_id": 0.0 } }).cellTagColumns, "an empty cell_id tags nothing")
+}

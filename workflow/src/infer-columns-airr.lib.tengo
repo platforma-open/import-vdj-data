@@ -1,45 +1,108 @@
 maps := import("@platforma-sdk/workflow-tengo:maps")
-slices := import("@platforma-sdk/workflow-tengo:slices")
-ll := import("@platforma-sdk/workflow-tengo:ll")
 text := import("text")
 
 common := import(":infer-columns-common")
 
-a := common.a
 readColumnSpecs := common.readColumnSpecs
 umiColumnSpecs := common.umiColumnSpecs
 propertyColumnSpecs := common.propertyColumnSpecs
 
-// AIRR rearrangement schema headers (case-insensitive).
-// We keep keys lowercase and match on text.to_lower(h).
+// AIRR rearrangement schema headers (case-insensitive)
 sourceAliases := {
-	// abundance
+	// abundance; duplicate_count is UMIs per pRESTO's DUPCOUNT, not reads as the AIRR text reads
 	"duplicate_count": "umi-count",
 	"consensus_count": "read-count",
 	"umi_count": "umi-count",
 
-	// sequences
+	// sequences; AIRR junction is the platform CDR3 (conserved Cys and Trp/Phe included)
 	"junction": "cdr3-nt",
 	"junction_aa": "cdr3-aa",
-	"cdr3_aa": "cdr3-aa",
-	"cdr3": "cdr3-nt",
+	"cdr3": "airr-cdr3-nt",
+	"cdr3_aa": "airr-cdr3-aa",
+	"fwr1": "fr1-nt",
+	"cdr1": "cdr1-nt",
+	"fwr2": "fr2-nt",
+	"cdr2": "cdr2-nt",
+	"fwr3": "fr3-nt",
+	"fwr4": "fr4-nt",
+	"fwr1_aa": "fr1-aa",
+	"cdr1_aa": "cdr1-aa",
+	"fwr2_aa": "fr2-aa",
+	"cdr2_aa": "cdr2-aa",
+	"fwr3_aa": "fr3-aa",
+	"fwr4_aa": "fr4-aa",
+
+	// alignments (query and germline, positionally aligned)
+	"sequence_alignment": "sequence-alignment",
+	"germline_alignment": "germline-alignment",
+	"sequence_alignment_aa": "sequence-alignment-aa",
+	"germline_alignment_aa": "germline-alignment-aa",
 
 	// gene calls
 	"v_call": "v-gene",
 	"d_call": "d-gene",
 	"j_call": "j-gene",
 	"c_call": "c-gene",
-	
+
 	// productivity
 	"productive": "is-productive",
-	
-	// single-cell identifiers (map to themselves for cell tag columns)
+
+	// clonal assignment made by the source tool, exported as a cluster
+	"clone_id": "clone-id",
+
+	// single-cell identifier (maps to itself for the cell tag column)
 	"cell_id": "uniqueTagValueCELL"
 }
 
-requiredColumns := ["read-count", "cdr3-nt", "v-gene", "j-gene"]
+// Emitted whenever the header is present, in this order
+optionalProperties := [
+	"is-productive",
+	"fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "fr4-nt",
+	"fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "fr4-aa",
+	"sequence-alignment", "germline-alignment",
+	"sequence-alignment-aa", "germline-alignment-aa"
+]
 
-getColumns := func(header) {
+// v_call, j_call and a CDR3 are the bare minimum; everything else must earn its place
+MIN_FILL := 0.5
+hardRequired := {
+	"v_call": true,
+	"j_call": true,
+	"junction": true,
+	"cdr3": true
+}
+
+// MiXCR's assembling-feature vocabulary, region by region; the mixcr-clonotyping panel offers the same list
+assemblingFeatures := {
+	"CDR3": ["cdr3"],
+	"VDJRegion": ["fr1", "cdr1", "fr2", "cdr2", "fr3", "cdr3", "fr4"],
+	"FR2_TO_FR4": ["fr2", "cdr2", "fr3", "cdr3", "fr4"],
+	"{FR1Begin:CDR3End}": ["fr1", "cdr1", "fr2", "cdr2", "fr3", "cdr3"],
+	"CDR1_TO_FR4": ["cdr1", "fr2", "cdr2", "fr3", "cdr3", "fr4"],
+	"{CDR1Begin:CDR3End}": ["cdr1", "fr2", "cdr2", "fr3", "cdr3"],
+	"{FR2Begin:CDR3End}": ["fr2", "cdr2", "fr3", "cdr3"],
+	"CDR2_TO_FR4": ["cdr2", "fr3", "cdr3", "fr4"],
+	"{CDR2Begin:CDR3End}": ["cdr2", "fr3", "cdr3"],
+	"FR3_TO_FR4": ["fr3", "cdr3", "fr4"],
+	"{FR3Begin:CDR3End}": ["fr3", "cdr3"],
+	"CDR3_TO_FR4": ["cdr3", "fr4"]
+}
+
+// What a file must cover before a column counts as one it carries
+DEFAULT_ASSEMBLING_FEATURE := "CDR3"
+
+getColumns := func(header, ...opts) {
+	options := len(opts) > 0 && !is_undefined(opts[0]) ? opts[0] : {}
+	columnFill := options.columnFill
+	requestedFeature := options.assemblingFeature
+
+	// A header the file barely fills is not a column the import can build anything on
+	present := func(name, key) {
+		if is_undefined(columnFill) || hardRequired[key] == true { return true }
+		f := columnFill[name]
+		return is_undefined(f) || f >= MIN_FILL
+	}
+
 	// Handle case where header might be an array with a single comma-separated string
 	headerArray := header
 	if len(header) == 1 {
@@ -50,12 +113,11 @@ getColumns := func(header) {
 			headerArray = text.split(firstStr, ",")
 		}
 	}
-	
+
 	columnMapping := {}
-	
-	// Detect single-cell tag columns: AIRR uses cell_id or barcode
-	isSingleCell := false
-	cellTagColumns := []
+
+	// Cell identifier: cell_id, or barcode when there is no cell_id
+	cellHeaders := {}
 	umiCountHeader := undefined
 	duplicateCountHeader := undefined
 	consensusCountHeader := undefined
@@ -64,7 +126,8 @@ getColumns := func(header) {
 		hTrimmed := text.trim_space(hStr)
 		if len(hTrimmed) == 0 { continue }
 		k := text.to_lower(hTrimmed)
-		
+		if !present(hTrimmed, k) { continue }
+
 		canonical := sourceAliases[k]
 		if canonical != undefined && columnMapping[canonical] == undefined {
 			columnMapping[canonical] = hTrimmed
@@ -78,19 +141,22 @@ getColumns := func(header) {
 		if k == "consensus_count" {
 			consensusCountHeader = hTrimmed
 		}
-		
-		// Check for single-cell identifiers (after mapping canonical columns)
-		if k == "cell_id" || k == "barcode" || k == "clone_id" {
-			isSingleCell = true
-			// Ensure we don't add duplicates
-			alreadyAdded := false
-			for ex in cellTagColumns { if ex == hTrimmed { alreadyAdded = true } }
-			if !alreadyAdded {
-				cellTagColumns = append(cellTagColumns, hTrimmed)
-			}
-			// Map to itself so it's available in columnMapping - use original trimmed name
-			// This ensures the column can be accessed by its original name
-			columnMapping[hTrimmed] = hTrimmed
+
+		if k == "cell_id" || k == "barcode" {
+			cellHeaders[k] = hTrimmed
+		}
+	}
+	cellTagColumns := []
+	cellHeader := cellHeaders["cell_id"] != undefined ? cellHeaders["cell_id"] : cellHeaders["barcode"]
+	if cellHeader != undefined {
+		cellTagColumns = [cellHeader]
+		// Map to itself so the column can be accessed by its original name
+		columnMapping[cellHeader] = cellHeader
+	}
+	// cdr3 stands in for a missing junction header; the import template fills an empty one
+	for pair in [["cdr3-nt", "airr-cdr3-nt"], ["cdr3-aa", "airr-cdr3-aa"]] {
+		if columnMapping[pair[0]] == undefined && columnMapping[pair[1]] != undefined {
+			columnMapping[pair[0]] = columnMapping[pair[1]]
 		}
 	}
 
@@ -106,91 +172,100 @@ getColumns := func(header) {
 		columnMapping["read-count"] = duplicateCountHeader
 		columnMapping["umi-count"] = undefined
 	}
-	
-	// Ensure all cell tag columns are in columnMapping for downstream access
-	for tagCol in cellTagColumns {
-		if columnMapping[tagCol] == undefined {
-			columnMapping[tagCol] = tagCol
-		}
-	}
 
-	// Missing requirements (do not panic; validation is done in formats)
-	missingRequired := []
-	for c in requiredColumns {
-		if is_undefined(columnMapping[c]) { missingRequired = append(missingRequired, c) }
-	}
+	// Abundance columns
+	hasReads := !is_undefined(columnMapping["read-count"])
+	hasUMIs := !is_undefined(columnMapping["umi-count"])
+	// No count column: every row counts once
+	syntheticReadCount := !hasReads && !hasUMIs
+	if syntheticReadCount { hasReads = true }
 
-	// Abundance columns (AIRR commonly provides counts, sometimes fractions, and optionally UMIs)
 	abundanceColumns := {}
-	hasReads := !is_undefined(columnMapping["read-count"]) || !is_undefined(columnMapping["read-fraction"])
-	hasUMIs := !is_undefined(columnMapping["umi-count"]) || !is_undefined(columnMapping["umi-fraction"])
-	
 	if hasReads {
 		abundanceColumns = maps.merge(abundanceColumns, readColumnSpecs)
 	}
 	if hasUMIs {
 		abundanceColumns = maps.merge(abundanceColumns, umiColumnSpecs)
 	}
-	
-	// Determine primary abundance: prefer UMI if available, otherwise use read-count
-	mainAbundance := hasUMIs ? "umi-count" : (hasReads ? "read-count" : "")
-	mainFractionAbundance := hasUMIs ? "umi-fraction" : (hasReads ? "read-fraction" : "")
-	
-	if mainAbundance != "" && abundanceColumns[mainAbundance] != undefined {
-		abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
-		abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
+	if syntheticReadCount {
+		abundanceColumns["read-count"].spec.annotations["pl7.app/label"] = "Number of sequences"
+		abundanceColumns["read-count"].spec.annotations["pl7.app/description"] = "No count column in the input; each row counted once."
+		abundanceColumns["read-fraction"].spec.annotations["pl7.app/label"] = "Fraction of sequences"
 	}
-	if mainFractionAbundance != "" && abundanceColumns[mainFractionAbundance] != undefined {
-		abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+
+	// Determine primary abundance: prefer UMI if available, otherwise use read-count
+	mainAbundance := hasUMIs ? "umi-count" : "read-count"
+	mainFractionAbundance := hasUMIs ? "umi-fraction" : "read-fraction"
+	abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+	abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
+	abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+
+	// CDR3 unless the scientist asked for more, and only as much as the file actually carries
+	feature := DEFAULT_ASSEMBLING_FEATURE
+	if !is_undefined(requestedFeature) && !is_undefined(assemblingFeatures[requestedFeature]) {
+		feature = requestedFeature
+	}
+	spanFor := func(suffix) {
+		ids := []
+		for r in assemblingFeatures[feature] {
+			if columnMapping[r + suffix] == undefined { return undefined }
+			ids = append(ids, r + suffix)
+		}
+		return ids
+	}
+	spanNt := undefined
+	spanAa := undefined
+	if feature != DEFAULT_ASSEMBLING_FEATURE {
+		spanNt = spanFor("-nt")
+		// A feature the file cannot cover falls back rather than deleting every row that misses a region
+		if is_undefined(spanNt) { feature = DEFAULT_ASSEMBLING_FEATURE } else { spanAa = spanFor("-aa") }
+	}
+
+	// A fresh copy, so the shared spec map carries no mark into the next call
+	marked := func(col) {
+		return maps.deepMerge(col, { spec: { annotations: {
+			"pl7.app/vdj/isMainSequence": "true",
+			"pl7.app/vdj/isAssemblingFeature": "true"
+		} } })
 	}
 
 	// Property columns
 	propertyColumns := [
-		propertyColumnSpecs["cdr3-nt"],
+		is_undefined(spanNt) ? marked(propertyColumnSpecs["cdr3-nt"]) : propertyColumnSpecs["cdr3-nt"],
 		propertyColumnSpecs["v-gene"],
 		propertyColumnSpecs["j-gene"]
 	]
-	if columnMapping["cdr3-aa"] != undefined {
-		propertyColumns = append(propertyColumns, propertyColumnSpecs["cdr3-aa"])
-	}
-	if columnMapping["d-gene"] != undefined {
-		propertyColumns = append(propertyColumns, propertyColumnSpecs["d-gene"])
-	}
-	if columnMapping["c-gene"] != undefined {
-		propertyColumns = append(propertyColumns, propertyColumnSpecs["c-gene"])
+	for k in ["cdr3-aa", "d-gene", "c-gene"] {
+		if columnMapping[k] != undefined {
+			col := propertyColumnSpecs[k]
+			if k == "cdr3-aa" && is_undefined(spanAa) { col = marked(col) }
+			propertyColumns = append(propertyColumns, col)
+		}
 	}
 	// computed lengths
 	propertyColumns = append(propertyColumns, propertyColumnSpecs["cdr3-nt-length"])
 	if columnMapping["cdr3-aa"] != undefined {
 		propertyColumns = append(propertyColumns, propertyColumnSpecs["cdr3-aa-length"])
 	}
-	// is-productive column if available
-	if columnMapping["is-productive"] != undefined {
-		propertyColumns = append(propertyColumns, propertyColumnSpecs["is-productive"])
+	for k in optionalProperties {
+		if columnMapping[k] != undefined {
+			propertyColumns = append(propertyColumns, propertyColumnSpecs[k])
+		}
 	}
-	
-	// Extract alleles from gene calls if they contain allele information (e.g., "IGHV1-1*01")
-	// AIRR v_call, d_call, j_call, c_call can contain alleles after *
-	// We'll extract them in the import template, but we need to map the source columns
-	// For now, we check if the original header has allele-specific columns or if gene calls contain *
-	// The import template will handle extracting alleles from gene calls
-	if columnMapping["v-gene"] != undefined {
-		// v-gene column exists, alleles can be extracted from it
-		propertyColumns = append(propertyColumns, propertyColumnSpecs["v-allele"])
-	}
-	if columnMapping["d-gene"] != undefined {
-		propertyColumns = append(propertyColumns, propertyColumnSpecs["d-allele"])
-	}
-	if columnMapping["j-gene"] != undefined {
-		propertyColumns = append(propertyColumns, propertyColumnSpecs["j-allele"])
-	}
-	if columnMapping["c-gene"] != undefined {
-		propertyColumns = append(propertyColumns, propertyColumnSpecs["c-allele"])
+	// Alleles are extracted from the gene calls in the import template
+	for g in ["v", "d", "j", "c"] {
+		if columnMapping[g + "-gene"] != undefined {
+			propertyColumns = append(propertyColumns, propertyColumnSpecs[g + "-allele"])
+		}
 	}
 
-	// Clonotype key (CDR3 nt + V/J + optional C)
-	keyColumns := ["cdr3-nt", "v-gene", "j-gene"]
-	keyStructure := "CDR3-nt-VGene-JGene"
+	// Assembled in the import template from the regions the feature names
+	if !is_undefined(spanNt) { propertyColumns = append(propertyColumns, marked(common.spanColumnSpec("nucleotide", feature))) }
+	if !is_undefined(spanAa) { propertyColumns = append(propertyColumns, marked(common.spanColumnSpec("aminoacid", feature == "VDJRegion" ? "VDJRegionInFrame" : feature))) }
+
+	// Keyed on the assembled feature alone; a row that cannot fill it is dropped before keying
+	keyColumns := is_undefined(spanNt) ? ["cdr3-nt", "v-gene", "j-gene"] : ["vdj-nt", "v-gene", "j-gene"]
+	keyStructure := (is_undefined(spanNt) ? "CDR3-nt" : feature) + "-VGene-JGene"
 	if columnMapping["c-gene"] != undefined {
 		keyColumns = append(keyColumns, "c-gene")
 		keyStructure = keyStructure + "-CGene"
@@ -198,22 +273,18 @@ getColumns := func(header) {
 
 	return {
 		hasUMIs: hasUMIs,
+		syntheticReadCount: syntheticReadCount,
 		abundanceColumns: maps.getValues(abundanceColumns),
 		propertyColumns: propertyColumns,
 		columnMapping: columnMapping,
 		clonotypeKeyStructure: keyStructure,
 		clonotypeKeyColumns: keyColumns,
 		cellTagColumns: cellTagColumns,
-		cdr3FallbackToAa: columnMapping["cdr3-aa"] != undefined
+		cdr3FallbackToAa: columnMapping["cdr3-aa"] != undefined,
+		assemblingFeature: feature,
+		spanNt: spanNt,
+		spanAa: spanAa
 	}
 }
 
 export { getColumns: getColumns }
-
-
-
-
-
-
-
-

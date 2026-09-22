@@ -1,4 +1,5 @@
 import type {
+  AssemblingFeature,
   ChainSelection,
   CountType,
   ImportFormat,
@@ -15,6 +16,28 @@ export const formatOptions: ListOptionBase<ImportFormat>[] = [
   { label: "AIRR bulk", value: "airr" },
   { label: "AIRR single cell", value: "airr-sc" },
   { label: "Custom", value: "custom" },
+];
+
+/**
+ * The gene feature clonotypes are assembled by. Labels and values are the mixcr-clonotyping
+ * panel's, so the two read the same.
+ *
+ * The three sequencing regimes that account for most data lead: CDR3 alone, full length, and
+ * the FR2 multiplex. The rest follow by start region 5' to 3', FR4-ending before CDR3-ending.
+ */
+export const assemblingFeatureOptions: ListOptionBase<AssemblingFeature>[] = [
+  { label: "CDR3", value: "CDR3" },
+  { label: "FR1 - FR4", value: "VDJRegion" },
+  { label: "FR2 - FR4", value: "FR2_TO_FR4" },
+  { label: "FR1 - CDR3", value: "{FR1Begin:CDR3End}" },
+  { label: "CDR1 - FR4", value: "CDR1_TO_FR4" },
+  { label: "CDR1 - CDR3", value: "{CDR1Begin:CDR3End}" },
+  { label: "FR2 - CDR3", value: "{FR2Begin:CDR3End}" },
+  { label: "CDR2 - FR4", value: "CDR2_TO_FR4" },
+  { label: "CDR2 - CDR3", value: "{CDR2Begin:CDR3End}" },
+  { label: "FR3 - FR4", value: "FR3_TO_FR4" },
+  { label: "FR3 - CDR3", value: "{FR3Begin:CDR3End}" },
+  { label: "CDR3 - FR4", value: "CDR3_TO_FR4" },
 ];
 
 /** Chains to import from the selected dataset. Values are the `pl7.app/vdj/chain` vocabulary. */
