@@ -97,7 +97,7 @@ buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
 	}
 
 	cols := [col("record-count", "recordCount", "Rearrangements Read",
-		"Rows reaching the row filters, after the files of one sample are merged.", "default", "100000")]
+		"Rows from this sample.", "default", "100000")]
 	if hasGene(columnsInfo, alleleMode, "v") {
 		cols += [col("records-no-v", "recordsWithoutVGene", "Discarded: No V Gene",
 			"Rows discarded because no V gene was called.", "optional", "99000")]
