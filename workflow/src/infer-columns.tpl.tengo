@@ -74,6 +74,7 @@ self.body(func(inputs) {
     columnsInfo := render.create(inferColumnsTpl, {
                         format: format,
                         header: header,
+                        assemblingFeature: inputs.assemblingFeature,
                         customMapping: inputs.customMapping,
                         primaryCountType: inputs.primaryCountType
     }).output("columnsInfo")

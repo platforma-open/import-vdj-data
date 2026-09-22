@@ -114,6 +114,7 @@ wf.body(func(args) {
 	inferColumns := render.create(inferColumnsTpl, {
 		format: args.format,
 		dataset: wf.resolve(args.datasetRef),
+		assemblingFeature: args.assemblingFeature,
 		customMapping: args.customMapping,
 		primaryCountType: args.primaryCountType
 	})

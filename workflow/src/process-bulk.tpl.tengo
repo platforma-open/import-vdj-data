@@ -15,6 +15,7 @@ processUtils := import(":process-utils")
 json := import("json")
 text := import("text")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
+aggregateClustersTpl := assets.importTemplate(":aggregate-clusters")
 
 // Helper to add common annotations for table view properties
 a := func(order, defaultVisibility, spec) {
@@ -112,7 +113,18 @@ self.body(func(inputs) {
     result := pframes.pFrameBuilder()
     stats := pframes.pFrameBuilder()
 
+    // Only the shared import template counts what it discarded; the immunoSeq, qiagen and custom
+    // templates return tsv and stats alone, and a path nothing fills never becomes ready.
     importOutputs := []
+    if formatSpec.importTplId == ":import-common" {
+        importOutputs += [{
+            type: "TsvContent",
+            settings: { axes: [], columns: processUtils.buildRecordStatsColumns(blockId, columnsInfo, importCfg.alleleMode) },
+            traceSteps: processUtils.recordStatsTrace(blockId, formatSpec),
+            name: "recordStats",
+            path: ["recordStats"]
+        }]
+    }
     keyStructureStr := processUtils.buildClonotypeKeyStructure(columnsInfo, columnsInfo.clonotypeKeyColumns)
 
     for chain in chains {
@@ -166,6 +178,20 @@ self.body(func(inputs) {
 			label: chain
 		}]
 
+        // Declared only when there is a clone_id: an unresolvable path never becomes ready
+        if columnsInfo.columnMapping["clone-id"] != undefined {
+            importOutputs += [{
+                type: "Resource",
+                spec: {
+                    kind: "PColumn",
+                    name: "mixcr.com/clonotypeTable",
+                    valueType: "File"
+                },
+                name: "clustersTsv-" + chain,
+                path: ["tsvForClusters", chain]
+            }]
+        }
+
         importOutputs += [
             {
                 type: "Resource",
@@ -187,6 +213,7 @@ self.body(func(inputs) {
                 name: "stats-" + chain,
                 path: ["stats", chain]
             },
+
             {
                 type: "Xsv",
                 xsvType: "tsv",
@@ -234,6 +261,10 @@ self.body(func(inputs) {
             }
 		}
 	)
+
+    if formatSpec.importTplId == ":import-common" {
+        importResults.addXsvOutputToBuilder(stats, "recordStats", "recordStats")
+    }
 
     for chain in chains {
         importResults.addXsvOutputToBuilder(result, "abundance-" + chain, "abundance-" + chain)
@@ -364,6 +395,93 @@ self.body(func(inputs) {
         )
 
         aggResults.addXsvOutputToBuilder(result, "properties-" + chain, "properties-" + chain)
+
+        // A clonotype can sit in one source clone per sample, so the relation is a linker
+        if columnsInfo.columnMapping["clone-id"] != undefined {
+            clusterTrace := [{type: "milaboratories.importVDJ", id: blockId + "." + chain, importance: 81, label: chain}]
+            clusterAxis := {
+                column: "clusterId",
+                naRegex: "",
+                spec: {
+                    type: "String",
+                    name: "pl7.app/clusterId",
+                    domain: {
+                        "pl7.app/vdj/chain": chain,
+                        "pl7.app/vdj/clonotypingRunId": blockId,
+                        "pl7.app/clustering/algorithm": "imported",
+                        "pl7.app/clustering/source": "airr/clone_id"
+                    },
+                    annotations: {
+                        "pl7.app/label": "Source Clone ID",
+                        "pl7.app/description": "Clonal assignment made by the tool that produced the input, namespaced by sample."
+                    }
+                }
+            }
+
+            clusterResults := pframes.processColumn(
+                importResults.output("clustersTsv-" + chain),
+                aggregateClustersTpl,
+                [{
+                    type: "Xsv",
+                    xsvType: "tsv",
+                    settings: {
+                        axes: [clusterAxis, axes[0]],
+                        columns: [{
+                            id: "link",
+                            column: "link",
+                            allowNA: false,
+                            spec: {
+                                name: "pl7.app/link",
+                                valueType: "Int",
+                                annotations: {
+                                    "pl7.app/isLinkerColumn": "true",
+                                    "pl7.app/label": "Clonotype to source clone",
+                                    "pl7.app/table/visibility": "hidden"
+                                }
+                            }
+                        }],
+                        storageFormat: "Parquet",
+                        partitionKeyLength: 0
+                    },
+                    traceSteps: clusterTrace,
+                    name: "clusterLink-" + chain,
+                    path: ["membership"]
+                }, {
+                    type: "Xsv",
+                    xsvType: "tsv",
+                    settings: {
+                        axes: [clusterAxis],
+                        columns: [{
+                            id: "size",
+                            column: "size",
+                            allowNA: false,
+                            spec: {
+                                name: "pl7.app/clustering/clusterSize",
+                                valueType: "Int",
+                                annotations: {
+                                    "pl7.app/label": "Source Clone Size",
+                                    "pl7.app/description": "The number of clonotypes the source tool assigned to this clone.",
+                                    "pl7.app/min": "1",
+                                    "pl7.app/table/visibility": "optional"
+                                }
+                            }
+                        }],
+                        storageFormat: "Parquet",
+                        partitionKeyLength: 0
+                    },
+                    traceSteps: clusterTrace,
+                    name: "clusterSize-" + chain,
+                    path: ["sizes"]
+                }],
+                {
+                    aggregate: ["pl7.app/sampleId"],
+                    traceSteps: clusterTrace
+                }
+            )
+
+            clusterResults.addXsvOutputToBuilder(result, "clusterLink-" + chain, "clusterLink-" + chain)
+            clusterResults.addXsvOutputToBuilder(result, "clusterSize-" + chain, "clusterSize-" + chain)
+        }
     }
 
     return {

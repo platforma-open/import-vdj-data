@@ -4,10 +4,12 @@ pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
+processUtils := import(":process-utils")
+
 json := import("json")
 text := import("text")
 
-self.defineOutputs("tsv", "stats", "tsvForSingleCell")
+self.defineOutputs("tsv", "stats", "recordStats", "tsvForSingleCell", "tsvForClusters")
 
 // config is a plain map (strings/bools/arrays/maps) controlling optional behavior.
 // Intended modes (subset used initially for MiXCR + CellRanger):
@@ -151,23 +153,66 @@ self.body(func(inputs) {
 	aa_cols := ["fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "cdr3-aa"]
 	if hasFr4Aa { aa_cols = append(aa_cols, "fr4-aa") }
 
-	for prop in columnsInfo.propertyColumns {
-		isVdjNt := false
-		isVdjAa := false
-		if prop.spec != undefined && prop.spec.domain != undefined {
-			isVdjNt = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegion"
-			isVdjAa = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegionInFrame"
-		}
-
-		if isVdjNt && !hasVdjNt {
-			nt_exprs := slices.map(nt_cols, func(c) { return pt.col(c) })
-			df = df.withColumns(pt.concatStr(nt_exprs, { delimiter: "" }).alias(prop.column))
-		}
-		if isVdjAa && !hasVdjAa {
-			aa_exprs := slices.map(aa_cols, func(c) { return pt.col(c) })
-			df = df.withColumns(pt.concatStr(aa_exprs, { delimiter: "" }).alias(prop.column))
+	// Numbering spacers and indel gaps are not residues; every sequence column but the alignments is degapped
+	for col in nt_cols + aa_cols + ["airr-cdr3-nt", "airr-cdr3-aa", "vdj-nt", "vdj-aa"] {
+		if columnsInfo.columnMapping[col] != undefined {
+			df = df.withColumns(pt.col(col).strReplace("[.-]", "", { replaceAll: true }).alias(col))
 		}
 	}
+
+	// Share of rows that must agree before a boundary convention is called
+	IMGT_BOUNDARY_MAJORITY := 0.5
+
+	// AIRR: an empty junction is rebuilt from cdr3 plus the conserved FR3/FR4 flanks, or cdr3 alone
+	airrJunction := func(id, cdr3, fr3, fr4, flank, cys) {
+		m := columnsInfo.columnMapping
+		if m[cdr3] == undefined { return }
+		derived := pt.col(cdr3).fillNull("")
+		if m[fr3] != undefined && m[fr4] != undefined {
+			tail := pt.col(fr3).fillNull("").strSlice(-flank)
+			// MiXCR's FR3 stops before the conserved Cys, so its last codon is no flank to splice on
+			conserved := pt.lit(IMGT_BOUNDARY_MAJORITY).lt(tail.strContainsAny(cys, {asciiCaseInsensitive: true}).cast("Int64").mean())
+			spliced := pt.concatStr([tail, derived, pt.col(fr4).fillNull("").strSlice(0, flank)])
+			derived = pt.when(conserved).then(spliced).otherwise(derived)
+		}
+		junction := pt.col(id).fillNull("")
+		expr := m[id] == m[cdr3] ? derived : pt.when(junction.neq("")).then(junction).otherwise(derived)
+		df = df.withColumns(expr.alias(id))
+	}
+	airrJunction("cdr3-nt", "airr-cdr3-nt", "fr3-nt", "fr4-nt", 3, ["TGT", "TGC"])
+	airrJunction("cdr3-aa", "airr-cdr3-aa", "fr3-aa", "fr4-aa", 1, ["C"])
+	// IMGT-style FR3/FR4 (IgBLAST, Change-O) include the conserved Cys and Trp/Phe; MiXCR-style ones stop at CDR3.
+	// Each boundary votes on its own, so a dataset carrying only one of the two still gets normalised.
+	if !is_undefined(config) && config.regionBoundaries == "auto" {
+		for r in [["fr3-nt", "fr4-nt", "cdr3-nt", 3], ["fr3-aa", "fr4-aa", "cdr3-aa", 1]] {
+			m := columnsInfo.columnMapping
+			if m[r[2]] == undefined { continue }
+			j := pt.col(r[2]); n := string(r[3])
+			if m[r[0]] != undefined {
+				fr3 := pt.col(r[0])
+				imgt := pt.lit(IMGT_BOUNDARY_MAJORITY).lt(fr3.strSlice(-r[3]).eq(j.strSlice(0, r[3])).cast("Int64").mean())
+				df = df.withColumns(pt.when(imgt).then(fr3.strReplace(".{" + n + "}$", "")).otherwise(fr3).alias(r[0]))
+			}
+			if m[r[1]] != undefined {
+				fr4 := pt.col(r[1])
+				imgt := pt.lit(IMGT_BOUNDARY_MAJORITY).lt(fr4.strSlice(0, r[3]).eq(j.strSlice(-r[3])).cast("Int64").mean())
+				df = df.withColumns(pt.when(imgt).then(fr4.strReplace("^.{" + n + "}", "")).otherwise(fr4).alias(r[1]))
+			}
+		}
+	}
+
+	// The span the inference named, or every region for the formats that name none
+	ntSpan := is_undefined(columnsInfo.spanNt) ? nt_cols : columnsInfo.spanNt
+	aaSpan := is_undefined(columnsInfo.spanAa) ? aa_cols : columnsInfo.spanAa
+	for prop in columnsInfo.propertyColumns {
+		if prop.column == "vdj-nt" && !hasVdjNt {
+			df = df.withColumns(pt.concatStr(slices.map(ntSpan, func(c) { return pt.col(c) }), { delimiter: "" }).alias("vdj-nt"))
+		}
+		if prop.column == "vdj-aa" && !hasVdjAa {
+			df = df.withColumns(pt.concatStr(slices.map(aaSpan, func(c) { return pt.col(c) }), { delimiter: "" }).alias("vdj-aa"))
+		}
+	}
+
 
 	// Allele/best-gene helpers (MiXCR mode)
 	alleleMode := "none"
@@ -179,6 +224,8 @@ self.body(func(inputs) {
 	for col in seqCols {
 		if columnsInfo.columnMapping[col] != undefined {
 			cond := pt.col(col).strContains("region_not_covered", { literal: true })
+			// AIRR rows often lack a region; a null there must not drop the row
+			if !is_undefined(config) && config.keepRowsWithEmptySequences == true { cond = pt.col(col).fillNull("").strContains("region_not_covered", { literal: true }) }
 			if invalidExpr == undefined { invalidExpr = cond } else { invalidExpr = invalidExpr.or(cond) }
 		}
 	}
@@ -257,27 +304,55 @@ self.body(func(inputs) {
 	}
 
 	// Basic row filters: require V and J genes when available/derivable
-	hasVGene := columnsInfo.columnMapping["v-gene"] != undefined
-	hasJGene := columnsInfo.columnMapping["j-gene"] != undefined
-	if alleleMode == "mixcr" {
-		if columnsInfo.columnMapping["v-allele"] != undefined ||
-			columnsInfo.columnMapping["allVHitsWithScore"] != undefined ||
-			columnsInfo.columnMapping["allVHits"] != undefined ||
-			columnsInfo.columnMapping["allVGenes"] != undefined {
-			hasVGene = true
-		}
-		if columnsInfo.columnMapping["j-allele"] != undefined ||
-			columnsInfo.columnMapping["allJHitsWithScore"] != undefined ||
-			columnsInfo.columnMapping["allJHits"] != undefined ||
-			columnsInfo.columnMapping["allJGenes"] != undefined {
-			hasJGene = true
+	hasVGene := processUtils.hasGene(columnsInfo, alleleMode, "v")
+	hasJGene := processUtils.hasGene(columnsInfo, alleleMode, "j")
+	// Named rather than applied inline, so the counts below can say what each one cost
+	keepsV := undefined
+	if hasVGene { keepsV = pt.col("v-gene").isNotNull().and(pt.col("v-gene").neq("")) }
+	keepsJ := undefined
+	if hasJGene { keepsJ = pt.col("j-gene").isNotNull().and(pt.col("j-gene").neq("")) }
+
+	// A row with no CDR3 is not a clonotype either
+	keepsCdr3 := undefined
+	if columnsInfo.columnMapping["cdr3-nt"] != undefined {
+		keepsCdr3 = pt.col("cdr3-nt").fillNull("").neq("")
+		if columnsInfo.cdr3FallbackToAa == true && columnsInfo.columnMapping["cdr3-aa"] != undefined {
+			keepsCdr3 = keepsCdr3.or(pt.col("cdr3-aa").fillNull("").neq(""))
 		}
 	}
-	if hasVGene {
-		df = df.filter(pt.col("v-gene").isNotNull().and(pt.col("v-gene").neq("")))
+
+	// Every region tested, not the concatenation: a gaps-only region degaps to "" and would
+	// concatenate without trace, keying a shorter sequence as if it were the whole feature.
+	coversFeature := undefined
+	if !is_undefined(columnsInfo.spanNt) {
+		for region in columnsInfo.spanNt {
+			filled := pt.col(region).fillNull("").neq("")
+			coversFeature = is_undefined(coversFeature) ? filled : coversFeature.and(filled)
+		}
 	}
-	if hasJGene {
-		df = df.filter(pt.col("j-gene").isNotNull().and(pt.col("j-gene").neq("")))
+
+	// Counted once for the whole dataset, and each is that filter's own cost -- rows it drops
+	// which everything before it kept -- so the discards and the survivors partition the file.
+	discardExprs := []
+	passed := undefined
+	for step in [["records-no-v", keepsV], ["records-no-j", keepsJ],
+		["records-no-cdr3", keepsCdr3], ["records-not-covering", coversFeature]] {
+		keeps := step[1]
+		if is_undefined(keeps) { continue }
+		dropped := is_undefined(passed) ? keeps.not() : keeps.not().and(passed)
+		discardExprs = append(discardExprs, dropped.cast("Int64").sum().alias(step[0]))
+		passed = is_undefined(passed) ? keeps : passed.and(keeps)
+	}
+	// Any column certain to exist, since count() after fillNull is just the row count
+	recordCountColumn := columnsInfo.columnMapping["v-gene"] != undefined ? "v-gene" :
+		columnsInfo.columnMapping["cdr3-nt"] != undefined ? "cdr3-nt" : "cdr3-aa"
+	// Appended one by one: tengo's `append` rejects a spread that turns out to be empty
+	recordExprs := [pt.col(recordCountColumn).fillNull("").count().alias("record-count")]
+	for e in discardExprs { recordExprs = append(recordExprs, e) }
+	df.select(recordExprs...).saveContent("records.tsv")
+
+	for keeps in [keepsV, keepsJ, keepsCdr3, coversFeature] {
+		if !is_undefined(keeps) { df = df.filter(keeps) }
 	}
 
 	// Build clonotypeKey with robust fallback when columnsInfo.clonotypeKeyColumns empty.
@@ -324,6 +399,11 @@ self.body(func(inputs) {
 	// Abundance availability
 	hasUmiCount := columnsInfo.hasUMIs && !is_undefined(columnsInfo.columnMapping["umi-count"])
 	hasReadCount := !is_undefined(columnsInfo.columnMapping["read-count"])
+	// No count column in the input: every row counts once
+	if columnsInfo.syntheticReadCount == true {
+		df = df.withColumns(pt.lit(1).alias("read-count"))
+		hasReadCount = true
+	}
 
 	// Cast abundance columns - only cast what exists
 	if hasReadCount {
@@ -359,24 +439,19 @@ self.body(func(inputs) {
 	}
 
 	hasCellTags := columnsInfo.cellTagColumns != undefined && len(columnsInfo.cellTagColumns) > 0
+	hasCloneId := columnsInfo.columnMapping["clone-id"] != undefined
 
 	// Productivity config
 	productivityMode := "none"
 	if !is_undefined(config) && !is_undefined(config.productivityMode) { productivityMode = config.productivityMode }
 
-	// Handle AIRR is-productive column if present (convert boolean to "true"/"false" string)
+	// AIRR productive is T/F or true/false; anything else is unknown and stays NA
 	if columnsInfo.columnMapping["is-productive"] != undefined && productivityMode == "none" {
-		// AIRR productive column is boolean, convert to string "true"/"false"
-		isProductiveExpr := pt.col("is-productive").eq(true).
-			or(pt.col("is-productive").eq("true")).
-			or(pt.col("is-productive").eq("True")).
-			or(pt.col("is-productive").eq("TRUE")).
-			or(pt.col("is-productive").eq("t")).
-			or(pt.col("is-productive").eq("T"))
+		p := pt.col("is-productive").fillNull("").strToUpper()
 		df = df.withColumns(
-			pt.when(isProductiveExpr).
-				then(pt.lit("true")).
-				otherwise(pt.lit("false")).
+			pt.when(p.eq("TRUE").or(p.eq("T"))).then(pt.lit("true")).
+				when(p.eq("FALSE").or(p.eq("F"))).then(pt.lit("false")).
+				otherwise(pt.lit("")).
 				alias("is-productive")
 		)
 	}
@@ -398,11 +473,13 @@ self.body(func(inputs) {
 			cellKeyExpr = pt.col(columnsInfo.cellTagColumns[0])
 		}
 
+		// Productivity is unknown when the input has no productive column and none is derived
+		hasProductive := columnsInfo.columnMapping["is-productive"] != undefined || productivityMode != "none"
 		byCellDf := chainDf.select(
 			cellKeyExpr.alias("cellKey"),
 			pt.col("clonotypeKey"),
 			pt.col(primaryAbundanceCol).alias(primaryAbundanceCol),
-			pt.col("is-productive").alias("is-productive")
+			(hasProductive ? pt.col("is-productive") : pt.lit("")).alias("is-productive")
 		)
 		byCellDf.save("byCell-" + chain + ".tsv")
 	}
@@ -427,6 +504,7 @@ self.body(func(inputs) {
 			}
 		}
 		chainDf := df.filter(filterExpr)
+
 
 		// Derive productivity / filter
 		if productivityMode == "from_cdr3_aa" {
@@ -460,6 +538,14 @@ self.body(func(inputs) {
 		}
 
 		chainDf = chainDf.withColumns(clonotypeKeyExpr)
+
+		// clone_id groups several clonotypes, so it rides out as a cluster, not a property
+		if hasCloneId {
+			chainDf.filter(pt.col("clone-id").fillNull("").neq("")).
+				select(pt.col("clonotypeKey"), pt.col("clone-id").alias("cloneId")).
+				unique().
+				save("clusters-" + chain + ".tsv")
+		}
 
 		// Export by-cell AFTER productivity filter if configured (MiXCR behavior)
 		if exportStage == "after_productivity_filter" {
@@ -510,14 +596,18 @@ self.body(func(inputs) {
 	tsv := {}
 	stats := {}
 	tsvForSingleCell := {}
+	tsvForClusters := {}
 	for chain in chains {
 		tsv[chain] = wf.getFile(chain + ".tsv")
 		stats[chain] = wf.getFileContent("stats-" + chain + ".tsv")
 		if byCellEnabled && hasCellTags {
 			tsvForSingleCell[chain] = wf.getFile("byCell-" + chain + ".tsv")
 		}
+		if hasCloneId {
+			tsvForClusters[chain] = wf.getFile("clusters-" + chain + ".tsv")
+		}
 	}
 
-	return { tsv: tsv, stats: stats, tsvForSingleCell: tsvForSingleCell }
+	return { tsv: tsv, stats: stats, recordStats: wf.getFileContent("records.tsv"), tsvForSingleCell: tsvForSingleCell, tsvForClusters: tsvForClusters }
 })
 

@@ -1,6 +1,5 @@
 self := import("@platforma-sdk/workflow-tengo:tpl")
 ll := import("@platforma-sdk/workflow-tengo:ll")
-json := import("json")
 
 immunoSeqImport := import(":infer-columns-immunoSeq")
 qiagenImport := import(":infer-columns-qiagen")
@@ -35,7 +34,10 @@ self.body(func(inputs) {
         }
     } else if format == "airr" || format == "airr-sc" {
         return {
-            columnsInfo: airrImport.getColumns(header)
+            columnsInfo: airrImport.getColumns(header, {
+                assemblingFeature: inputs.assemblingFeature,
+                singleCell: format == "airr-sc"
+            })
         }
     } else if format == "custom" {
         // For custom format, downstream step will build columnsInfo from user mapping

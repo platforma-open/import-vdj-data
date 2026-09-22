@@ -94,7 +94,6 @@ def profile(path: str, separator: str) -> dict:
                     continue
 
                 types[i] = max(types[i], value_type(v))
-
                 seen[i] += 1
                 if len(v) >= MIN_DOMAIN_LENGTH and AA_RE.match(v):
                     domain_like[i] += 1
@@ -108,7 +107,11 @@ def profile(path: str, separator: str) -> dict:
         if seen[i] and domain_like[i] / seen[i] >= MIN_DOMAIN_SHARE:
             amino_acid.append(name)
 
-    return {"headers": [h for h in headers if h], "types": out_types, "aminoAcid": amino_acid}
+    return {
+        "headers": [h for h in headers if h],
+        "types": out_types,
+        "aminoAcid": amino_acid,
+    }
 
 
 def main() -> None:

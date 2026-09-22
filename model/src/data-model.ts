@@ -65,5 +65,6 @@ export const blockDataModel = new DataModelBuilder({ kind })
     customMapping: params?.customMapping,
     primaryCountType: params?.primaryCountType,
     secondaryCountType: params?.secondaryCountType,
+    assemblingFeature: params?.assemblingFeature,
     bareSet: params?.bareSet,
   }));
