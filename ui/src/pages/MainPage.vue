@@ -406,6 +406,7 @@ watch(
           v-model="app.model.data.assemblingFeature"
           :options="assemblingFeatureOptions"
           label="Assemble clonotypes by"
+          placeholder="CDR3"
         >
           <template #tooltip>
             Which regions of the receptor the sequencing covers. Rearrangements not covering it are
