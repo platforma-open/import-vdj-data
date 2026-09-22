@@ -408,9 +408,11 @@ watch(
           label="Assemble clonotypes by"
         >
           <template #tooltip>
-            AIRR files do not say which part of the receptor the protocol covered, so this is asked
-            rather than guessed. A wider feature separates clonotypes that share a CDR3, and drops
-            any rearrangement that does not cover it. CDR3 when unset.
+            Which regions of the receptor your sequencing covers. AIRR files do not record this, so
+            it is asked rather than guessed. Clonotypes are defined by the sequence across these
+            regions, so a wider choice keeps apart ones that share a CDR3. Rearrangements not
+            covering it are discarded and counted, so a region your data lacks imports nothing. CDR3
+            when unset.
           </template>
         </PlDropdown>
 
