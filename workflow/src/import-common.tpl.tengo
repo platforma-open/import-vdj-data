@@ -160,23 +160,27 @@ self.body(func(inputs) {
 		}
 	}
 
+	// Share of rows that must agree before a boundary convention is called
+	IMGT_BOUNDARY_MAJORITY := 0.5
+
 	// AIRR: an empty junction is rebuilt from cdr3 plus the conserved FR3/FR4 flanks, or cdr3 alone
-	airrJunction := func(id, cdr3, fr3, fr4, flank) {
+	airrJunction := func(id, cdr3, fr3, fr4, flank, cys) {
 		m := columnsInfo.columnMapping
 		if m[cdr3] == undefined { return }
 		derived := pt.col(cdr3).fillNull("")
 		if m[fr3] != undefined && m[fr4] != undefined {
-			derived = pt.concatStr([pt.col(fr3).fillNull("").strSlice(-flank), derived, pt.col(fr4).fillNull("").strSlice(0, flank)])
+			tail := pt.col(fr3).fillNull("").strSlice(-flank)
+			// MiXCR's FR3 stops before the conserved Cys, so its last codon is no flank to splice on
+			conserved := pt.lit(IMGT_BOUNDARY_MAJORITY).lt(tail.strContainsAny(cys, {asciiCaseInsensitive: true}).cast("Int64").mean())
+			spliced := pt.concatStr([tail, derived, pt.col(fr4).fillNull("").strSlice(0, flank)])
+			derived = pt.when(conserved).then(spliced).otherwise(derived)
 		}
 		junction := pt.col(id).fillNull("")
 		expr := m[id] == m[cdr3] ? derived : pt.when(junction.neq("")).then(junction).otherwise(derived)
 		df = df.withColumns(expr.alias(id))
 	}
-	airrJunction("cdr3-nt", "airr-cdr3-nt", "fr3-nt", "fr4-nt", 3)
-	airrJunction("cdr3-aa", "airr-cdr3-aa", "fr3-aa", "fr4-aa", 1)
-
-	// Share of rows whose region ends overlap the junction before the boundary is called IMGT-style
-	IMGT_BOUNDARY_MAJORITY := 0.5
+	airrJunction("cdr3-nt", "airr-cdr3-nt", "fr3-nt", "fr4-nt", 3, ["TGT", "TGC"])
+	airrJunction("cdr3-aa", "airr-cdr3-aa", "fr3-aa", "fr4-aa", 1, ["C"])
 	// IMGT-style FR3/FR4 (IgBLAST, Change-O) include the conserved Cys and Trp/Phe; MiXCR-style ones stop at CDR3.
 	// Each boundary votes on its own, so a dataset carrying only one of the two still gets normalised.
 	if !is_undefined(config) && config.regionBoundaries == "auto" {

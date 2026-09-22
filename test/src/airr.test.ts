@@ -72,6 +72,9 @@ const FIXTURES = [
   // every ungated change in it lands on them too. Five MiXCR clones assembled by CDR3, four
   // productive and one frameshifted, is enough to notice if that path stops working.
   { asset: "mixcr-clones.tsv", label: "mixcr-clones" },
+  // No junction column, so it has to be rebuilt from cdr3 and the framework flanks
+  { asset: "airr-igblast-nojunction.tsv", label: "igblast-nojunction" },
+  { asset: "airr-mixcr-nojunction.tsv", label: "mixcr-nojunction" },
 ];
 
 /** Unwraps a model output, which arrives as `{ ok, value, stable }` rather than bare. */
@@ -303,6 +306,15 @@ blockTest(
       // Every row then fails to cover it and is discarded, which is the counter's whole job --
       // an empty import the scientist can explain beats a full one they did not ask for.
       expect(has(stats, "pl7.app/vdj/stat/recordsNotCoveringAssemblingFeature")).toBe(true);
+    }
+
+    // --- no junction column, in both boundary conventions ------------------------------
+    for (const label of ["igblast-nojunction", "mixcr-nojunction"]) {
+      // IMGT fwr3 ends on the conserved Cys and is spliced back on; MiXCR's stops before it, so
+      // the flanks are absent from the file and the cdr3 is left as it is.
+      const { columns } = await importFrom(ctx, { label });
+      expect(assembledFeature(columns), label).toBe("CDR3");
+      expect(keyStructure(columns), label).toContain('["pl7.app/vdj/feature","CDR3"]');
     }
 
     // --- the default, over the file that could have carried more -----------------------
