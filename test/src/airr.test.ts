@@ -295,14 +295,14 @@ blockTest(
         assemblingFeature: "VDJRegion",
       });
 
-      // `fwr1` is present as a column and empty on every row, so VDJRegion cannot be assembled.
-      // Falling back keeps the data; honouring the header would delete every row in the file.
-      expect(assembledFeature(columns)).toBe("CDR3");
-      expect(keyStructure(columns)).toContain('["pl7.app/vdj/feature","CDR3"]');
-      expect(keyStructure(columns)).not.toContain("VDJRegion");
+      // `fwr1` is a column here and empty on every row. The setting is honoured anyway: the
+      // header carries the region, so the key is the one that was asked for.
+      expect(assembledFeature(columns)).toBe("VDJRegion");
+      expect(keyStructure(columns)).toContain('["pl7.app/vdj/feature","VDJRegion"]');
 
-      // With a CDR3 key nothing can fail to cover the feature, so the counter is not emitted.
-      expect(has(stats, "pl7.app/vdj/stat/recordsNotCoveringAssemblingFeature")).toBe(false);
+      // Every row then fails to cover it and is discarded, which is the counter's whole job --
+      // an empty import the scientist can explain beats a full one they did not ask for.
+      expect(has(stats, "pl7.app/vdj/stat/recordsNotCoveringAssemblingFeature")).toBe(true);
     }
 
     // --- the default, over the file that could have carried more -----------------------

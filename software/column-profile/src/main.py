@@ -4,7 +4,6 @@ Two questions, one pass over the file:
 
   types       — the value type each column can hold, for the record-property columns.
   aminoAcid   — which columns hold amino-acid variable domains, for the chain slots.
-  fill        — the share of usable rows in which each column actually holds a value.
 
 Both are answered from ALL rows, not a sample. That is the whole point: a column that looks
 numeric for twenty rows and holds "N/A" on row five hundred must come out String, and a sampled
@@ -73,20 +72,7 @@ def resolve_separator(separator: str) -> str:
     return resolved
 
 
-def usable_indices(headers: list[str], required: list[str]) -> list[list[int]]:
-    """Each --required value is one OR-group of header names; all groups must be satisfied."""
-    groups = []
-    for spec in required:
-        idx = [headers.index(n) for n in spec.split(",") if n in headers]
-        if not idx:
-            # A group no column can satisfy would report every column as empty, so treat it
-            # as no constraint and let the caller's own required-column check speak.
-            continue
-        groups.append(idx)
-    return groups
-
-
-def profile(path: str, separator: str, required: list[str] | None = None) -> dict:
+def profile(path: str, separator: str) -> dict:
     with open(path, newline="", encoding="utf-8-sig") as f:
         reader = csv.reader(f, delimiter=separator)
         try:
@@ -97,18 +83,8 @@ def profile(path: str, separator: str, required: list[str] | None = None) -> dic
         types = [T_NONE] * len(headers)
         seen = [0] * len(headers)
         domain_like = [0] * len(headers)
-        filled = [0] * len(headers)
-        groups = usable_indices(headers, required or [])
-        usable_rows = 0
 
         for row in reader:
-            # Rows that are not rearrangements would drag every fill rate down, so the
-            # denominator is the rows a caller could use. No groups means all rows.
-            usable = all(
-                any((row[j] or "").strip() for j in group if j < len(row)) for group in groups
-            )
-            if usable:
-                usable_rows += 1
             for i, raw in enumerate(row):
                 if i >= len(headers):
                     break
@@ -118,21 +94,16 @@ def profile(path: str, separator: str, required: list[str] | None = None) -> dic
                     continue
 
                 types[i] = max(types[i], value_type(v))
-                if usable:
-                    filled[i] += 1
-
                 seen[i] += 1
                 if len(v) >= MIN_DOMAIN_LENGTH and AA_RE.match(v):
                     domain_like[i] += 1
 
     out_types = {}
-    out_fill = {}
     amino_acid = []
     for i, name in enumerate(headers):
         if not name:
             continue
         out_types[name] = TYPE_NAMES[types[i]]
-        out_fill[name] = (filled[i] / usable_rows) if usable_rows else 0.0
         if seen[i] and domain_like[i] / seen[i] >= MIN_DOMAIN_SHARE:
             amino_acid.append(name)
 
@@ -140,8 +111,6 @@ def profile(path: str, separator: str, required: list[str] | None = None) -> dic
         "headers": [h for h in headers if h],
         "types": out_types,
         "aminoAcid": amino_acid,
-        "fill": out_fill,
-        "usableRows": usable_rows,
     }
 
 
@@ -154,24 +123,16 @@ def main() -> None:
         help='Field separator: a name ("tab", "comma", "semicolon") or the character itself',
     )
     p.add_argument("--output", required=True, help="Output JSON")
-    p.add_argument(
-        "--required",
-        action="append",
-        default=[],
-        help="Comma-separated OR-group of column names; repeat for an AND of groups. "
-        "Only rows satisfying every group count towards `fill`.",
-    )
     args = p.parse_args()
 
-    result = profile(args.input, resolve_separator(args.separator), args.required)
+    result = profile(args.input, resolve_separator(args.separator))
     with open(args.output, "w") as f:
         json.dump(result, f, sort_keys=True)
 
     print(
         f"Profiled {len(result['headers'])} columns:"
         f" {sum(1 for t in result['types'].values() if t != 'String')} numeric,"
-        f" {len(result['aminoAcid'])} amino-acid;"
-        f" {result['usableRows']} usable rows"
+        f" {len(result['aminoAcid'])} amino-acid"
     )
 
 

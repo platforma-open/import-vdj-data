@@ -63,15 +63,6 @@ optionalProperties := [
 	"sequence-alignment-aa", "germline-alignment-aa"
 ]
 
-// v_call, j_call and a CDR3 are the bare minimum; everything else must earn its place
-MIN_FILL := 0.5
-hardRequired := {
-	"v_call": true,
-	"j_call": true,
-	"junction": true,
-	"cdr3": true
-}
-
 // MiXCR's assembling-feature vocabulary, region by region; the mixcr-clonotyping panel offers the same list
 assemblingFeatures := {
 	"CDR3": ["cdr3"],
@@ -93,15 +84,9 @@ DEFAULT_ASSEMBLING_FEATURE := "CDR3"
 
 getColumns := func(header, ...opts) {
 	options := len(opts) > 0 && !is_undefined(opts[0]) ? opts[0] : {}
-	columnFill := options.columnFill
 	requestedFeature := options.assemblingFeature
-
-	// A header the file barely fills is not a column the import can build anything on
-	present := func(name, key) {
-		if is_undefined(columnFill) || hardRequired[key] == true { return true }
-		f := columnFill[name]
-		return is_undefined(f) || f >= MIN_FILL
-	}
+	// The scientist declared bulk or single-cell; a cell_id column does not overrule them
+	singleCell := options.singleCell == true
 
 	// Handle case where header might be an array with a single comma-separated string
 	headerArray := header
@@ -126,7 +111,6 @@ getColumns := func(header, ...opts) {
 		hTrimmed := text.trim_space(hStr)
 		if len(hTrimmed) == 0 { continue }
 		k := text.to_lower(hTrimmed)
-		if !present(hTrimmed, k) { continue }
 
 		canonical := sourceAliases[k]
 		if canonical != undefined && columnMapping[canonical] == undefined {
@@ -148,7 +132,7 @@ getColumns := func(header, ...opts) {
 	}
 	cellTagColumns := []
 	cellHeader := cellHeaders["cell_id"] != undefined ? cellHeaders["cell_id"] : cellHeaders["barcode"]
-	if cellHeader != undefined {
+	if cellHeader != undefined && singleCell {
 		cellTagColumns = [cellHeader]
 		// Map to itself so the column can be accessed by its original name
 		columnMapping[cellHeader] = cellHeader

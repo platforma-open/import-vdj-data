@@ -110,60 +110,25 @@ Test_aaRegions_carryTheSameFeature := func() {
 }
 
 Test_cloneId_isNotACellTag := func() {
-	info := airr.getColumns(requiredOnly + ["clone_id", "cell_id"])
+	info := airr.getColumns(requiredOnly + ["clone_id", "cell_id"], { singleCell: true })
 	test.isEqual(["cell_id"], info.cellTagColumns, "only cell_id tags a cell")
 	test.isEqual("clone_id", info.columnMapping["clone-id"], "clone_id is kept for the cluster")
 	test.isFalse(has(ids(info.propertyColumns), "clone-id"), "clone_id is not a clonotype property")
 }
 
 Test_cellId_winsOverBarcode_whateverTheHeaderOrder := func() {
-	info := airr.getColumns(requiredOnly + ["barcode", "cell_id"])
+	info := airr.getColumns(requiredOnly + ["barcode", "cell_id"], { singleCell: true })
 	test.isEqual(["cell_id"], info.cellTagColumns, "cell_id preferred")
-	test.isEqual(["barcode"], airr.getColumns(requiredOnly + ["barcode"]).cellTagColumns, "barcode as fallback")
-}
-
-// Fill rates as the column profiler reports them, over rows carrying v_call, j_call and a CDR3.
-mixcrFill := {
-	"v_call": 1.0, "j_call": 1.0, "junction": 1.0, "junction_aa": 1.0,
-	"fwr1": 0.0, "cdr1": 0.98, "fwr2": 0.98, "cdr2": 0.99, "fwr3": 0.99, "cdr3": 0.99, "fwr4": 0.98,
-	"c_call": 0.0, "d_call": 0.98
+	test.isEqual(["barcode"], airr.getColumns(requiredOnly + ["barcode"], { singleCell: true }).cellTagColumns, "barcode as fallback")
 }
 
 airrHeader := ["sequence_id", "v_call", "d_call", "j_call", "c_call", "junction", "junction_aa",
 	"cdr3", "fwr1", "cdr1", "fwr2", "cdr2", "fwr3", "fwr4"]
 
-Test_unfilledRegion_isNotAColumnTheFeatureCanUse := func() {
-	byHeader := airr.getColumns(airrHeader, { assemblingFeature: "VDJRegion" })
-	test.isEqual("VDJRegion", byHeader.assemblingFeature, "the header alone would allow it")
-
-	info := airr.getColumns(airrHeader, { columnFill: mixcrFill, assemblingFeature: "VDJRegion" })
-	test.isEqual("CDR3", info.assemblingFeature, "an empty fwr1 cannot carry VDJRegion")
-	test.isTrue(is_undefined(info.columnMapping["fr1-nt"]), "fr1 is not mapped at all")
-
-	narrower := airr.getColumns(airrHeader, { columnFill: mixcrFill, assemblingFeature: "CDR1_TO_FR4" })
-	test.isEqual("CDR1_TO_FR4", narrower.assemblingFeature, "what the file does carry is honoured")
-}
-
-Test_unfilledCCall_leavesTheKey := func() {
-	full := airr.getColumns(airrHeader)
-	test.isEqual("CDR3-nt-VGene-JGene-CGene", full.clonotypeKeyStructure, "header alone keeps CGene")
-
-	info := airr.getColumns(airrHeader, { columnFill: mixcrFill })
-	test.isEqual(["cdr3-nt", "v-gene", "j-gene"], info.clonotypeKeyColumns, "an empty c_call is out of the key")
-	test.isEqual("CDR3-nt-VGene-JGene", info.clonotypeKeyStructure, "key structure follows")
-}
-
-Test_hardRequiredColumns_surviveAnyFill := func() {
-	starved := { "v_call": 0.0, "j_call": 0.0, "junction": 0.0, "cdr3": 0.0, "fwr1": 0.0 }
-	info := airr.getColumns(airrHeader, { columnFill: starved })
-	test.isEqual("v_call", info.columnMapping["v-gene"], "v_call is never dropped")
-	test.isEqual("j_call", info.columnMapping["j-gene"], "j_call is never dropped")
-	test.isEqual("junction", info.columnMapping["cdr3-nt"], "junction is never dropped")
-	test.isEqual("cdr3", info.columnMapping["airr-cdr3-nt"], "cdr3 is never dropped")
-}
-
-Test_unfilledCellId_doesNotMakeItSingleCell := func() {
+// A bulk file carrying an empty cell_id column is the reason this is declared, not detected.
+Test_cellTagging_followsTheDeclaredFormat := func() {
 	header := airrHeader + ["cell_id"]
-	test.isEqual(["cell_id"], airr.getColumns(header).cellTagColumns, "header alone tags a cell")
-	test.isEqual([], airr.getColumns(header, { columnFill: { "cell_id": 0.0 } }).cellTagColumns, "an empty cell_id tags nothing")
+	test.isEqual([], airr.getColumns(header).cellTagColumns, "bulk was asked for, so nothing tags a cell")
+	test.isEqual(["cell_id"], airr.getColumns(header, { singleCell: true }).cellTagColumns, "single-cell was asked for")
 }
+
