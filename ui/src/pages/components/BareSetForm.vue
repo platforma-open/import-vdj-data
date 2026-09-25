@@ -105,16 +105,22 @@ function setBareField(field: "identity" | BareSetChain, value: string | undefine
     sequences: {},
     scheme: "imgt",
   };
+  const genes = { ...current.genes };
   const next: BareSetMapping = {
     identity: field === "identity" ? (value ?? "") : current.identity,
     chainSelection: current.chainSelection,
     sequences: { ...current.sequences },
-    genes: current.genes,
+    genes,
     scheme: current.scheme,
   };
   if (field !== "identity") {
     if (value) next.sequences[field] = value;
-    else delete next.sequences[field];
+    else {
+      delete next.sequences[field];
+      // The gene controls hide with the sequence, so a mapping left behind would come back
+      // unreviewed under whatever sequence is picked next.
+      delete genes[field];
+    }
   }
 
   // Cleared right back out when nothing is mapped, so its mere presence stays a reliable signal
