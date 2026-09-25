@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.kind
 
+## 1.1.0
+
+### Minor Changes
+
+- 3100c4c: Directly imported sequence sets can map V and J gene columns per chain; they are emitted as gene and allele columns that gene-usage blocks read
+
 ## 1.0.1
 
 ### Patch Changes
