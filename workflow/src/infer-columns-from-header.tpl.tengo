@@ -1,6 +1,5 @@
 self := import("@platforma-sdk/workflow-tengo:tpl")
 ll := import("@platforma-sdk/workflow-tengo:ll")
-json := import("json")
 
 immunoSeqImport := import(":infer-columns-immunoSeq")
 qiagenImport := import(":infer-columns-qiagen")

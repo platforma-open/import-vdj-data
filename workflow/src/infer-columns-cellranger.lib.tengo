@@ -1,8 +1,5 @@
 maps := import("@platforma-sdk/workflow-tengo:maps")
-slices := import("@platforma-sdk/workflow-tengo:slices")
 json := import("json")
-ll := import("@platforma-sdk/workflow-tengo:ll")
-text := import("text")
 
 common := import(":infer-columns-common")
 
