@@ -104,6 +104,17 @@ export type ImportedProperty = {
   valueType: ColumnValueType;
 };
 
+/**
+ * The germline gene columns the file already carries for one chain. Taken as given: nothing
+ * infers them, so an unmapped gene is simply absent from the emitted set.
+ */
+export type BareSetGenes = {
+  /** Header of the V gene column. May carry an allele (`IGHV3-23*01`); the workflow splits it. */
+  v?: string;
+  /** Header of the J gene column. Same as `v`. */
+  j?: string;
+};
+
 /** How to read a directly-loaded file as a set of receptor records. */
 export type BareSetMapping = {
   /**
@@ -122,6 +133,11 @@ export type BareSetMapping = {
    * chains is unpivoted into one record, not split into two.
    */
   sequences: Partial<Record<BareSetChain, string>>;
+  /**
+   * V and J gene columns per chain, keyed by the same slots as `sequences`. Optional throughout:
+   * a set with no gene columns is the ordinary case, and a gene is never part of the record key.
+   */
+  genes?: Partial<Record<BareSetChain, BareSetGenes>>;
   /** The numbering convention ANARCI is asked for, and the one recorded on every region. */
   scheme: BareSetScheme;
   /**

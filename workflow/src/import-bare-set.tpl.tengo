@@ -3,7 +3,8 @@
 // Runs once per sample, as the body of a `pframes.processColumn` step. Produces two TSVs on
 // the same key, which the caller imports into one frame:
 //
-//   records.tsv   variantKey, recordLabel, clonotypePresence, <chain>_sequence
+//   records.tsv   variantKey, recordLabel, clonotypePresence, <chain>_sequence,
+//                 <chain>_<V|J>Gene and <chain>_<V|J>Allele for each gene the file supplied
 //   regions.tsv   variantKey, <chain>_<region>_aa x7, <chain>_regionAnnotationStatus
 //
 // They are kept separate rather than joined because both are keyed on `variantKey` and both
@@ -86,6 +87,30 @@ self.body(func(inputs) {
 		df = df.withColumns(renames...)
 	}
 
+	// Germline genes the file supplied, split the way the other doors split them: the allele
+	// column takes the raw value when it names one (the AIRR path, import-common.tpl.tengo), and
+	// the gene column drops the allele and a leading lowercase species tag (the custom path,
+	// import-custom.tpl.tengo). Read from the source header directly, so one file column mapped
+	// to two genes still works. Nothing checks the value against the sequence or the chain.
+	geneExprs := []
+	for m in specs.mappedGenes(chains, mapping.genes) {
+		raw := pt.col(mapping.genes[m.chain][m.gene.field])
+		geneExprs = append(geneExprs,
+			pt.when(raw.strContains("*", { literal: true })).
+				then(raw).
+				otherwise(pt.lit("")).
+				fillNull("").
+				alias(specs.alleleColumn(m.chain, m.gene.gene)),
+			raw.strReplace("\\*.*$", "", { replaceAll: true }).
+				strReplace("^[a-z]I", "I", { replaceAll: true }).
+				strReplace("^[a-z]T", "T", { replaceAll: true }).
+				alias(specs.geneColumn(m.chain, m.gene.gene))
+		)
+	}
+	if len(geneExprs) > 0 {
+		df = df.withColumns(geneExprs...)
+	}
+
 	// The record's key: sha256 of the identity column alone, base64_alphanumeric, truncated
 	// to 120 bits, nulls filled with the literal NA. This is the block's existing key-minting
 	// mechanism given a one-column key list — the sequences play no part in it, so two
@@ -114,6 +139,9 @@ self.body(func(inputs) {
 	keep := [specs.keyColumn, specs.labelColumn, specs.abundanceColumn]
 	for chain in chains {
 		keep = append(keep, specs.sequenceColumn(chain))
+	}
+	for m in specs.mappedGenes(chains, mapping.genes) {
+		keep = append(keep, specs.geneColumn(m.chain, m.gene.gene), specs.alleleColumn(m.chain, m.gene.gene))
 	}
 	for property in properties {
 		keep = append(keep, specs.propertyColumn(specs.sanitize(property.header)))

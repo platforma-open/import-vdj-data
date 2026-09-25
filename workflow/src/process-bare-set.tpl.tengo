@@ -6,7 +6,7 @@
 //                                   abundance column — the only one that keeps the sample axis
 //   2. annotate        per sample   ANARCI over that TSV, producing a region TSV and per-chain
 //                                   outcome counts
-//   3. aggregate       collapse     the record TSVs -> sequences, imported properties, label
+//   3. aggregate       collapse     the record TSVs -> sequences, genes, imported properties, label
 //   4. aggregate       collapse     the region TSVs -> located regions and their statuses
 //
 // Passes 3 and 4 share one body (`aggregate-by-record`); only the declared Xsv columns differ.
@@ -56,7 +56,7 @@ self.body(func(inputs) {
 	ll.assert(len(chains) > 0, "process-bare-set: at least one chain must be mapped")
 
 	keyAxis := specs.keyAxis(blockId, chains)
-	bySource := specs.columnsBySource(chains, scheme, properties)
+	bySource := specs.columnsBySource(chains, scheme, properties, mapping.genes)
 
 	// Pass 1. The Xsv output declares the abundance column only; the record TSV it also emits
 	// carries every other column, for pass 3 to collapse.
