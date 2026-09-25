@@ -115,7 +115,8 @@ wf.body(func(args) {
 			scheme: bare.scheme,
 			mapping: {
 				identity: bare.identity,
-				sequences: bare.sequences
+				sequences: bare.sequences,
+				genes: bare.genes
 			},
 			properties: bare.properties == undefined ? [] : bare.properties
 		})

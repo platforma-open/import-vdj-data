@@ -101,6 +101,15 @@ REGION_TABLE := {
 
 SCHEMES := ["imgt", "kabat", "chothia"]
 
+// Germline genes a file can supply per chain, in emission order. The key is the letter used in
+// TSV column names; `field` is the key in the mapping's per-chain gene map; `reference` is the
+// `pl7.app/vdj/reference` domain value every gene-usage consumer queries on; `order` is the
+// custom import's table position for the same column.
+GENES := [
+	{ gene: "V", field: "v", reference: "VGene", order: "69000" },
+	{ gene: "J", field: "j", reference: "JGene", order: "49000" }
+]
+
 // --- TSV column names -------------------------------------------------------------------
 // Single source of truth shared with software/region-annotation, whose output these specs
 // are imported from. Changing one without the other silently produces empty columns.
@@ -112,6 +121,8 @@ propertyColumn := func(token) { return "prop_" + token }
 sanitize := func(header) { return strings.substituteSpecialCharacters(header) }
 
 sequenceColumn := func(chain) { return chain + "_sequence" }
+geneColumn := func(chain, gene) { return chain + "_" + gene + "Gene" }
+alleleColumn := func(chain, gene) { return chain + "_" + gene + "Allele" }
 regionColumn := func(chain, region) { return chain + "_" + region + "_aa" }
 statusColumn := func(chain) { return chain + "_regionAnnotationStatus" }
 
@@ -330,6 +341,87 @@ regionColumnSpec := func(chain, region, scheme, paired) {
 				"pl7.app/label": CHAIN_LABELS[chain] + " " + region + " aa",
 				"pl7.app/table/fontFamily": "monospace",
 				"pl7.app/vdj/numberingSchema": scheme
+			})
+		}
+	}
+}
+
+/**
+ * The germline genes the file supplied for each chain, as `[{ chain, gene }]` in canonical
+ * order — chains in CHAINS order restricted to `chains`, genes in GENES order. A gene whose
+ * header is unmapped or empty is left out; nothing else decides which gene columns exist.
+ */
+mappedGenes := func(chains, genes) {
+	out := []
+	if genes == undefined { return out }
+	for chain in chains {
+		byChain := genes[chain]
+		if byChain == undefined { continue }
+		for g in GENES {
+			header := byChain[g.field]
+			if header != undefined && header != "" {
+				out = append(out, { chain: chain, gene: g })
+			}
+		}
+	}
+	return out
+}
+
+/**
+ * A V or J gene the file supplied, allele stripped. Taken as given: nothing checks it against
+ * the sequence or the declared chain.
+ *
+ * Name, domain and annotations are the custom import's `v-gene` / `j-gene` spec
+ * (infer-columns-custom.lib.tengo), which is what gene-usage consumers query for. Two deltas,
+ * the same two the sequence columns carry: the chain domain on a paired set, so heavy and light
+ * genes stay distinct specs, and the chain in the label.
+ *
+ * `allowNA` because the gene is a property the file may leave blank on some rows. The custom
+ * import refuses those rows instead; here the record is keyed on its id, not its genes, so a
+ * missing gene is no reason to drop it.
+ */
+geneColumnSpec := func(chain, gene, paired) {
+	validateChain(chain)
+	return {
+		id: "gene-" + chain + "-" + gene.gene,
+		column: geneColumn(chain, gene.gene),
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/geneHit",
+			valueType: "String",
+			domain: maps.merge({
+				"pl7.app/vdj/reference": gene.reference
+			}, chainDomain(chain, paired)),
+			annotations: a(gene.order, "default", {
+				"pl7.app/label": CHAIN_LABELS[chain] + " " + gene.gene + " Gene",
+				"pl7.app/description": "The " + gene.gene + " gene, as supplied by the imported file.",
+				"pl7.app/isDiscreteFilter": "true"
+			})
+		}
+	}
+}
+
+/**
+ * The same gene with its allele, when the file wrote one. Empty on rows whose value carries no
+ * `*`, which is how the AIRR path fills the same column (import-common.tpl.tengo). Optional
+ * visibility: a file without alleles leaves it blank throughout.
+ */
+alleleColumnSpec := func(chain, gene, paired) {
+	validateChain(chain)
+	return {
+		id: "allele-" + chain + "-" + gene.gene,
+		column: alleleColumn(chain, gene.gene),
+		allowNA: true,
+		spec: {
+			name: "pl7.app/vdj/geneHitWithAllele",
+			valueType: "String",
+			domain: maps.merge({
+				"pl7.app/vdj/reference": gene.reference
+			}, chainDomain(chain, paired)),
+			annotations: a(gene.order, "optional", {
+				"pl7.app/label": CHAIN_LABELS[chain] + " " + gene.gene + " Allele",
+				"pl7.app/description": "The " + gene.gene + " gene including allele, as supplied by the imported file.",
+				"pl7.app/isDiscreteFilter": "true"
 			})
 		}
 	}
@@ -673,7 +765,7 @@ chainLabelColumn := func(chains) {
  * Iteration is over arrays throughout, so the assembled list is byte-identical for equal
  * inputs and the pure templates downstream dedup.
  */
-allColumns := func(chains, scheme, properties) {
+allColumns := func(chains, scheme, properties, genes) {
 	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
 	validateScheme(scheme)
 
@@ -685,6 +777,10 @@ allColumns := func(chains, scheme, properties) {
 
 	for chain in chains {
 		columns = append(columns, mainSequenceColumn(chain, paired))
+	}
+	for m in mappedGenes(chains, genes) {
+		columns = append(columns, geneColumnSpec(m.chain, m.gene, paired))
+		columns = append(columns, alleleColumnSpec(m.chain, m.gene, paired))
 	}
 	for chain in chains {
 		for region in REGIONS {
@@ -705,7 +801,7 @@ allColumns := func(chains, scheme, properties) {
  * not about grouping. It lives here so the process template does not have to infer it from
  * column names.
  */
-columnsBySource := func(chains, scheme, properties) {
+columnsBySource := func(chains, scheme, properties, genes) {
 	ll.assert(len(chains) > 0, "bare-set-specs: at least one chain must be mapped")
 	validateScheme(scheme)
 
@@ -724,6 +820,10 @@ columnsBySource := func(chains, scheme, properties) {
 	}
 	for chain in chains {
 		perRecord = append(perRecord, mainSequenceColumn(chain, paired))
+	}
+	for m in mappedGenes(chains, genes) {
+		perRecord = append(perRecord, geneColumnSpec(m.chain, m.gene, paired))
+		perRecord = append(perRecord, alleleColumnSpec(m.chain, m.gene, paired))
 	}
 
 	// Read from the annotation pass's TSV, aggregated the same way.
@@ -752,6 +852,11 @@ export {
 	labelColumn: labelColumn,
 	abundanceColumn: abundanceColumn,
 	sequenceColumn: sequenceColumn,
+	geneColumn: geneColumn,
+	alleleColumn: alleleColumn,
+	mappedGenes: mappedGenes,
+	geneColumnSpec: geneColumnSpec,
+	alleleColumnSpec: alleleColumnSpec,
 	regionColumn: regionColumn,
 	statusColumn: statusColumn,
 

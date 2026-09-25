@@ -877,3 +877,78 @@ blockTest(
     expect(columns.find((c) => c.name.startsWith("pl7.app/vdj/importedProperty/"))).toBeUndefined();
   },
 );
+
+// Germline genes the file already carries, emitted under the spec gene-usage consumers query
+// for. The fixture covers the three value shapes: an allele-qualified call, a species-prefixed
+// call without allele, and a blank V — which must not drop the record, since the key is the id.
+blockTest(
+  "imports V and J genes a bare set supplies, per chain",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-paired-set-genes.tsv");
+
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "genes",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          datasetId: "SGENES000000000000000001",
+          label: "bare-paired-set-genes",
+          extension: "tsv",
+        },
+        bareSet: {
+          identity: "mAb ID",
+          chainSelection: "IG",
+          sequences: { IGHeavy: "VH", IGLight: "VL" },
+          genes: {
+            IGHeavy: { v: "VH V call", j: "VH J call" },
+            IGLight: { v: "VL V call", j: "VL J call" },
+          },
+          scheme: SCHEME,
+        },
+      }),
+    });
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    type Emitted = {
+      name: string;
+      domain: Record<string, string>;
+      annotations: Record<string, string>;
+      axes: { name: string }[];
+    };
+    const wrapped = state.outputs?.importedColumns as { value?: Emitted[] } | Emitted[] | undefined;
+    const columns = (Array.isArray(wrapped) ? wrapped : (wrapped?.value ?? [])) as Emitted[];
+
+    const gene = (name: string, reference: string, chain: string) =>
+      columns.filter(
+        (c) =>
+          c.name === name &&
+          c.domain["pl7.app/vdj/reference"] === reference &&
+          c.domain["pl7.app/vdj/scClonotypeChain"] === chain,
+      );
+
+    for (const name of ["pl7.app/vdj/geneHit", "pl7.app/vdj/geneHitWithAllele"]) {
+      for (const reference of ["VGene", "JGene"]) {
+        for (const chain of ["A", "B"]) {
+          const found = gene(name, reference, chain);
+          // Exactly one: heavy and light must be distinct specs or they dedupe into one column.
+          expect(found, `${name} ${reference} ${chain}`).toHaveLength(1);
+          // A record property, on the record axis alone — the axis gene-usage anchors on.
+          expect(found[0].axes.map((a) => a.name)).toEqual(["pl7.app/variantKey"]);
+        }
+      }
+    }
+    expect(gene("pl7.app/vdj/geneHit", "VGene", "B")[0].annotations["pl7.app/label"]).toBe(
+      "Light V Gene",
+    );
+  },
+);

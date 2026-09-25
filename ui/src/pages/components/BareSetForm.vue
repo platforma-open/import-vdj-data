@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   BareSetChain,
+  BareSetGenes,
   BareSetMapping,
   BareSetScheme,
   ChainSelection,
@@ -69,9 +70,12 @@ function setChainSelection(value: string | undefined) {
   // Columns mapped to a slot the new declaration does not ask for are dropped. Keeping them would
   // leave the block emitting a chain the scientist just said they were not importing.
   const kept: Partial<Record<BareSetChain, string>> = {};
+  const keptGenes: Partial<Record<BareSetChain, BareSetGenes>> = {};
   for (const slot of CHAIN_SLOTS[selection] ?? []) {
     const existing = current.sequences?.[slot];
     if (existing) kept[slot] = existing;
+    const genes = current.genes?.[slot];
+    if (genes) keptGenes[slot] = genes;
   }
 
   // A scheme the new chains cannot be numbered under would fail the run rather than the mapping,
@@ -79,7 +83,7 @@ function setChainSelection(value: string | undefined) {
   const allowed = SCHEMES_FOR_SELECTION[selection] ?? (["imgt"] as BareSetScheme[]);
   const scheme = allowed.includes(current.scheme) ? current.scheme : allowed[0];
 
-  a.bareSet = { ...current, chainSelection: selection, sequences: kept, scheme };
+  a.bareSet = { ...current, chainSelection: selection, sequences: kept, genes: keptGenes, scheme };
 }
 
 function bareField(field: "identity" | BareSetChain): string | undefined {
@@ -105,6 +109,7 @@ function setBareField(field: "identity" | BareSetChain, value: string | undefine
     identity: field === "identity" ? (value ?? "") : current.identity,
     chainSelection: current.chainSelection,
     sequences: { ...current.sequences },
+    genes: current.genes,
     scheme: current.scheme,
   };
   if (field !== "identity") {
@@ -117,6 +122,23 @@ function setBareField(field: "identity" | BareSetChain, value: string | undefine
   // mapping unable to clear itself.
   const empty = !next.identity && !Object.values(next.sequences).some(Boolean);
   a.bareSet = empty ? undefined : next;
+}
+
+function geneField(slot: BareSetChain, gene: keyof BareSetGenes): string | undefined {
+  return app.model.data.bareSet?.genes?.[slot]?.[gene];
+}
+
+/** Written on user gesture only. A gene column is optional, so clearing it just drops the key. */
+function setGeneField(slot: BareSetChain, gene: keyof BareSetGenes, value: string | undefined) {
+  const a = app.model.data;
+  if (!a.bareSet) return;
+  const genes = { ...a.bareSet.genes };
+  const byChain: BareSetGenes = { ...genes[slot] };
+  if (value) byChain[gene] = value;
+  else delete byChain[gene];
+  if (byChain.v || byChain.j) genes[slot] = byChain;
+  else delete genes[slot];
+  a.bareSet = { ...a.bareSet, genes };
 }
 
 function setBareScheme(value: string | undefined) {
@@ -171,7 +193,11 @@ const columnChecksPending = computed(() => {
 const propertyCandidates = computed(() => {
   const bare = app.model.data.bareSet;
   const taken = new Set(
-    [bare?.identity, ...Object.values(bare?.sequences ?? {})].filter(Boolean) as string[],
+    [
+      bare?.identity,
+      ...Object.values(bare?.sequences ?? {}),
+      ...Object.values(bare?.genes ?? {}).flatMap((g) => [g?.v, g?.j]),
+    ].filter(Boolean) as string[],
   );
   return (app.model.outputs.fileColumns ?? []).filter((h) => !taken.has(h));
 });
@@ -233,16 +259,33 @@ const propertyCollisionMessage = computed(() =>
       required
       @update:model-value="(v: string | undefined) => setChainSelection(v)"
     />
-    <PlDropdown
-      v-for="slot in chainSlots"
-      :key="slot"
-      :model-value="bareField(slot)"
-      :options="sequenceOptions"
-      :label="slotLabel(slot)"
-      clearable
-      required
-      @update:model-value="(v: string | undefined) => setBareField(slot, v)"
-    />
+    <template v-for="slot in chainSlots" :key="slot">
+      <PlDropdown
+        :model-value="bareField(slot)"
+        :options="sequenceOptions"
+        :label="slotLabel(slot)"
+        clearable
+        required
+        @update:model-value="(v: string | undefined) => setBareField(slot, v)"
+      />
+      <!-- Optional and taken as given: the file's own gene calls, not inferred from the sequence. -->
+      <div v-if="bareField(slot)" class="field-row">
+        <PlDropdown
+          :model-value="geneField(slot, 'v')"
+          :options="headerOptions"
+          :label="`${slotLabel(slot)} V gene`"
+          clearable
+          @update:model-value="(v: string | undefined) => setGeneField(slot, 'v', v)"
+        />
+        <PlDropdown
+          :model-value="geneField(slot, 'j')"
+          :options="headerOptions"
+          :label="`${slotLabel(slot)} J gene`"
+          clearable
+          @update:model-value="(v: string | undefined) => setGeneField(slot, 'j', v)"
+        />
+      </div>
+    </template>
     <PlDropdownMulti
       v-if="isBareSet"
       v-model="acceptedProperties"
@@ -281,6 +324,12 @@ const propertyCollisionMessage = computed(() =>
 .field-col {
   display: grid;
   grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 12px;
 }
 </style>
