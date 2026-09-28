@@ -104,13 +104,22 @@ def main():
 
     out_tsv = os.path.join(work, "out.tsv")
     stats_tsv = os.path.join(work, "stats.tsv")
+    records_tsv = os.path.join(work, "records.tsv")
     print(run(os.path.join(SRC, "main.py"), "--input_tsv", in_tsv, "--key_column", "variantKey",
               "--scheme", "kabat", "--csv_h", h_csv, "--csv_kl", kl_csv,
-              "--out_tsv", out_tsv, "--out_stats", stats_tsv))
+              "--out_tsv", out_tsv, "--out_stats", stats_tsv, "--out_records_tsv", records_tsv))
 
     rows = list(csv.DictReader(open(out_tsv), delimiter="\t"))
     by_key = {r["variantKey"]: r for r in rows}
-    assert [r["variantKey"] for r in rows] == ["K1", "K2", "K3", "K4", "K5"], list(by_key)
+    # K2 and K5 have no light chain; K3 and K4 failed on heavy.
+    assert [r["variantKey"] for r in rows] == ["K1"], list(by_key)
+    print("  out: only records annotated on every chain; Not applicable and Failed are left out")
+
+    records = list(csv.DictReader(open(records_tsv), delimiter="\t"))
+    assert [r["variantKey"] for r in records] == ["K1"], records
+    assert list(records[0].keys()) == ["variantKey", "IGHeavy_sequence", "IGLight_sequence"]
+    assert records[0]["IGHeavy_sequence"] == "EVQLVQ"
+    print("  records: the kept input rows, every input column unchanged")
 
     want_header = (["variantKey"]
                    + [f"IGHeavy_{r}_aa" for r in REGIONS] + ["IGHeavy_regionAnnotationStatus"]
@@ -126,29 +135,11 @@ def main():
         assert by_key["K1"][f"{chain}_regionAnnotationStatus"] == "Annotated"
     print("  K1: both chains Annotated, all seven regions match their bucket's kabat ranges")
 
-    assert by_key["K2"]["IGLight_regionAnnotationStatus"] == "Not applicable"
-    assert all(by_key["K2"][f"IGLight_{r}_aa"] == "" for r in REGIONS)
-    print("  K2: chain not supplied -> Not applicable, no region values")
-
-    assert by_key["K3"]["IGHeavy_regionAnnotationStatus"] == "Failed"
-    assert all(by_key["K3"][f"IGHeavy_{r}_aa"] == "" for r in REGIONS)
-    print("  K3: supplied but unnumbered -> Failed, no region values (not empty strings)")
-
-    assert by_key["K4"]["IGHeavy_regionAnnotationStatus"] == "Failed"
-    assert all(by_key["K4"][f"IGHeavy_{r}_aa"] == "" for r in REGIONS)
-    print("  K4: numbered but nothing located -> Failed, no region values")
-
-    # The declared chain labels the column; the bucket ANARCI chose supplies the ranges.
-    assert by_key["K5"]["IGHeavy_regionAnnotationStatus"] == "Annotated"
-    for region in REGIONS:
-        assert by_key["K5"][f"IGHeavy_{region}_aa"] == expected(*KABAT["KL"][region]), region
-    assert by_key["K5"]["IGHeavy_FR1_aa"] != expected(*KABAT["H"]["FR1"])
-    print("  K5: declared A, bucketed KL -> Annotated under A, with KL ranges")
-
     for key, row in by_key.items():
         for chain in ("IGHeavy", "IGLight"):
-            assert row[f"{chain}_regionAnnotationStatus"], f"{key} {chain}: empty status"
-    print("  status is never empty")
+            assert row[f"{chain}_regionAnnotationStatus"] == "Annotated", f"{key} {chain}"
+            assert all(row[f"{chain}_{r}_aa"] for r in REGIONS), f"{key} {chain}: empty region"
+    print("  no kept record has an empty region or a non-Annotated status")
 
     # One row per declared chain, keyed on the locus — the workflow reads this with a chain axis.
     stats = {r["chain"]: r for r in csv.DictReader(open(stats_tsv), delimiter="\t")}
@@ -163,9 +154,22 @@ def main():
     print("  stats: a row per chain, counts correct; K5 is the one chainDisagreed, and it is"
           " counted without changing its status or its values")
 
-    # The count must not leak into the dataset — K5 is a normal Annotated record.
-    assert by_key["K5"]["IGHeavy_regionAnnotationStatus"] == "Annotated"
-    print("  stats: disagreement is reported, not acted on")
+    print("  stats: every record counted, including the ones left out of the dataset")
+
+    # Chain disagreement alone does not drop a record.
+    heavy_tsv = os.path.join(work, "heavy.tsv")
+    with open(heavy_tsv, "w", newline="") as f:
+        w = csv.writer(f, delimiter="\t")
+        w.writerow(["variantKey", "IGHeavy_sequence"])
+        w.writerow(["K5", "DIQMTQ"])
+    heavy_out = os.path.join(work, "heavy_out.tsv")
+    run(os.path.join(SRC, "main.py"), "--input_tsv", heavy_tsv, "--key_column", "variantKey",
+        "--scheme", "kabat", "--csv_h", h_csv, "--csv_kl", kl_csv, "--out_tsv", heavy_out)
+    k5 = list(csv.DictReader(open(heavy_out), delimiter="\t"))
+    assert [r["variantKey"] for r in k5] == ["K5"], k5
+    for region in REGIONS:
+        assert k5[0][f"IGHeavy_{region}_aa"] == expected(*KABAT["KL"][region]), region
+    print("  K5: declared A, bucketed KL -> kept, Annotated under A with KL ranges")
 
     # A single-chain set, with the other bucket left header-only as the workflow creates it.
     single_tsv = os.path.join(work, "single.tsv")
@@ -178,10 +182,11 @@ def main():
     single_out = os.path.join(work, "single_out.tsv")
     print(run(os.path.join(SRC, "main.py"), "--input_tsv", single_tsv, "--key_column", "variantKey",
               "--scheme", "imgt", "--csv_h", h_csv, "--csv_kl", empty_kl, "--out_tsv", single_out))
-    single = list(csv.DictReader(open(single_out), delimiter="\t"))
-    assert list(single[0].keys()) == ["variantKey"] + [f"IGHeavy_{r}_aa" for r in REGIONS] + ["IGHeavy_regionAnnotationStatus"]
-    assert single[0]["IGHeavy_regionAnnotationStatus"] == "Failed"  # S1 is not in the H csv
-    print("  single-chain set: only that chain's columns emitted, header-only bucket tolerated")
+    header = open(single_out).readline().rstrip("\n").split("\t")
+    assert header == ["variantKey"] + [f"IGHeavy_{r}_aa" for r in REGIONS] + ["IGHeavy_regionAnnotationStatus"], header
+    # S1 failed (not in the H csv); header only.
+    assert list(csv.DictReader(open(single_out), delimiter="\t")) == []
+    print("  single-chain set: only that chain's columns, header-only bucket tolerated, all-failed -> no rows")
 
     # An id whose suffix is not a mapped slot must never become a record. Nothing writes such
     # ids today, but the parser is what keeps a stray one out of the dataset.
@@ -192,7 +197,6 @@ def main():
         "--scheme", "imgt", "--csv_h", pad_csv, "--out_tsv", pad_out)
     padded = list(csv.DictReader(open(pad_out), delimiter="\t"))
     assert all(r["variantKey"] != "K9" for r in padded)
-    assert [r["variantKey"] for r in padded] == ["K1", "K2", "K3", "K4", "K5"]
     print("  ids whose suffix is not a mapped slot never become records")
 
     print("\nALL ASSERTIONS PASSED")

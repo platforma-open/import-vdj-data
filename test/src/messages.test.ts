@@ -1,4 +1,4 @@
-import { collisionCheckKey } from "@platforma-open/milaboratories.import-vdj.model";
+import { collisionCheckKey, rowReportKey } from "@platforma-open/milaboratories.import-vdj.model";
 import { describe, expect, test } from "vitest";
 import {
   emptySamplesMessage,
@@ -6,7 +6,81 @@ import {
   identityCollisionMessage,
   missingColumnsMessage,
   propertyCollisionMessage,
+  collapsedRowsMessage,
+  missingSequenceMessage,
 } from "../../ui/src/pages/messages";
+
+const MAPPING = {
+  identity: "mAb ID",
+  chainSelection: "IG" as const,
+  sequences: { IGHeavy: "VH", IGLight: "VL" },
+  scheme: "imgt" as const,
+};
+const report = (
+  missingSequence: number,
+  collapsed: { id: string; rows: number }[],
+  missingIds: string[] = [],
+) => ({
+  key: rowReportKey(MAPPING)!,
+  rowCount: 20,
+  missingSequence,
+  missingIds,
+  collapsed,
+});
+
+describe("row report", () => {
+  test("says nothing when every row becomes its own record", () => {
+    expect(missingSequenceMessage(report(0, []), MAPPING)).toBe("");
+    expect(collapsedRowsMessage(report(0, []), MAPPING)).toBe("");
+    expect(missingSequenceMessage(undefined, MAPPING)).toBe("");
+    expect(collapsedRowsMessage(undefined, MAPPING)).toBe("");
+  });
+  test("names rows without a sequence, like the non-unique id warning", () => {
+    expect(missingSequenceMessage(report(3, [], ["AB-1", "AB-2", "AB-3", "AB-4"]), MAPPING)).toBe(
+      "No sequence for at least one chain: AB-1, AB-2, AB-3 and 1 more. These 3 rows are ignored.",
+    );
+    expect(missingSequenceMessage(report(1, [], ["AB-1"]), MAPPING)).toBe(
+      "No sequence for at least one chain: AB-1. This row is ignored.",
+    );
+  });
+  test("still counts rows without a sequence that have no id to name", () => {
+    expect(missingSequenceMessage(report(2, []), MAPPING)).toBe(
+      "No sequence for at least one chain. These 2 rows are ignored.",
+    );
+  });
+  test("names collapsed ids, most repeated first, and counts the rows they absorbed", () => {
+    const collapsed = [
+      { id: "AB-7", rows: 3 },
+      { id: "AB-2", rows: 2 },
+      { id: "AB-3", rows: 2 },
+      { id: "AB-9", rows: 2 },
+    ];
+    expect(collapsedRowsMessage(report(0, collapsed), MAPPING)).toBe(
+      "Identical rows: AB-7 (3 rows), AB-2 (2 rows), AB-3 (2 rows) and 1 more. " +
+        "Rows sharing an id become one record, so 5 rows are collapsed.",
+    );
+  });
+  test("each reason is its own message", () => {
+    const both = report(2, [{ id: "AB-1", rows: 2 }], ["AB-5", "AB-6"]);
+    expect(missingSequenceMessage(both, MAPPING)).toBe(
+      "No sequence for at least one chain: AB-5, AB-6. These 2 rows are ignored.",
+    );
+    expect(collapsedRowsMessage(both, MAPPING)).toBe(
+      "Identical rows: AB-1 (2 rows). Rows sharing an id become one record, so 1 row is collapsed.",
+    );
+  });
+  test("a report on another mapping says nothing", () => {
+    const remapped = { ...MAPPING, sequences: { IGHeavy: "VH", IGLight: "other" } };
+    expect(missingSequenceMessage(report(3, []), remapped)).toBe("");
+    expect(collapsedRowsMessage(report(0, [{ id: "AB-1", rows: 2 }]), remapped)).toBe("");
+  });
+  test("the key ignores slot order and needs an id and a sequence", () => {
+    const reordered = { ...MAPPING, sequences: { IGLight: "VL", IGHeavy: "VH" } };
+    expect(rowReportKey(reordered)).toBe(rowReportKey(MAPPING));
+    expect(rowReportKey({ ...MAPPING, identity: "" })).toBeUndefined();
+    expect(rowReportKey({ ...MAPPING, sequences: {} })).toBeUndefined();
+  });
+});
 
 describe("ui messages", () => {
   test("empty samples: under the cap", () => {

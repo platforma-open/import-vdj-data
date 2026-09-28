@@ -220,6 +220,28 @@ export function collisionCheckKey(
   return mapping.identity;
 }
 
+/** What a row report is about: the id and sequence columns. `undefined` until both are chosen. */
+export function rowReportKey(
+  mapping: Pick<BareSetMapping, "identity" | "sequences"> | undefined,
+): string | undefined {
+  if (mapping === undefined || !mapping.identity) return undefined;
+  const sequences = Object.entries(mapping.sequences ?? {})
+    .filter(([, header]) => !!header)
+    .sort(([a], [b]) => a.localeCompare(b));
+  if (sequences.length === 0) return undefined;
+  return JSON.stringify([mapping.identity, sequences]);
+}
+
+/** Rows that will not become records of their own. `collapsed` is most-repeated first. */
+export type RowReport = {
+  key: string;
+  rowCount: number;
+  missingSequence: number;
+  /** Distinct, sorted. Rows with no id are only counted. */
+  missingIds: string[];
+  collapsed: { id: string; rows: number }[];
+};
+
 /**
  * What a dataset-door verdict is about: the dataset picked and the format it was declared to be.
  * Both, because the same dataset answers differently under a different format.

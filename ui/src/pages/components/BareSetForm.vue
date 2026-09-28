@@ -12,6 +12,7 @@ import {
   CHAIN_SLOT_LABELS,
   collisionCheckKey,
   CHAIN_SLOTS,
+  rowReportKey,
   SCHEME_LABELS,
   SCHEMES_FOR_SELECTION,
 } from "@platforma-open/milaboratories.import-vdj.model";
@@ -21,6 +22,8 @@ import { useApp } from "../../app";
 import { chainsOptions, receptorOptions } from "../constants";
 import {
   identityCollisionMessage as buildIdentityCollisionMessage,
+  collapsedRowsMessage as buildCollapsedRowsMessage,
+  missingSequenceMessage as buildMissingSequenceMessage,
   propertyCollisionMessage as buildPropertyCollisionMessage,
 } from "../messages";
 
@@ -189,7 +192,9 @@ const columnChecksPending = computed(() => {
   const bare = app.model.data.bareSet;
   if (bare === undefined || !bareSetValid(bare)) return false;
   const check = app.model.data.prerunCheck;
-  return check?.check !== "columns" || check.subject !== collisionCheckKey(bare);
+  if (check?.check !== "columns" || check.subject !== collisionCheckKey(bare)) return true;
+  // Also wait for the row report, so its messages appear together with the id verdict.
+  return app.model.outputs.rowReport?.key !== rowReportKey(bare);
 });
 
 /**
@@ -229,6 +234,12 @@ const acceptedProperties = computed<string[]>({
 const identityCollisionMessage = computed(() =>
   buildIdentityCollisionMessage(app.model.outputs.identityCollisions, app.model.data.bareSet),
 );
+const missingSequenceMessage = computed(() =>
+  buildMissingSequenceMessage(app.model.outputs.rowReport, app.model.data.bareSet),
+);
+const collapsedRowsMessage = computed(() =>
+  buildCollapsedRowsMessage(app.model.outputs.rowReport, app.model.data.bareSet),
+);
 const propertyCollisionMessage = computed(() =>
   buildPropertyCollisionMessage(app.model.data.bareSet?.properties),
 );
@@ -248,6 +259,25 @@ const propertyCollisionMessage = computed(() =>
   <PlAlert v-else-if="columnChecksPending" type="info" :style="{ width: '100%' }">
     Validating the selected columns. This can take a moment, please wait...
   </PlAlert>
+  <!-- Not shown for a refused id column: nothing is imported then. -->
+  <template v-else>
+    <PlAlert
+      v-if="missingSequenceMessage"
+      type="info"
+      label="Rows without a sequence"
+      :style="{ width: '100%' }"
+    >
+      {{ missingSequenceMessage }}
+    </PlAlert>
+    <PlAlert
+      v-if="collapsedRowsMessage"
+      type="info"
+      label="Identical rows"
+      :style="{ width: '100%' }"
+    >
+      {{ collapsedRowsMessage }}
+    </PlAlert>
+  </template>
 
   <div class="field-col">
     <PlDropdown

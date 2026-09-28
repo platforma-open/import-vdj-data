@@ -2,14 +2,16 @@
 //
 // Four passes, and the split between them is the shape of the emitted dataset:
 //
-//   1. import          per sample   parse the scientist's file into a record TSV, and emit the
-//                                   abundance column — the only one that keeps the sample axis
-//   2. annotate        per sample   ANARCI over that TSV, producing a region TSV and per-chain
-//                                   outcome counts
-//   3. aggregate       collapse     the record TSVs -> sequences, genes, imported properties, label
+//   1. import          per sample   parse the file into a record TSV
+//   2. annotate        per sample   ANARCI: region TSV, kept record TSV, per-chain counts; emit
+//                                   the abundance column (the only one keeping the sample axis)
+//   3. aggregate       collapse     the kept record TSVs -> sequences, genes, imported properties, label
 //   4. aggregate       collapse     the region TSVs -> located regions and their statuses
 //
 // Passes 3 and 4 share one body (`aggregate-by-record`); only the declared Xsv columns differ.
+//
+// Pass 2 keeps only records annotated on every mapped chain; every column is read from its
+// output. The stats count all records.
 //
 // Why the collapse exists at all is in that template's header: consumers match axes
 // positionally, so a property column has to carry the record key at axis 0. This mirrors
@@ -58,26 +60,11 @@ self.body(func(inputs) {
 	keyAxis := specs.keyAxis(blockId, chains)
 	bySource := specs.columnsBySource(chains, scheme, properties, mapping.genes)
 
-	// Pass 1. The Xsv output declares the abundance column only; the record TSV it also emits
-	// carries every other column, for pass 3 to collapse.
+	// Pass 1. The record TSV only; which records are kept is decided in pass 2.
 	results := pframes.processColumn(
 		{ spec: datasetSpec, data: dataset },
 		importTpl,
 		[
-			{
-				type: "Xsv",
-				xsvType: "tsv",
-				settings: {
-					axes: [keyAxis],
-					columns: bySource.perSample,
-					storageFormat: "Parquet",
-					partitionKeyLength: 0
-				},
-				mem: "16GiB",
-				cpu: 2,
-				name: "abundance",
-				path: ["records", "main"]
-			},
 			{
 				type: "Resource",
 				spec: {
@@ -125,12 +112,34 @@ self.body(func(inputs) {
 
 	// Pass 2. Separate from the first because a processColumn body is re-rendered per declared
 	// output and exec construction is not reproducible, so polars and execs cannot share one
-	// body. Emits the region TSV as a file for pass 4; only the stats become columns here,
-	// because they are genuinely per sample.
+	// body. Emits the region and kept record TSVs for passes 3 and 4, and the per-sample stats
+	// and abundance.
 	annotated := pframes.processColumn(
 		results.output("recordsTsv"),
 		annotateTpl,
 		[{
+			type: "Xsv",
+			xsvType: "tsv",
+			settings: {
+				axes: [keyAxis],
+				columns: bySource.perSample,
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			mem: "16GiB",
+			cpu: 2,
+			name: "abundance",
+			path: ["records", "main"]
+		}, {
+			type: "Resource",
+			spec: {
+				kind: "PColumn",
+				name: "mixcr.com/clonotypeTable",
+				valueType: "File"
+			},
+			name: "keptRecordsTsv",
+			path: ["records", "main"]
+		}, {
 			type: "Resource",
 			spec: {
 				kind: "PColumn",
@@ -161,9 +170,9 @@ self.body(func(inputs) {
 		}
 	)
 
-	// Pass 3.
+	// Pass 3. From the kept records.
 	records := pframes.processColumn(
-		results.output("recordsTsv"),
+		annotated.output("keptRecordsTsv"),
 		aggregateTpl,
 		[{
 			type: "Xsv",
@@ -208,7 +217,7 @@ self.body(func(inputs) {
 	)
 
 	result := pframes.pFrameBuilder()
-	results.addXsvOutputToBuilder(result, "abundance", "abundance")
+	annotated.addXsvOutputToBuilder(result, "abundance", "abundance")
 	records.addXsvOutputToBuilder(result, "perRecord", "perRecord")
 	regions.addXsvOutputToBuilder(result, "regions", "regions")
 

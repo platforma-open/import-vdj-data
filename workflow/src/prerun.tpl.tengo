@@ -12,6 +12,29 @@ profileColumnsTpl := assets.importTemplate(":profile-columns")
 collisionsTpl := assets.importTemplate(":bare-set-collisions")
 workbook := import(":workbook")
 
+// Id check and row report from one render, so both arrive together. Each carries the mapping it
+// was computed for.
+bareSetCheckOutputs := func(dataset, bare) {
+	check := render.create(collisionsTpl, {
+		dataset: dataset,
+		mapping: {
+			identity: bare.identity,
+			sequences: bare.sequences
+		}
+	})
+	return {
+		collisionsFor: smart.createJsonResource({ identity: bare.identity }),
+		identityCollisions: check.output("collisions"),
+		rowReportFor: smart.createJsonResource({
+			identity: bare.identity,
+			sequences: bare.sequences
+		}),
+		rowReportSummary: check.output("summary"),
+		rowReportMissing: check.output("missing"),
+		rowReportCollapsed: check.output("collapsed")
+	}
+}
+
 wf.body(func(args) {
 
 	// The direct door: import the file here so the header and the identity check can be
@@ -22,6 +45,13 @@ wf.body(func(args) {
 
 		builder := pColumn.resourceMapBuilder(1)
 		builder.add([args.fileSource.datasetId], readable.file)
+		// Built once: the builder locks on build.
+		fileDataset := {
+			spec: {
+				domain: { "pl7.app/fileExtension": readable.extension }
+			},
+			data: builder.build()
+		}
 
 		// The mapping dropdowns need the file's headers, and on this door nothing upstream
 		// supplies them. The separator comes from what the UI read out of the file's own first
@@ -52,25 +82,9 @@ wf.body(func(args) {
 			})
 		}
 
-		// Checked the moment an id is picked: the check compares whole rows, so no sequence has
-		// to be mapped for the question to have an answer.
+		// Runs once an id is picked; the row report needs a sequence too.
 		if args.bareSet != undefined && args.bareSet.identity != "" {
-			// The verdict is about the id column and nothing else — naming the rest of the mapping
-			// would discard a sound answer on every edit and re-scan the file to reach it again.
-			outputs.collisionsFor = smart.createJsonResource({
-				identity: args.bareSet.identity
-			})
-			outputs.identityCollisions = render.create(collisionsTpl, {
-				dataset: {
-					spec: {
-						domain: { "pl7.app/fileExtension": readable.extension }
-					},
-					data: builder.build()
-				},
-				mapping: {
-					identity: args.bareSet.identity
-				}
-			}).output("collisions")
+			for k, v in bareSetCheckOutputs(fileDataset, args.bareSet) { outputs[k] = v }
 		}
 
 		return {
@@ -91,20 +105,8 @@ wf.body(func(args) {
 	// is for. It runs as soon as an id is picked; the early return below cannot starve the panel
 	// of headers, since `datasetColumns` is retentive.
 	if args.bareSet != undefined && args.bareSet.identity != "" {
-		collisions := render.create(collisionsTpl, {
-			dataset: wf.resolve(args.datasetRef),
-			mapping: {
-				identity: args.bareSet.identity
-			}
-		}).output("collisions")
-
 		return {
-			outputs: {
-				identityCollisions: collisions,
-				collisionsFor: smart.createJsonResource({
-					identity: args.bareSet.identity
-				})
-			},
+			outputs: bareSetCheckOutputs(wf.resolve(args.datasetRef), args.bareSet),
 			exports: {}
 		}
 	}

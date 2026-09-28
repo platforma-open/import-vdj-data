@@ -13,7 +13,7 @@
   the identity's hash: a sequence-derived key would merge antibodies that share a sequence.
 */
 
-import { collisionCheckKey } from "@platforma-open/milaboratories.import-vdj.model";
+import { collisionCheckKey, rowReportKey } from "@platforma-open/milaboratories.import-vdj.model";
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
 import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
 import type { PTableHandle } from "@platforma-sdk/model";
@@ -207,7 +207,7 @@ blockTest(
       }
     }
 
-    // One status per chain, a closed three-member enum.
+    // One status per chain.
     for (const chain of ["A", "B"]) {
       const status = columns.find(
         (c) =>
@@ -215,9 +215,7 @@ blockTest(
           c.domain["pl7.app/vdj/scClonotypeChain"] === chain,
       );
       expect(status, `status for chain ${chain}`).toBeDefined();
-      expect(status!.annotations["pl7.app/discreteValues"]).toBe(
-        '["Annotated","Not applicable","Failed"]',
-      );
+      expect(status!.annotations["pl7.app/discreteValues"]).toBe('["Annotated"]');
     }
 
     // The synthetic abundance is the block's own umi-count spec adopted whole: exactly the
@@ -950,5 +948,61 @@ blockTest(
     expect(gene("pl7.app/vdj/geneHit", "VGene", "B")[0].annotations["pl7.app/label"]).toBe(
       "Light V Gene",
     );
+  },
+);
+
+// Prerun reports rows without a sequence (empty or whitespace) and verbatim repeats.
+blockTest(
+  "reports rows without a sequence and identical rows before the run",
+  { timeout: 300000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-set-row-report.tsv");
+    const bareSet = {
+      identity: "mAb ID",
+      chainSelection: "IG" as const,
+      sequences: { IGHeavy: "VH", IGLight: "VL" },
+      scheme: SCHEME,
+    };
+
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "row-report",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          datasetId: "SROWREPORT00000000000001",
+          label: "bare-set-row-report",
+          extension: "tsv",
+        },
+        bareSet,
+      }),
+    });
+
+    type Report = {
+      key: string;
+      rowCount: number;
+      missingSequence: number;
+      missingIds: string[];
+      collapsed: { id: string; rows: number }[];
+    };
+    const state = (await awaitStableState(project.getBlockState(blockId), 200000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const wrapped = state.outputs?.rowReport as { value?: Report } | Report | undefined;
+    const report = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Report | undefined;
+
+    expect(report?.key).toBe(rowReportKey(bareSet));
+    expect(report?.rowCount).toBe(8);
+    expect(report?.missingSequence).toBe(2);
+    expect(report?.missingIds).toEqual(["AB-010", "AB-011"]);
+    // Most repeated first.
+    expect(report?.collapsed).toEqual([
+      { id: "AB-001", rows: 3 },
+      { id: "AB-002", rows: 2 },
+    ]);
   },
 );

@@ -460,16 +460,11 @@ statusColumnSpec := func(chain, scheme, paired) {
 			annotations: a("46895", "default", {
 				"pl7.app/label": CHAIN_LABELS[chain] + " region annotation status",
 				"pl7.app/isDiscreteFilter": "true",
-				"pl7.app/discreteValues": "[\"Annotated\",\"Not applicable\",\"Failed\"]",
-				// The three values are terse and one of them reads as a diagnosis when it is not,
-				// so the column says what it means. `Not applicable` is expected on any panel
-				// where a chain is only partly filled in, and is the value most likely to be
-				// misread as a problem.
+				// Only fully annotated records reach the dataset.
+				"pl7.app/discreteValues": "[\"Annotated\"]",
 				"pl7.app/description": "Whether this chain's FR and CDR boundaries could be located. " +
-					"Annotated: located, and the region columns hold them. " +
-					"Not applicable: no sequence was supplied for this chain on this record — nothing to locate. " +
-					"Failed: a sequence was supplied but could not be numbered, which usually means the column " +
-					"mapped to this chain does not hold amino-acid variable domains."
+					"Always Annotated: records whose chain was not supplied or could not be numbered are " +
+					"left out of the dataset and counted in the block's import statistics."
 			})
 		}
 	}
@@ -661,13 +656,13 @@ statsColumns := func(blockId) {
 		},
 		{
 			column: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000",
-			description: "Records with no sequence supplied for this chain. Expected on a panel where " +
-				"one chain is only partly filled in; not a failure."
+			description: "Records with no sequence supplied for this chain. Left out of the dataset, " +
+				"which keeps only records annotated on every chain."
 		},
 		{
 			column: "failed", name: "failedCount", label: "Failed", order: "88000",
-			description: "Records whose supplied sequence could not be numbered. A count much above zero " +
-				"usually means the mapped column does not hold amino-acid variable domains."
+			description: "Records whose supplied sequence could not be numbered, left out of the dataset. " +
+				"A count much above zero usually means the mapped column does not hold amino-acid variable domains."
 		},
 		{
 			column: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain",

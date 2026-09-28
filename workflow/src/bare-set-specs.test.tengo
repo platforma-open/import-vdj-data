@@ -172,16 +172,16 @@ Test_region_schemesProduceDistinctDomains := func() {
 
 // --- status column -------------------------------------------------------------------------
 
-Test_status_isAClosedThreeMemberEnum := func() {
+Test_status_isOnlyEverAnnotated := func() {
 	col := specs.statusColumnSpec("IGHeavy", "imgt", true)
 
 	test.isEqual("pl7.app/vdj/regionAnnotationStatus", col.spec.name, "name")
 	test.isEqual("String", col.spec.valueType, "String, because xsv.importFile rejects Boolean")
 	test.isEqual("true", col.spec.annotations["pl7.app/isDiscreteFilter"], "discrete filter")
 	test.isEqual(
-		"[\"Annotated\",\"Not applicable\",\"Failed\"]",
+		"[\"Annotated\"]",
 		col.spec.annotations["pl7.app/discreteValues"],
-		"closed enum, success member included"
+		"not-applicable and failed records never reach the dataset"
 	)
 }
 
@@ -501,15 +501,11 @@ Test_statsColumns_areKeyedOnTheChainAxis := func() {
 }
 
 
-// The status values are terse and "Not applicable" reads as a diagnosis when it only means the
-// cell was empty, so the column describes all three.
-Test_status_describesEachOfItsValues := func() {
+Test_status_saysWhereDroppedRecordsAreCounted := func() {
 	desc := specs.statusColumnSpec("IGHeavy", "imgt", true).spec.annotations["pl7.app/description"]
 	test.isTrue(desc != undefined && desc != "", "status column has a description")
-
-	for value in ["Annotated", "Not applicable", "Failed"] {
-		test.isTrue(text.contains(desc, value + ":"), "description explains " + value)
-	}
+	test.isTrue(text.contains(desc, "left out of the dataset"), "description says records are dropped")
+	test.isTrue(text.contains(desc, "statistics"), "and where they are counted")
 }
 
 // Every statistic explains what it counts — the four labels repeat the status vocabulary, so a
