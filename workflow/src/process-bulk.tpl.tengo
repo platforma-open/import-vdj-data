@@ -6,13 +6,10 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 pframes := import("@platforma-sdk/workflow-tengo:pframes")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
-sets := import("@platforma-sdk/workflow-tengo:sets")
 assets := import("@platforma-sdk/workflow-tengo:assets")
-pSpec := import("@platforma-sdk/workflow-tengo:pframes.spec")
 formats := import(":formats")
 processUtils := import(":process-utils")
 
-json := import("json")
 text := import("text")
 aggregateByClonotypeKeyTpl := assets.importTemplate(":aggregate-by-clonotype-key")
 

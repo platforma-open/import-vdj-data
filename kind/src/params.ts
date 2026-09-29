@@ -2,6 +2,7 @@ import { assertParamsObject } from "@platforma-sdk/block-kind";
 import { isImportFileHandleIndex, isImportFileHandleUpload, isPlRef } from "@platforma-sdk/model";
 import type {
   BareSetChain,
+  BareSetGenes,
   BareSetMapping,
   BareSetScheme,
   BlockParams,
@@ -142,6 +143,16 @@ const isSequenceMap: Guard<BareSetMapping["sequences"]> = (v): v is BareSetMappi
   isPlainObject(v) &&
   Object.entries(v).every(([slot, header]) => oneOf(BARE_SET_CHAINS)(slot) && isString(header));
 
+const isGenes: Guard<BareSetGenes> = (v): v is BareSetGenes =>
+  isPlainObject(v) && (isUndefined(v.v) || isString(v.v)) && (isUndefined(v.j) || isString(v.j));
+
+/** Per-chain gene columns. Same slot vocabulary as the sequences, and each header a string. */
+const isGeneMap: Guard<NonNullable<BareSetMapping["genes"]>> = (
+  v,
+): v is NonNullable<BareSetMapping["genes"]> =>
+  isPlainObject(v) &&
+  Object.entries(v).every(([slot, genes]) => oneOf(BARE_SET_CHAINS)(slot) && isGenes(genes));
+
 const isImportedProperty: Guard<ImportedProperty> = (v): v is ImportedProperty =>
   isPlainObject(v) && isString(v.header) && oneOf(COLUMN_VALUE_TYPES)(v.valueType);
 
@@ -165,6 +176,7 @@ const isBareSetMapping: Guard<BareSetMapping> = (v): v is BareSetMapping =>
   isSequenceMap(v.sequences) &&
   oneOf(BARE_SET_SCHEMES)(v.scheme) &&
   SCHEMES_FOR_SELECTION[v.chainSelection].includes(v.scheme) &&
+  (isUndefined(v.genes) || isGeneMap(v.genes)) &&
   (isUndefined(v.properties) || arrayOf(isImportedProperty)(v.properties));
 
 /**

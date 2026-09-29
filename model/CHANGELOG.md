@@ -1,5 +1,17 @@
 # @platforma-open/milaboratories.import-vdj.model
 
+## 1.14.0
+
+### Minor Changes
+
+- 3100c4c: Directly imported sequence sets can map V and J gene columns per chain; they are emitted as gene and allele columns that gene-usage blocks read
+
+### Patch Changes
+
+- fc84d73: Update SDK to 1.84 (workflow-tengo 6.12, block-tools 2.16) and drop unused workflow imports
+- Updated dependencies [3100c4c]
+  - @platforma-open/milaboratories.import-vdj.kind@1.1.0
+
 ## 1.13.1
 
 ### Patch Changes
