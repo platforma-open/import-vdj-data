@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.10.1
+
+### Patch Changes
+
+- 0e17bbd: Update SDK
+
 ## 1.10.0
 
 ### Minor Changes
