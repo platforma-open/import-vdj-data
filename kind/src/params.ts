@@ -1,6 +1,7 @@
 import { assertParamsObject } from "@platforma-sdk/block-kind";
 import { isImportFileHandleIndex, isImportFileHandleUpload, isPlRef } from "@platforma-sdk/model";
 import type {
+  AssemblingFeature,
   BareSetChain,
   BareSetGenes,
   BareSetMapping,
@@ -14,7 +15,7 @@ import type {
   ImportFileHandle,
   ImportFormat,
 } from "./types";
-import { SCHEMES_FOR_SELECTION } from "./types";
+import { ASSEMBLING_FEATURES, SCHEMES_FOR_SELECTION } from "./types";
 
 /**
  * The contract at runtime, for params that arrive from a template file rather than from typed
@@ -83,6 +84,8 @@ const IMPORT_FORMATS = {
 } as const satisfies Record<ImportFormat, true>;
 
 const COUNT_TYPES = { read: true, umi: true } as const satisfies Record<CountType, true>;
+
+const ASSEMBLING_FEATURE_VOCABULARY = ASSEMBLING_FEATURES satisfies Record<AssemblingFeature, true>;
 
 const CHAIN_SELECTIONS = {
   IG: true,
@@ -205,6 +208,10 @@ const CONTRACT = {
   customMapping: check(isCustomMapping, "an object of mapping slot to file header"),
   primaryCountType: check(oneOf(COUNT_TYPES), `one of: ${vocabularyList(COUNT_TYPES)}`),
   secondaryCountType: check(oneOf(COUNT_TYPES), `one of: ${vocabularyList(COUNT_TYPES)}`),
+  assemblingFeature: check(
+    oneOf(ASSEMBLING_FEATURE_VOCABULARY),
+    `one of: ${vocabularyList(ASSEMBLING_FEATURE_VOCABULARY)}`,
+  ),
   bareSet: check(
     isBareSetMapping,
     `a bare set mapping with an identity column, one of: ${vocabularyList(CHAIN_SELECTIONS)}, ` +

@@ -1,4 +1,10 @@
-import type { InferOutputsType, PColumnKey, PColumnValue, PlRef } from "@platforma-sdk/model";
+import type {
+  InferOutputsType,
+  PColumnKey,
+  PColumnSpec,
+  PColumnValue,
+  PlRef,
+} from "@platforma-sdk/model";
 import {
   BlockModelV3,
   DataColumn,
@@ -19,6 +25,18 @@ import { bareSetValid, collisionCheckKey, datasetCheckKey } from "./types";
 
 export * from "./types";
 export { upgradeLegacyData } from "./data-model";
+
+/** A column's spec, flattened to what a caller can assert on without reaching into the driver. */
+function describeColumns(cols: { spec: PColumnSpec }[] | undefined) {
+  if (cols === undefined) return undefined;
+  return cols.map((c) => ({
+    name: c.spec.name,
+    valueType: c.spec.valueType,
+    domain: c.spec.domain ?? {},
+    annotations: c.spec.annotations ?? {},
+    axes: (c.spec.axesSpec ?? []).map((a) => ({ name: a.name, domain: a.domain ?? {} })),
+  }));
+}
 
 /** Unpartitioned inline-JSON p-column storage; payload is `{ keyLength, data }`. */
 const RT_JSON = "PColumnData/Json";
@@ -85,6 +103,7 @@ function requireCheckedDataset(data: BlockData): void {
 
 function projectArgs(data: BlockData): BlockArgs {
   const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
+  const assemblingFeature = data.assemblingFeature;
 
   // Exactly one door. Both set is a UI bug rather than a choice, and neither means nothing
   // has been picked yet.
@@ -101,6 +120,7 @@ function projectArgs(data: BlockData): BlockArgs {
     chains,
     customMapping,
     primaryCountType,
+    assemblingFeature,
     bareSet: data.bareSet,
   };
 
@@ -169,6 +189,8 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     format: data.format,
     customMapping: data.customMapping,
     primaryCountType: data.primaryCountType,
+    // Prerun infers the columns too, so it needs the same feature or its column list disagrees with the run's
+    assemblingFeature: data.assemblingFeature,
     bareSet: data.bareSet,
   }))
 
@@ -192,6 +214,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     customMapping: data.customMapping,
     primaryCountType: data.primaryCountType,
     secondaryCountType: data.secondaryCountType,
+    assemblingFeature: data.assemblingFeature,
     bareSet: data.bareSet,
     customBlockLabel: data.customBlockLabel,
   }))
@@ -480,7 +503,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
       if (format === "airr" || format === "airr-sc") {
         // AIRR format uses case-insensitive column names
-        // Required: duplicate_count, junction (CDR3 nt), v_call, j_call
+        // Required: junction (or cdr3) for CDR3 nt, v_call, j_call; counts are optional
         // For single-cell: also requires cell_id
         // Handle case where headerColumns might be a single comma-separated string or array of strings
         const flattenedHeaders: string[] = [];
@@ -499,8 +522,10 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
           }
         }
         const headersLower = flattenedHeaders.map((h) => h.toLowerCase());
-        const airrRequired = ["duplicate_count", "junction", "v_call", "j_call"];
-        const missingColumns = airrRequired.filter((req) => !headersLower.includes(req));
+        const missingColumns = ["v_call", "j_call"].filter((req) => !headersLower.includes(req));
+        if (!headersLower.includes("junction") && !headersLower.includes("cdr3")) {
+          missingColumns.unshift("junction");
+        }
 
         // For single-cell AIRR, also require cell_id
         if (format === "airr-sc") {
@@ -537,17 +562,18 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
    * downstream block cannot see the dataset and the question is whether the column is missing
    * or merely differently keyed.
    */
-  .output("importedColumns", (ctx) => {
-    const cols = ctx.outputs?.resolve("result")?.getPColumns();
-    if (cols === undefined) return undefined;
-    return cols.map((c) => ({
-      name: c.spec.name,
-      valueType: c.spec.valueType,
-      domain: c.spec.domain ?? {},
-      annotations: c.spec.annotations ?? {},
-      axes: (c.spec.axesSpec ?? []).map((a) => ({ name: a.name, domain: a.domain ?? {} })),
-    }));
-  })
+  .output("importedColumns", (ctx) =>
+    describeColumns(ctx.outputs?.resolve("result")?.getPColumns()),
+  )
+
+  /**
+   * The stat columns' specs, in the same shape as `importedColumns`.
+   *
+   * Separate because the two frames are: `result` carries what was imported, `stats` carries
+   * what the import counted. Nothing else exposes the second -- the stats table is a handle,
+   * not specs -- so a test asserting the discard counters exist has no other way to see them.
+   */
+  .output("statColumns", (ctx) => describeColumns(ctx.outputs?.resolve("stats")?.getPColumns()))
 
   .outputWithStatus("stats", (ctx) => {
     const pCols = ctx.outputs?.resolve("stats")?.getPColumns();

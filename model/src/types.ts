@@ -2,6 +2,7 @@ import type { PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
 // The import vocabularies, the file source and the bare-set mapping live in the kind: its
 // init-params contract names them and a kind cannot import from the model.
 import type {
+  AssemblingFeature,
   BareSetChain,
   BareSetMapping,
   BareSetScheme,
@@ -87,6 +88,8 @@ export type BlockArgs = {
   chains: string[];
   customMapping?: Record<string, string | undefined>;
   primaryCountType?: CountType;
+  /** Absent means CDR3 — the workflow's own default, so an untouched import keys as it always did. */
+  assemblingFeature?: AssemblingFeature;
   bareSet?: BareSetMapping;
 };
 
@@ -121,6 +124,12 @@ export type BlockData = {
    * `customMapping`. Projecting it would stale the block on a choice that changes nothing.
    */
   secondaryCountType?: CountType;
+  /**
+   * Which gene feature clonotypes are assembled by, for the AIRR formats. CDR3 when unset.
+   * Widening it is the scientist's call: it decides both the clonotype key and how many
+   * rearrangements survive, since a row that does not cover the feature cannot be keyed on it.
+   */
+  assemblingFeature?: AssemblingFeature;
 
   // --- bare set. Its presence is what selects the bare path in the workflow.
   bareSet?: BareSetMapping;
