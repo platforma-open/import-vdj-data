@@ -80,6 +80,7 @@ specs := {
 			xsvType: "csv",
 			alleleMode: "none",
 			productivityMode: "from_column_true",
+			naLiterals: ["None"],
 			primaryAbundancePolicy: "force_umi",
 			byCell: {
 				enabled: true,

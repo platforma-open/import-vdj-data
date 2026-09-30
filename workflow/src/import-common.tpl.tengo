@@ -21,6 +21,7 @@ self.defineOutputs("tsv", "stats", "recordStats", "tsvForSingleCell", "tsvForClu
 //    - exportStage: "before_productivity_filter" | "after_productivity_filter"
 // - chainFilterMode: "prefixes"
 // - primaryAbundancePolicy: "prefer_umi" | "force_umi" | "args"
+// - naLiterals: [string] (values emptied in every mapped column)
 //
 self.body(func(inputs) {
 	inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
@@ -67,6 +68,21 @@ self.body(func(inputs) {
 	}
 	if len(renameExpressions) > 0 {
 		df = df.withColumns(renameExpressions...)
+	}
+
+	// Words a format writes for a missing value become empty
+	if !is_undefined(config) && !is_undefined(config.naLiterals) && len(config.naLiterals) > 0 {
+		naExpressions := []
+		for canonical in maps.getKeys(columnsInfo.columnMapping) {
+			if columnsInfo.columnMapping[canonical] == undefined { continue }
+			isNa := undefined
+			for na in config.naLiterals {
+				cond := pt.col(canonical).eq(na)
+				isNa = is_undefined(isNa) ? cond : isNa.or(cond)
+			}
+			naExpressions = append(naExpressions, pt.when(isNa).then(pt.lit("")).otherwise(pt.col(canonical)).alias(canonical))
+		}
+		if len(naExpressions) > 0 { df = df.withColumns(naExpressions...) }
 	}
 
 	// Extract alleles from gene calls for AIRR format (gene calls contain alleles after *, e.g., "IGHV1-1*01")
@@ -301,6 +317,14 @@ self.body(func(inputs) {
 		df = df.withColumns(deriveBestGene("v"), deriveBestGene("d"), deriveBestGene("j"), deriveBestGene("c"))
 	}
 
+	// Keep called, high-confidence cells only
+	keepsCell := undefined
+	for flag in ["is-cell", "high-confidence"] {
+		if columnsInfo.columnMapping[flag] == undefined { continue }
+		cond := pt.col(flag).fillNull("").strToUpper().eq("TRUE")
+		keepsCell = is_undefined(keepsCell) ? cond : keepsCell.and(cond)
+	}
+
 	// Basic row filters: require V and J genes when available/derivable
 	hasVGene := processUtils.hasGene(columnsInfo, alleleMode, "v")
 	hasJGene := processUtils.hasGene(columnsInfo, alleleMode, "j")
@@ -333,7 +357,7 @@ self.body(func(inputs) {
 	// which everything before it kept -- so the discards and the survivors partition the file.
 	discardExprs := []
 	passed := undefined
-	for step in [["records-no-v", keepsV], ["records-no-j", keepsJ],
+	for step in [["records-not-cell", keepsCell], ["records-no-v", keepsV], ["records-no-j", keepsJ],
 		["records-no-cdr3", keepsCdr3], ["records-not-covering", coversFeature]] {
 		keeps := step[1]
 		if is_undefined(keeps) { continue }
@@ -349,7 +373,7 @@ self.body(func(inputs) {
 	for e in discardExprs { recordExprs = append(recordExprs, e) }
 	df.select(recordExprs...).saveContent("records.tsv")
 
-	for keeps in [keepsV, keepsJ, keepsCdr3, coversFeature] {
+	for keeps in [keepsCell, keepsV, keepsJ, keepsCdr3, coversFeature] {
 		if !is_undefined(keeps) { df = df.filter(keeps) }
 	}
 
@@ -385,6 +409,16 @@ self.body(func(inputs) {
 
 	// Chain filtering (prefixes) uses either top-chains or v-gene when available.
 	chainColumn := columnsInfo.columnMapping["top-chains"] != undefined ? "top-chains" : "v-gene"
+	// A stated locus wins over the V gene; Multi, None and the like fall back to it
+	if columnsInfo.columnMapping["locus"] != undefined {
+		locus := pt.col("locus").fillNull("").strToUpper()
+		isLocus := undefined
+		for l in ["IGH", "IGK", "IGL", "TRA", "TRB", "TRG", "TRD"] {
+			isLocus = is_undefined(isLocus) ? locus.eq(l) : isLocus.or(locus.eq(l))
+		}
+		df = df.withColumns(pt.when(isLocus).then(locus).otherwise(pt.col(chainColumn)).alias("chain-source"))
+		chainColumn = "chain-source"
+	}
 	chainToPrefixes := {
 		"IGHeavy": ["IGH"],
 		"IGLight": ["IGK", "IGL"],
@@ -443,8 +477,8 @@ self.body(func(inputs) {
 	productivityMode := "none"
 	if !is_undefined(config) && !is_undefined(config.productivityMode) { productivityMode = config.productivityMode }
 
-	// AIRR productive is T/F or true/false; anything else is unknown and stays NA
-	if columnsInfo.columnMapping["is-productive"] != undefined && productivityMode == "none" {
+	// AIRR productive is T/F or true/false, Cell Ranger before 6.0 writes True/False; anything else is unknown and stays NA
+	if columnsInfo.columnMapping["is-productive"] != undefined && productivityMode != "from_cdr3_aa" {
 		p := pt.col("is-productive").fillNull("").strToUpper()
 		df = df.withColumns(
 			pt.when(p.eq("TRUE").or(p.eq("T"))).then(pt.lit("true")).
@@ -452,6 +486,14 @@ self.body(func(inputs) {
 				otherwise(pt.lit("")).
 				alias("is-productive")
 		)
+	}
+
+	// Several suffixes mean several libraries (cellranger aggr), where a barcode alone is not a cell
+	if byCellEnabled && hasCellTags && cellKeyMode == "strip_suffix" {
+		tag := pt.col(columnsInfo.cellTagColumns[0])
+		stripped := tag.strReplace(stripSuffixRegex, "", { replaceAll: true })
+		oneSuffix := pt.lit(1).ge(tag.strExtract(stripSuffixRegex).nUnique())
+		df = df.withColumns(pt.when(oneSuffix).then(stripped).otherwise(tag).alias("cell-key"))
 	}
 
 	emitByCell := func(chainDf, chain) {
@@ -465,8 +507,7 @@ self.body(func(inputs) {
 				cellKeyExpr = pt.col(columnsInfo.cellTagColumns[0])
 			}
 		} else if cellKeyMode == "strip_suffix" {
-			tagCol := columnsInfo.cellTagColumns[0]
-			cellKeyExpr = pt.col(tagCol).strReplace(stripSuffixRegex, "", { replaceAll: true })
+			cellKeyExpr = pt.col("cell-key")
 		} else {
 			cellKeyExpr = pt.col(columnsInfo.cellTagColumns[0])
 		}

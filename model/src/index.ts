@@ -525,7 +525,15 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
       if (format === "cellranger") {
         // Cell Ranger VDJ clones per-chain table minimal required headers
-        const cellrangerRequired = ["cdr3_nt", "cdr3", "v_gene", "j_gene", "barcode"];
+        const cellrangerRequired = [
+          "cdr3_nt",
+          "cdr3",
+          "v_gene",
+          "j_gene",
+          "barcode",
+          "productive",
+          "umis",
+        ];
         const missingColumns = cellrangerRequired.filter((col) => !headers.includes(col));
         return {
           isValid: missingColumns.length === 0,

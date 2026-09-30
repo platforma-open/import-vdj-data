@@ -13,10 +13,14 @@
   the identity's hash: a sequence-derived key would merge antibodies that share a sequence.
 */
 
-import { collisionCheckKey, rowReportKey } from "@platforma-open/milaboratories.import-vdj.model";
+import {
+  collisionCheckKey,
+  datasetCheckKey,
+  rowReportKey,
+} from "@platforma-open/milaboratories.import-vdj.model";
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
 import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
-import type { PTableHandle } from "@platforma-sdk/model";
+import type { PlRef, PTableHandle } from "@platforma-sdk/model";
 import { createPlDataTableStateV2, uniquePlId } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
 import { ImportVdjBlockPointer } from "this-block";
@@ -1220,3 +1224,86 @@ blockTest(
     expect(report?.collapsed).toEqual([{ id: 'AB "1"\tX', rows: 2 }]);
   },
 );
+
+// Each file drops one contig for a different flag: high_confidence before 6.0, is_cell after
+for (const [label, asset] of [
+  ["pre-6.0", "cellranger-legacy-contigs.csv"],
+  ["6.0+", "cellranger-contigs.csv"],
+]) {
+  blockTest(
+    `imports a ${label} Cell Ranger contig file, cells only`,
+    { timeout: 600000 },
+    async ({ rawPrj: project, helpers, expect, ml }) => {
+      const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+      const sampleId = uniquePlId();
+      const fileHandle = await helpers.getLocalFileHandle(`./assets/${asset}`);
+      await project.mutateBlockStorage(sndBlockId, {
+        operation: "update-block-data",
+        value: {
+          suggestedImport: false,
+          h5adFilesToPreprocess: [],
+          seuratFilesToPreprocess: [],
+          metadata: [],
+          sampleIds: [sampleId],
+          sampleLabelColumnLabel: "Sample Name",
+          sampleLabels: { [sampleId]: "cellranger" },
+          datasets: [
+            {
+              id: uniquePlId(),
+              label: "Cell Ranger",
+              content: { type: "Xsv", xsvType: "csv", data: { [sampleId]: fileHandle } },
+            },
+          ],
+        },
+      });
+      await project.runBlock(sndBlockId);
+      await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+      const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+      const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+        outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
+      };
+      const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
+      expect(option).toBeDefined();
+      const datasetRef = option.ref as PlRef;
+
+      await project.mutateBlockStorage(blockId, {
+        operation: "update-block-data",
+        value: blockData({
+          defaultBlockLabel: "cellranger",
+          customBlockLabel: "",
+          datasetRef,
+          format: "cellranger",
+          chains: ["IGHeavy", "IGLight"],
+          prerunCheck: {
+            check: "dataset",
+            subject: datasetCheckKey({ datasetRef, format: "cellranger" }),
+            columnsPresent: true,
+          },
+        }),
+      });
+      await project.runBlock(blockId);
+      await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+      const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+        outputs?: Record<string, unknown>;
+      };
+      const handleStats = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
+        ?.value?.fullTableHandle;
+      expect(handleStats, "statistics table handle").toBeDefined();
+
+      const specs = await ml.driverKit.pFrameDriver.getSpec(handleStats!);
+      const counts: Record<string, unknown> = {};
+      for (const [i, s] of specs.entries()) {
+        if (s.type !== "column") continue;
+        const [vector] = await ml.driverKit.pFrameDriver.getData(handleStats!, [i]);
+        if (s.spec.name === "pl7.app/vdj/stat/clonotypeCount") {
+          counts[s.spec.domain?.["pl7.app/vdj/chain"] ?? ""] = Number(vector.data[0]);
+        } else if (s.spec.name === "pl7.app/vdj/stat/recordsNotCell") {
+          counts.notCell = Number(vector.data[0]);
+        }
+      }
+      expect(counts).toEqual({ IGHeavy: 1, IGLight: 1, notCell: 1 });
+    },
+  );
+}

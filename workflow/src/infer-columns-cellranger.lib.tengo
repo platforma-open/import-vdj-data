@@ -547,6 +547,9 @@ sourceAliases := {
 
 	// Productivity
 	"productive": "is-productive",
+	"is_cell": "is-cell",
+	"high_confidence": "high-confidence",
+	"chain": "locus",
 	
 
 	// Single-cell tag

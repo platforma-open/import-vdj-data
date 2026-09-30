@@ -108,6 +108,10 @@ buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
 	}
 
 	cols := [rowsReadColumn(blockId, "record-count")]
+	if columnsInfo.columnMapping["is-cell"] != undefined || columnsInfo.columnMapping["high-confidence"] != undefined {
+		cols += [col("records-not-cell", "recordsNotCell", "Discarded: Not a Cell",
+			"Rows discarded because their barcode was not called a cell or the contig was not high-confidence.", "optional", "99500")]
+	}
 	if hasGene(columnsInfo, alleleMode, "v") {
 		cols += [col("records-no-v", "recordsWithoutVGene", "Discarded: No V Gene",
 			"Rows discarded because no V gene was called.", "optional", "99000")]
