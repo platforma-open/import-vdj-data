@@ -43,6 +43,17 @@ describe("row report", () => {
       "No sequence for at least one chain: AB-1. This row is ignored.",
     );
   });
+  test("a single-chain mapping does not mention chains", () => {
+    const heavyOnly = {
+      ...MAPPING,
+      chainSelection: "IGHeavy" as const,
+      sequences: { IGHeavy: "VH" },
+    };
+    const single = { ...report(2, [], ["AB-1", "AB-2"]), key: rowReportKey(heavyOnly)! };
+    expect(missingSequenceMessage(single, heavyOnly)).toBe(
+      "No sequence: AB-1, AB-2. These 2 rows are ignored.",
+    );
+  });
   test("still counts rows without a sequence that have no id to name", () => {
     expect(missingSequenceMessage(report(2, []), MAPPING)).toBe(
       "No sequence for at least one chain. These 2 rows are ignored.",
@@ -137,16 +148,15 @@ describe("ui messages", () => {
     expect(identityCollisionMessage({ key: keyFor(other), values: ["x"] }, mapping)).toBe("");
   });
 
-  test("the rest of the mapping is not part of the question", () => {
-    // Whole rows are compared, so a remapped chain or a new property reaches the same verdict;
-    // discarding it would re-scan the file to be told the same thing.
+  test("the key covers the id and sequence columns, not properties", () => {
+    // Rows missing a mapped sequence are left out of the comparison, so sequences are in the key.
     const remapped = { identity: "id", sequences: { IGHeavy: "VH2" } } as never;
     const withProperty = {
       identity: "id",
       sequences: { IGHeavy: "VH" },
       properties: [{ header: "Assay", valueType: "String" }],
     } as never;
-    expect(keyFor(remapped)).toBe(keyFor(mapping));
+    expect(keyFor(remapped)).not.toBe(keyFor(mapping));
     expect(keyFor(withProperty)).toBe(keyFor(mapping));
     expect(identityCollisionMessage({ key: keyFor(mapping), values: ["x"] }, withProperty)).toBe(
       "Repeated on rows that are not identical: x. Two rows sharing an id become one record — " +

@@ -13,7 +13,7 @@
 // Input:  a per-record TSV carrying the key column plus one `<chain>_sequence` column per
 //         mapped chain (`A` heavy, `B` light), and the numbering scheme the scientist chose.
 // Output: `regions` — a TSV with seven `<chain>_<region>_aa` columns per chain plus one
-//         `<chain>_regionAnnotationStatus`, for records annotated on every mapped chain.
+//         `<chain>_regionAnnotationStatus` (not imported), for records annotated on every mapped chain.
 //         `records` — the input record TSV, restricted to the same records.
 //         `stats`   — one row per chain: annotated / notApplicable / failed counts, plus
 //         `chainDisagreed`, the number of annotated records ANARCI numbered as the *other*

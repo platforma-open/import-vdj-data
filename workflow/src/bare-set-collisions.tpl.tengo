@@ -1,13 +1,14 @@
 // Prerun check of a bare set: id collisions, and the rows that will not become records.
 // One file read and one polars run, so both answers arrive together.
 //
-// collisions: ids on rows that are not identical. Rows are compared over every column of the
-// file, so a stray differing column makes a conflict; only verbatim repeats collapse. Depends
-// on the id column alone.
+// Rows with no sequence on a mapped chain (null, empty or whitespace, as the annotation pass
+// reads it) are ignored by the import, so they are only counted.
 //
-// row report (once a sequence is mapped): rows with no sequence on a mapped chain (null, empty
-// or whitespace, as the annotation pass reads it), then verbatim repeats among the rest.
-// Mapping a sequence re-runs the whole check.
+// collisions: ids on rows with every sequence that are not identical. Rows are compared over
+// every column, so a stray differing column makes a conflict; only verbatim repeats collapse.
+//
+// row report (once a sequence is mapped): rows without a sequence, then verbatim repeats among
+// the rest.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 ll := import("@platforma-sdk/workflow-tengo:ll")
@@ -63,16 +64,7 @@ self.body(func(inputs) {
 
 	df := pt.concat(frames)
 
-	// Collisions. keep/maintainOrder pinned for a reproducible plan; grouped on the source header.
-	collisions := df.unique({ keep: "first", maintainOrder: true }).
-		groupBy(mapping.identity).agg(
-			pt.col(mapping.identity).count().alias(COUNT_COLUMN)
-		).
-		filter(pt.col(COUNT_COLUMN).gt(pt.lit(1))).
-		select(pt.col(mapping.identity).alias(specs.labelColumn))
-	collisions.saveContent("collisions.tsv")
-
-	// Row report. With no sequence mapped nothing counts as missing.
+	// With no sequence mapped nothing counts as missing.
 	missingExpr := pt.lit(false)
 	blank := func(header) {
 		return pt.col(header).fillNull("").strReplace("\\s+", "", { replaceAll: true }).eq("")
@@ -84,6 +76,17 @@ self.body(func(inputs) {
 			missingExpr = missingExpr.or(blank(header))
 		}
 	}
+	withSequences := df.filter(missingExpr.not())
+
+	// Collisions, among rows with every sequence: the others are ignored by the import.
+	// keep/maintainOrder pinned for a reproducible plan; grouped on the source header.
+	collisions := withSequences.unique({ keep: "first", maintainOrder: true }).
+		groupBy(mapping.identity).agg(
+			pt.col(mapping.identity).count().alias(COUNT_COLUMN)
+		).
+		filter(pt.col(COUNT_COLUMN).gt(pt.lit(1))).
+		select(pt.col(mapping.identity).alias(specs.labelColumn))
+	collisions.saveContent("collisions.tsv")
 
 	summary := df.withColumns(
 		pt.when(missingExpr).then(pt.lit(1)).otherwise(pt.lit(0)).alias(MISSING),
@@ -102,7 +105,6 @@ self.body(func(inputs) {
 	missing.saveContent("missing.tsv")
 
 	// Ids whose rows (with sequences) are all verbatim repeats; differing rows are collisions.
-	withSequences := df.filter(missingExpr.not())
 	rows := withSequences.groupBy(mapping.identity).agg(
 		pt.col(mapping.identity).count().alias(COUNT_COLUMN)
 	)

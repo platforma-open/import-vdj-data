@@ -23,7 +23,10 @@ bareSetCheckOutputs := func(dataset, bare) {
 		}
 	})
 	return {
-		collisionsFor: smart.createJsonResource({ identity: bare.identity }),
+		collisionsFor: smart.createJsonResource({
+			identity: bare.identity,
+			sequences: bare.sequences
+		}),
 		identityCollisions: check.output("collisions"),
 		rowReportFor: smart.createJsonResource({
 			identity: bare.identity,

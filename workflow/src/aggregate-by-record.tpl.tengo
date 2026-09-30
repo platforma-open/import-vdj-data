@@ -2,7 +2,7 @@
 //
 // The bare set's shape follows MiXCR's: the abundance column keeps
 // `[pl7.app/sampleId, pl7.app/variantKey]`, and everything else — sequences, imported
-// properties, the label, the located regions and their statuses — is a property of the record
+// properties, the label, the located regions — is a property of the record
 // and sits on `[pl7.app/variantKey]` alone. See
 // blocks/mixcr-clonotyping/workflow/src/aggregate-by-clonotype-key.tpl.tengo, which does the
 // same thing by grouping on `clonotypeKey`.

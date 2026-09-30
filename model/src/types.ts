@@ -204,20 +204,25 @@ export function propertyCollisions(properties: ImportedProperty[]): Record<strin
   return Object.fromEntries(Object.entries(byToken).filter(([, hs]) => hs.length > 1));
 }
 
+/** The mapped sequence slots and headers, in slot order. */
+function mappedSequences(mapping: Partial<Pick<BareSetMapping, "sequences">>): [string, string][] {
+  return Object.entries(mapping.sequences ?? {})
+    .filter((e): e is [string, string] => !!e[1])
+    .sort(([a], [b]) => a.localeCompare(b));
+}
+
 /**
- * What a collision verdict is about: the id column, and nothing else in the mapping.
- *
- * A collision is an id repeated on rows that are not identical, compared over *every* column of
- * the raw file (`bare-set-collisions.tpl.tengo`), so remapping a chain or accepting a property
- * cannot change the answer — naming them would discard a sound verdict on every mapping edit and
- * re-scan the file to reach it again. The file is not in the key either: `prerunCheck` is dropped
- * outright when the file or dataset changes.
+ * What a collision verdict is about: the id column and the sequence columns, since rows missing
+ * a mapped sequence are left out of the comparison. The file is not in the key: `prerunCheck` is
+ * dropped when the file or dataset changes.
  */
 export function collisionCheckKey(
-  mapping: Pick<BareSetMapping, "identity"> | undefined,
+  mapping:
+    | (Pick<BareSetMapping, "identity"> & Partial<Pick<BareSetMapping, "sequences">>)
+    | undefined,
 ): string | undefined {
   if (mapping === undefined || !mapping.identity) return undefined;
-  return mapping.identity;
+  return JSON.stringify([mapping.identity, mappedSequences(mapping)]);
 }
 
 /** What a row report is about: the id and sequence columns. `undefined` until both are chosen. */
@@ -225,9 +230,7 @@ export function rowReportKey(
   mapping: Pick<BareSetMapping, "identity" | "sequences"> | undefined,
 ): string | undefined {
   if (mapping === undefined || !mapping.identity) return undefined;
-  const sequences = Object.entries(mapping.sequences ?? {})
-    .filter(([, header]) => !!header)
-    .sort(([a], [b]) => a.localeCompare(b));
+  const sequences = mappedSequences(mapping);
   if (sequences.length === 0) return undefined;
   return JSON.stringify([mapping.identity, sequences]);
 }

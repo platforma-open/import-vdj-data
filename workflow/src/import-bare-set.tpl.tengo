@@ -5,7 +5,7 @@
 //
 //   records.tsv   variantKey, recordLabel, clonotypePresence, <chain>_sequence,
 //                 <chain>_<V|J>Gene and <chain>_<V|J>Allele for each gene the file supplied
-//   regions.tsv   variantKey, <chain>_<region>_aa x7, <chain>_regionAnnotationStatus
+//   regions.tsv   variantKey, <chain>_<region>_aa x7
 //
 // They are kept separate rather than joined because both are keyed on `variantKey` and both
 // go into the same pFrameBuilder against the same axis, so a join would buy nothing.
@@ -126,11 +126,10 @@ self.body(func(inputs) {
 	// adopted for it is the block's own umi-count spec, which is Long.
 	df = df.withColumns(pt.lit(1).cast("Int64").alias(specs.abundanceColumn))
 
-	// An id sharing rows that differ anywhere in the raw file is refused before the run starts,
-	// so the only duplicates left here are verbatim repeats and collapsing on the key is safe.
-	// `bare-set-collisions` compares strictly more than is kept below, and has to keep doing so:
-	// while it compared only the id and the sequences, a differing property was cleared and this
-	// line then dropped one row's values with nothing said.
+	// An id on differing complete rows is refused before the run, so the only duplicates left
+	// are verbatim repeats and rows missing a sequence. Those sort last (stable sort), so the
+	// collapse keeps the complete row; the annotation pass drops a record that has none.
+	// `bare-set-collisions` compares every column of the file, not just the ones kept below.
 	//
 	// keep and maintainOrder are pinned, not left to default. The default keep is
 	// order-dependent, which makes the polars plan non-reproducible; a processColumn body is
@@ -146,7 +145,16 @@ self.body(func(inputs) {
 	for property in properties {
 		keep = append(keep, specs.propertyColumn(specs.sanitize(property.header)))
 	}
-	df = df.select(keep...).unique({ subset: specs.keyColumn, keep: "first", maintainOrder: true })
+	missingExpr := undefined
+	for chain in chains {
+		blank := pt.col(specs.sequenceColumn(chain)).fillNull("").
+			strReplace("\\s+", "", { replaceAll: true }).eq("")
+		missingExpr = missingExpr == undefined ? blank : missingExpr.or(blank)
+	}
+	df = df.withColumns(missingExpr.alias("missingSequence")).
+		sort(["missingSequence"]).
+		select(keep...).
+		unique({ subset: specs.keyColumn, keep: "first", maintainOrder: true })
 
 	df.save("records.tsv")
 	wf = wf.run()

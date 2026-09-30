@@ -6,7 +6,7 @@
 //   2. annotate        per sample   ANARCI: region TSV, kept record TSV, per-chain counts; emit
 //                                   the abundance column (the only one keeping the sample axis)
 //   3. aggregate       collapse     the kept record TSVs -> sequences, genes, imported properties, label
-//   4. aggregate       collapse     the region TSVs -> located regions and their statuses
+//   4. aggregate       collapse     the region TSVs -> located regions
 //
 // Passes 3 and 4 share one body (`aggregate-by-record`); only the declared Xsv columns differ.
 //

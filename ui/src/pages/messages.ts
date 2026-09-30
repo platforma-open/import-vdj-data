@@ -113,7 +113,7 @@ function currentReport(
   return report !== undefined && report.key === rowReportKey(mapping) ? report : undefined;
 }
 
-/** Rows missing a sequence on a mapped chain. Empty when none. */
+/** Rows missing a sequence on a mapped chain. Empty when none. Names chains only when paired. */
 export function missingSequenceMessage(
   report: RowReport | undefined,
   mapping: BareSetMapping | undefined,
@@ -123,7 +123,9 @@ export function missingSequenceMessage(
   const ids =
     current.missingIds.length > 0 ? `: ${andMore(current.missingIds, MISSING_SHOWN)}` : "";
   const n = current.missingSequence;
-  return `No sequence for at least one chain${ids}. ${n === 1 ? "This row is" : `These ${n} rows are`} ignored.`;
+  const paired = Object.values(mapping?.sequences ?? {}).filter(Boolean).length > 1;
+  const what = paired ? "No sequence for at least one chain" : "No sequence";
+  return `${what}${ids}. ${n === 1 ? "This row is" : `These ${n} rows are`} ignored.`;
 }
 
 /** Verbatim repeats, collapsed into one record per id. Empty when none. */
