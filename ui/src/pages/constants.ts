@@ -27,7 +27,7 @@ export const formatOptions: ListOptionBase<ImportFormat>[] = [
  */
 export const assemblingFeatureOptions: ListOptionBase<AssemblingFeature>[] = [
   { label: "CDR3", value: "CDR3" },
-  { label: "FR1 - FR4", value: "VDJRegion" },
+  { label: "VDJRegion", value: "VDJRegion" },
   { label: "FR2 - FR4", value: "FR2_TO_FR4" },
   { label: "FR1 - CDR3", value: "{FR1Begin:CDR3End}" },
   { label: "CDR1 - FR4", value: "CDR1_TO_FR4" },
