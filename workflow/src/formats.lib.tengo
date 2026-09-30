@@ -1,5 +1,4 @@
 ll := import("@platforma-sdk/workflow-tengo:ll")
-text := import("text")
 
 mixcr := import(":infer-columns-mixcr")
 cellranger := import(":infer-columns-cellranger")

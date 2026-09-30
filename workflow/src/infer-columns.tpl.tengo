@@ -1,11 +1,9 @@
 // parse list of available columns from mixcr or immunoseq
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
-exec := import("@platforma-sdk/workflow-tengo:exec")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
-maps := import("@platforma-sdk/workflow-tengo:maps")
 txt := import("@platforma-sdk/workflow-tengo:txt")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns-from-header")

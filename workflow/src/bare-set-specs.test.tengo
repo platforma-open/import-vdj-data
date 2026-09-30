@@ -232,14 +232,14 @@ Test_abundance_isTheBlocksOwnUmiCountSpec := func() {
 // --- assembly ---------------------------------------------------------------------------------
 
 Test_allColumns_pairedSetEmitsTwentyColumns := func() {
-	columns := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [])
+	columns := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], undefined)
 
 	// label + abundance + 2 main sequences + 14 regions + 2 statuses
 	test.isEqual(20, len(columns), "paired set column count")
 }
 
 Test_allColumns_singleChainEmitsHalfTheChainColumns := func() {
-	columns := specs.allColumns(["IGHeavy"], "imgt", [])
+	columns := specs.allColumns(["IGHeavy"], "imgt", [], undefined)
 
 	// label + abundance + 1 main sequence + 7 regions + 1 status
 	test.isEqual(11, len(columns), "single chain column count")
@@ -250,7 +250,7 @@ Test_allColumns_singleChainEmitsHalfTheChainColumns := func() {
 // sampleCount is never emitted: a count of how often a record repeats must not be presented
 // as an abundance, and the synthetic column's cross-sample aggregates are suppressed too.
 Test_allColumns_omitsSampleCountAndAggregates := func() {
-	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", []) {
+	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], undefined) {
 		test.isTrue(c.spec.name != "pl7.app/vdj/sampleCount", "sampleCount must not be emitted")
 		test.isTrue(
 			c.spec.name != "pl7.app/vdj/uniqueMoleculeCountTotal",
@@ -267,7 +267,7 @@ Test_allColumns_omitsSampleCountAndAggregates := func() {
 Test_allColumns_hasExactlyOneAnchor := func() {
 	anchors := 0
 	primaries := 0
-	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", []) {
+	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], undefined) {
 		if c.spec.annotations["pl7.app/isAnchor"] == "true" {
 			anchors = anchors + 1
 		}
@@ -283,8 +283,8 @@ Test_allColumns_hasExactlyOneAnchor := func() {
 // Pure templates downstream dedup on their inputs, so equal inputs must give byte-equal
 // output. Map iteration anywhere in assembly would break this silently.
 Test_allColumns_isCanonical := func() {
-	first := ids(specs.allColumns(["IGHeavy", "IGLight"], "kabat", []))
-	second := ids(specs.allColumns(["IGHeavy", "IGLight"], "kabat", []))
+	first := ids(specs.allColumns(["IGHeavy", "IGLight"], "kabat", [], undefined))
+	second := ids(specs.allColumns(["IGHeavy", "IGLight"], "kabat", [], undefined))
 
 	test.isEqual(first, second, "column order must be stable across calls")
 }
@@ -292,7 +292,7 @@ Test_allColumns_isCanonical := func() {
 // Every emitted column must be addressable on its own: no two may share a source column.
 Test_allColumns_sourceColumnsAreUnique := func() {
 	seen := {}
-	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", []) {
+	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], undefined) {
 		test.isTrue(seen[c.column] == undefined, "duplicate source column " + c.column)
 		seen[c.column] = true
 	}
@@ -357,11 +357,11 @@ Test_importedProperty_distinctHeadersDoNotCollide := func() {
 }
 
 Test_allColumns_includesAcceptedProperties := func() {
-	base := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [])
+	base := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], undefined)
 	withProps := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [
 		{ header: "Target" },
 		{ header: "Assay" }
-	])
+	], undefined)
 
 	test.isEqual(len(base) + 2, len(withProps), "two extra columns")
 	test.isTrue(byId(withProps, "imported-property-Target") != undefined, "Target emitted")
@@ -395,7 +395,7 @@ Test_recordLabel_followsTheAxisLabelConvention := func() {
 // rather than here.
 Test_columnsBySource_onlyAbundanceKeepsTheSampleAxis := func() {
 	properties := [{ header: "Target" }]
-	split := specs.columnsBySource(["IGHeavy", "IGLight"], "imgt", properties)
+	split := specs.columnsBySource(["IGHeavy", "IGLight"], "imgt", properties, undefined)
 
 	test.isEqual(1, len(split.perSample), "exactly one per-sample column")
 	test.isEqual(
@@ -418,8 +418,8 @@ Test_columnsBySource_partitionsAllColumns := func() {
 	properties := [{ header: "Target" }]
 	chains := ["IGHeavy", "IGLight"]
 
-	all := specs.allColumns(chains, "kabat", properties)
-	split := specs.columnsBySource(chains, "kabat", properties)
+	all := specs.allColumns(chains, "kabat", properties, undefined)
+	split := specs.columnsBySource(chains, "kabat", properties, undefined)
 
 	seen := {}
 	for bucket in [split.perSample, split.perRecord, split.regions] {
@@ -461,7 +461,7 @@ Test_singleChain_carriesNoChainDomain := func() {
 // One mapped chain means bulk-shaped; two means paired. columnsBySource decides it, so the
 // process template cannot get it wrong.
 Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
-	oneChain := specs.columnsBySource(["IGHeavy"], "imgt", [])
+	oneChain := specs.columnsBySource(["IGHeavy"], "imgt", [], undefined)
 	for col in oneChain.perRecord + oneChain.regions {
 		test.isTrue(
 			col.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined,
@@ -469,7 +469,7 @@ Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
 		)
 	}
 
-	twoChains := specs.columnsBySource(["IGHeavy", "IGLight"], "imgt", [])
+	twoChains := specs.columnsBySource(["IGHeavy", "IGLight"], "imgt", [], undefined)
 	stamped := 0
 	for col in twoChains.perRecord + twoChains.regions {
 		if col.spec.domain["pl7.app/vdj/scClonotypeChain"] != undefined { stamped += 1 }
@@ -561,4 +561,69 @@ Test_keyAxis_refusesTwoReceptorsInOneSet := func() {
 	beta := specs.keyAxis("b1", ["TCRBeta"]).spec.domain
 	test.isEqual("TCRBeta", beta["pl7.app/vdj/chain"], "beta-only names its locus")
 	test.isEqual("TCRAB", beta["pl7.app/vdj/receptor"], "and its receptor")
+}
+
+// --- germline genes -----------------------------------------------------------------------
+
+// The spec gene-usage consumers query for: geneHit / geneHitWithAllele with the reference in
+// the domain. Anything else and the columns import but no downstream block finds them.
+Test_geneColumns_matchWhatGeneUsageQueriesFor := func() {
+	genes := { IGHeavy: { v: "V call", j: "J call" } }
+	columns := specs.allColumns(["IGHeavy"], "imgt", [], genes)
+
+	vGene := byId(columns, "gene-IGHeavy-V")
+	test.isEqual("pl7.app/vdj/geneHit", vGene.spec.name, "V gene name")
+	test.isEqual({ "pl7.app/vdj/reference": "VGene" }, vGene.spec.domain, "V gene domain, unpaired")
+	test.isEqual("IGHeavy_VGene", vGene.column, "V gene TSV column")
+	test.isTrue(vGene.allowNA, "a blank gene does not drop the record")
+
+	jAllele := byId(columns, "allele-IGHeavy-J")
+	test.isEqual("pl7.app/vdj/geneHitWithAllele", jAllele.spec.name, "J allele name")
+	test.isEqual({ "pl7.app/vdj/reference": "JGene" }, jAllele.spec.domain, "J allele domain")
+	test.isEqual("IGHeavy_JAllele", jAllele.column, "J allele TSV column")
+}
+
+// Only mapped genes are emitted, and an empty header counts as unmapped.
+Test_geneColumns_onlyForMappedGenes := func() {
+	base := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], undefined)
+	genes := { IGHeavy: { v: "V call", j: "" }, IGLight: {} }
+	withGenes := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], genes)
+
+	test.isEqual(len(base) + 2, len(withGenes), "one gene, two columns")
+	test.isTrue(byId(withGenes, "gene-IGHeavy-V") != undefined, "heavy V emitted")
+	test.isTrue(byId(withGenes, "gene-IGHeavy-J") == undefined, "empty header skipped")
+	test.isTrue(byId(withGenes, "gene-IGLight-V") == undefined, "light has none")
+}
+
+// A gene mapped to a chain the set does not declare is not emitted: the chain list decides.
+Test_geneColumns_ignoreUndeclaredChains := func() {
+	genes := { IGLight: { v: "VL call" } }
+	columns := specs.allColumns(["IGHeavy"], "imgt", [], genes)
+	test.isTrue(byId(columns, "gene-IGLight-V") == undefined, "undeclared chain skipped")
+}
+
+// Paired: heavy and light V genes must be distinct specs or they dedupe into one column.
+Test_geneColumns_areDistinctPerChainWhenPaired := func() {
+	genes := { IGHeavy: { v: "VH call" }, IGLight: { v: "VL call" } }
+	columns := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], genes)
+
+	heavy := byId(columns, "gene-IGHeavy-V")
+	light := byId(columns, "gene-IGLight-V")
+	test.isEqual("A", heavy.spec.domain["pl7.app/vdj/scClonotypeChain"], "heavy is A")
+	test.isEqual("B", light.spec.domain["pl7.app/vdj/scClonotypeChain"], "light is B")
+	test.isEqual("VGene", light.spec.domain["pl7.app/vdj/reference"], "reference kept when paired")
+	test.isEqual("Light V Gene", light.spec.annotations["pl7.app/label"], "label names the chain")
+}
+
+// Genes are record properties: on the record axis, never per sample.
+Test_columnsBySource_putsGenesPerRecord := func() {
+	genes := { IGHeavy: { v: "V call", j: "J call" } }
+	split := specs.columnsBySource(["IGHeavy"], "imgt", [], genes)
+
+	test.isEqual(1, len(split.perSample), "abundance alone keeps the sample axis")
+	found := 0
+	for c in split.perRecord {
+		if text.has_prefix(c.id, "gene-") || text.has_prefix(c.id, "allele-") { found += 1 }
+	}
+	test.isEqual(4, found, "V and J, gene and allele")
 }

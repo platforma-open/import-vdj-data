@@ -115,6 +115,14 @@ describe("bareSet", () => {
     expect(parse({ bareSet })).toEqual({ bareSet });
   });
 
+  it("accepts gene columns, with either gene left unmapped", () => {
+    const bareSet = {
+      ...BARE_SET,
+      genes: { IGHeavy: { v: "V call", j: "J call" }, IGLight: { v: "VL call" } },
+    };
+    expect(parse({ bareSet })).toEqual({ bareSet });
+  });
+
   it("accepts a declaration whose slots are not all mapped yet -- the panel reaches that state", () => {
     const bareSet = { ...BARE_SET, sequences: { IGHeavy: "VH aa" } };
     expect(parse({ bareSet })).toEqual({ bareSet });
@@ -161,6 +169,9 @@ describe("bareSet", () => {
       "a property with an unknown value type",
       { ...BARE_SET, properties: [{ header: "x", valueType: "Float" }] },
     ],
+    ["a gene slot that is not a chain", { ...BARE_SET, genes: { IGKappa: { v: "V call" } } }],
+    ["a gene header that is not a string", { ...BARE_SET, genes: { IGHeavy: { v: 3 } } }],
+    ["genes that are not an object per chain", { ...BARE_SET, genes: { IGHeavy: "V call" } }],
     ["properties that are not an array", { ...BARE_SET, properties: { header: "x" } }],
   ])("rejects %s", (_label, bareSet) => {
     expect(() => parse({ bareSet })).toThrow("'bareSet' must be a bare set mapping");
