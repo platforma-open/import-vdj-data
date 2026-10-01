@@ -68,6 +68,23 @@ export function missingColumnsMessage(
 }
 
 /**
+ * A chain slot is mapped to a column whose values use only nucleotide letters. Warned rather than
+ * refused: the alphabet test cannot tell a nucleotide column from a protein made of A, C, G and T
+ * alone, though no variable domain is. Empty when the column is not one of those.
+ */
+export function nucleotideColumnMessage(
+  column: string | undefined,
+  nucleotideColumns: string[] | undefined,
+): string {
+  if (!column || !(nucleotideColumns ?? []).includes(column)) return "";
+  return (
+    `"${column}" holds only A, C, G, T or N, so it looks like a nucleotide sequence. ` +
+    `Chains are numbered as amino-acid sequences: records from this column fail region ` +
+    `annotation and are left out of the dataset. Pick an amino-acid column instead.`
+  );
+}
+
+/**
  * The identity column repeats on rows that are not identical, so two rows would merge into one
  * record. Empty when it does not.
  */

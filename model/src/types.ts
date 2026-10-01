@@ -67,6 +67,12 @@ export type ColumnProfile = {
   headers: string[];
   types: Record<string, ColumnValueType>;
   aminoAcid: string[];
+  /**
+   * Columns whose values use only nucleotide letters. A subset of what may also be in `aminoAcid`
+   * — A, C, G, T and N are amino-acid letters too — so the chain slots warn about these rather
+   * than hide them. Optional: a profile from an older software version does not carry it.
+   */
+  nucleotide?: string[];
 };
 
 export type ColumnDescription = {

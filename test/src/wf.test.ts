@@ -567,8 +567,12 @@ blockTest(
     // The same pass types every column, over the whole file rather than a sample. "Affinity (nM)"
     // holds 0.8 / 1.4 / 12.0 / 3.1 / 0.9, so it is Double; the identity and the domains are text.
     const profile = (
-      state.outputs?.columnProfile as { value?: { types: Record<string, string> } } | undefined
+      state.outputs?.columnProfile as
+        | { value?: { types: Record<string, string>; nucleotide?: string[] } }
+        | undefined
     )?.value;
+    // VH and VL are protein, so nothing here reads as nucleotides.
+    expect(profile?.nucleotide).toEqual([]);
     expect(profile?.types).toEqual({
       "mAb ID": "String",
       VH: "String",

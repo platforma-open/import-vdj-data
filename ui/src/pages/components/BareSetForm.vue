@@ -24,6 +24,7 @@ import {
   identityCollisionMessage as buildIdentityCollisionMessage,
   collapsedRowsMessage as buildCollapsedRowsMessage,
   missingSequenceMessage as buildMissingSequenceMessage,
+  nucleotideColumnMessage,
   propertyCollisionMessage as buildPropertyCollisionMessage,
 } from "../messages";
 
@@ -179,6 +180,11 @@ const sequenceOptions = computed(() => {
   return aminoAcid.map((h) => ({ label: h, value: h }));
 });
 
+/** Warning for a chain slot mapped to a nucleotide column, or "" when it is not. */
+function slotNucleotideMessage(slot: BareSetChain): string {
+  return nucleotideColumnMessage(bareField(slot), app.model.outputs.columnProfile?.nucleotide);
+}
+
 /**
  * Identity values repeated on rows that are not identical — the record key is the identity's hash,
  * so a repeat merges two records into one. Empty unless the verdict is about the mapping now
@@ -304,6 +310,14 @@ const propertyCollisionMessage = computed(() =>
         required
         @update:model-value="(v: string | undefined) => setBareField(slot, v)"
       />
+      <PlAlert
+        v-if="slotNucleotideMessage(slot)"
+        type="warn"
+        :label="`${slotLabel(slot)}: nucleotide column`"
+        :style="{ width: '100%' }"
+      >
+        {{ slotNucleotideMessage(slot) }}
+      </PlAlert>
       <!-- Optional and taken as given: the file's own gene calls, not inferred from the sequence. -->
       <div v-if="bareField(slot)" class="field-row">
         <PlDropdown

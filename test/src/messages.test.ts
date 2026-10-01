@@ -8,6 +8,7 @@ import {
   propertyCollisionMessage,
   collapsedRowsMessage,
   missingSequenceMessage,
+  nucleotideColumnMessage,
 } from "../../ui/src/pages/messages";
 
 const MAPPING = {
@@ -173,5 +174,20 @@ describe("ui messages", () => {
     );
     expect(propertyCollisionMessage([])).toBe("");
     expect(propertyCollisionMessage(undefined)).toBe("");
+  });
+});
+
+describe("nucleotide column", () => {
+  test("warns for a chain mapped to a nucleotide column", () => {
+    expect(nucleotideColumnMessage("VDJRegionNt", ["VDJRegionNt", "VDJRegionNtCoding"])).toBe(
+      '"VDJRegionNt" holds only A, C, G, T or N, so it looks like a nucleotide sequence. ' +
+        "Chains are numbered as amino-acid sequences: records from this column fail region " +
+        "annotation and are left out of the dataset. Pick an amino-acid column instead.",
+    );
+  });
+  test("says nothing for an amino-acid column, an empty slot or an old profile", () => {
+    expect(nucleotideColumnMessage("VDJRegionAA", ["VDJRegionNt"])).toBe("");
+    expect(nucleotideColumnMessage(undefined, ["VDJRegionNt"])).toBe("");
+    expect(nucleotideColumnMessage("VDJRegionNt", undefined)).toBe("");
   });
 });
