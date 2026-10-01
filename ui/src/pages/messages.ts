@@ -99,7 +99,7 @@ export function identityCollisionMessage(
   if (values.length === 0) return "";
   return (
     `Repeated on rows that are not identical: ${andMore(values, COLLISIONS_SHOWN)}. ` +
-    `Two rows sharing an id become one record — pick a different column, or fix the file.`
+    `Two rows sharing an id become one record — pick a different column, or review the file.`
   );
 }
 

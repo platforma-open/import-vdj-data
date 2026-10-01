@@ -138,7 +138,7 @@ describe("ui messages", () => {
         mapping,
       ),
     ).toBe(
-      "Repeated on rows that are not identical: x, y, z and 2 more. Two rows sharing an id become one record — pick a different column, or fix the file.",
+      "Repeated on rows that are not identical: x, y, z and 2 more. Two rows sharing an id become one record — pick a different column, or review the file.",
     );
     expect(identityCollisionMessage({ key: keyFor(mapping), values: [] }, mapping)).toBe("");
     expect(identityCollisionMessage(undefined, mapping)).toBe("");
@@ -161,7 +161,7 @@ describe("ui messages", () => {
     expect(keyFor(withProperty)).toBe(keyFor(mapping));
     expect(identityCollisionMessage({ key: keyFor(mapping), values: ["x"] }, withProperty)).toBe(
       "Repeated on rows that are not identical: x. Two rows sharing an id become one record — " +
-        "pick a different column, or fix the file.",
+        "pick a different column, or review the file.",
     );
   });
   test("property collisions", () => {
