@@ -170,36 +170,6 @@ Test_region_schemesProduceDistinctDomains := func() {
 	test.isTrue(imgt.spec.domain != kabat.spec.domain, "schemes must not share a domain")
 }
 
-// --- status column -------------------------------------------------------------------------
-
-Test_status_isAClosedThreeMemberEnum := func() {
-	col := specs.statusColumnSpec("IGHeavy", "imgt", true)
-
-	test.isEqual("pl7.app/vdj/regionAnnotationStatus", col.spec.name, "name")
-	test.isEqual("String", col.spec.valueType, "String, because xsv.importFile rejects Boolean")
-	test.isEqual("true", col.spec.annotations["pl7.app/isDiscreteFilter"], "discrete filter")
-	test.isEqual(
-		"[\"Annotated\",\"Not applicable\",\"Failed\"]",
-		col.spec.annotations["pl7.app/discreteValues"],
-		"closed enum, success member included"
-	)
-}
-
-// A null status would restore the ambiguity the column exists to remove.
-Test_status_isNeverNull := func() {
-	test.isFalse(specs.statusColumnSpec("IGLight", "imgt", true).allowNA, "status must not allow NA")
-}
-
-Test_status_isPerChainAndPerScheme := func() {
-	a := specs.statusColumnSpec("IGHeavy", "imgt", true)
-	b := specs.statusColumnSpec("IGLight", "imgt", true)
-	k := specs.statusColumnSpec("IGHeavy", "kabat", true)
-
-	test.isTrue(a.spec.domain != b.spec.domain, "one status per chain")
-	test.isTrue(a.spec.domain != k.spec.domain, "one status per scheme")
-	test.isEqual("46895", a.spec.annotations["pl7.app/table/orderPriority"], "sits between FR4 and isotype")
-}
-
 // --- synthetic abundance ---------------------------------------------------------------------
 
 // This exact annotation set is what makes Clustering's bundle query match and what makes the
@@ -217,13 +187,12 @@ Test_abundance_carriesTheTripleAndTheAnchor := func() {
 	test.isFalse(col.allowNA, "never null")
 }
 
-// The spec is the block's own umi-count spec adopted whole, so the unit rides along with it:
-// the fabrication is confined to the value, not to what the value is called.
-Test_abundance_isTheBlocksOwnUmiCountSpec := func() {
+// The block's umi-count spec with the label and unit saying what the value counts.
+Test_abundance_countsVariants := func() {
 	ann := specs.abundanceColumnSpec().spec.annotations
 
-	test.isEqual("molecules", ann["pl7.app/abundance/unit"], "unit comes with the adopted spec")
-	test.isEqual("Number of UMIs", ann["pl7.app/label"], "label comes with the adopted spec")
+	test.isEqual("variants", ann["pl7.app/abundance/unit"], "unit")
+	test.isEqual("Number of Variants", ann["pl7.app/label"], "label")
 	test.isEqual("88000", ann["pl7.app/table/orderPriority"], "order comes with the adopted spec")
 	test.isTrue(ann["pl7.app/abundance/synthetic"] == undefined, "no synthetic marker, by decision")
 	test.isEqual(0, len(specs.abundanceColumnSpec().spec.domain), "empty domain")
@@ -231,20 +200,19 @@ Test_abundance_isTheBlocksOwnUmiCountSpec := func() {
 
 // --- assembly ---------------------------------------------------------------------------------
 
-Test_allColumns_pairedSetEmitsTwentyColumns := func() {
+Test_allColumns_pairedSetEmitsEighteenColumns := func() {
 	columns := specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], undefined)
 
-	// label + abundance + 2 main sequences + 14 regions + 2 statuses
-	test.isEqual(20, len(columns), "paired set column count")
+	// label + abundance + 2 main sequences + 14 regions
+	test.isEqual(18, len(columns), "paired set column count")
 }
 
 Test_allColumns_singleChainEmitsHalfTheChainColumns := func() {
 	columns := specs.allColumns(["IGHeavy"], "imgt", [], undefined)
 
-	// label + abundance + 1 main sequence + 7 regions + 1 status
-	test.isEqual(11, len(columns), "single chain column count")
+	// label + abundance + 1 main sequence + 7 regions
+	test.isEqual(10, len(columns), "single chain column count")
 	test.isTrue(byId(columns, "main-sequence-B") == undefined, "no B columns when B is unmapped")
-	test.isTrue(byId(columns, "region-status-B") == undefined, "no B status when B is unmapped")
 }
 
 // sampleCount is never emitted: a count of how often a record repeats must not be presented
@@ -408,8 +376,8 @@ Test_columnsBySource_onlyAbundanceKeepsTheSampleAxis := func() {
 	test.isEqual(4, len(split.perRecord), "label + property + two sequences")
 	test.isEqual("pl7.app/label", split.perRecord[0].spec.name, "label leads the record columns")
 
-	// Seven regions plus one status, per chain.
-	test.isEqual(16, len(split.regions), "eight region columns per chain")
+	// Seven regions per chain.
+	test.isEqual(14, len(split.regions), "seven region columns per chain")
 }
 
 // Every column belongs to exactly one bucket, and the three together are allColumns. A column
@@ -451,9 +419,6 @@ Test_singleChain_carriesNoChainDomain := func() {
 	test.isTrue(region.spec.domain["pl7.app/vdj/scClonotypeChain/index"] == undefined, "region: no index")
 	test.isEqual("imgt", region.spec.domain["pl7.app/vdj/numberingSchema"], "scheme survives")
 
-	status := specs.statusColumnSpec("IGHeavy", "imgt", false)
-	test.isTrue(status.spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined, "status: no chain key")
-
 	// The chain is still named for the reader — it is only the machine-readable claim that goes.
 	test.isEqual("Light CDR3 aa", region.spec.annotations["pl7.app/label"], "label keeps the chain")
 }
@@ -474,8 +439,8 @@ Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
 	for col in twoChains.perRecord + twoChains.regions {
 		if col.spec.domain["pl7.app/vdj/scClonotypeChain"] != undefined { stamped += 1 }
 	}
-	// Two main sequences, two statuses, seven regions each.
-	test.isEqual(18, stamped, "both chains stamped when paired")
+	// Two main sequences, seven regions each.
+	test.isEqual(16, stamped, "both chains stamped when paired")
 }
 
 
@@ -500,17 +465,6 @@ Test_statsColumns_areKeyedOnTheChainAxis := func() {
 	test.isEqual(2, len(labels.data.data), "one label per mapped chain")
 }
 
-
-// The status values are terse and "Not applicable" reads as a diagnosis when it only means the
-// cell was empty, so the column describes all three.
-Test_status_describesEachOfItsValues := func() {
-	desc := specs.statusColumnSpec("IGHeavy", "imgt", true).spec.annotations["pl7.app/description"]
-	test.isTrue(desc != undefined && desc != "", "status column has a description")
-
-	for value in ["Annotated", "Not applicable", "Failed"] {
-		test.isTrue(text.contains(desc, value + ":"), "description explains " + value)
-	}
-}
 
 // Every statistic explains what it counts — the four labels repeat the status vocabulary, so a
 // reader hovering either place gets the same answer.
@@ -626,4 +580,11 @@ Test_columnsBySource_putsGenesPerRecord := func() {
 		if text.has_prefix(c.id, "gene-") || text.has_prefix(c.id, "allele-") { found += 1 }
 	}
 	test.isEqual(4, found, "V and J, gene and allele")
+}
+
+// The per-chain annotation status stays in the stats; it is not a dataset column.
+Test_allColumns_emitsNoStatusColumn := func() {
+	for c in specs.allColumns(["IGHeavy", "IGLight"], "imgt", [], undefined) {
+		test.isTrue(c.spec.name != "pl7.app/vdj/regionAnnotationStatus", "status emitted: " + c.id)
+	}
 }

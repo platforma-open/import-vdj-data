@@ -6,9 +6,11 @@ Input:
   --csv_<bucket>    ANARCI's `<out>_<BUCKET>.csv`, one flag per bucket. Any may be absent.
   --scheme      imgt | kabat | chothia — the convention the scientist chose.
 
-Output: one row per record, and for each mapped chain seven `<chain>_<region>_aa` columns
-plus one `<chain>_regionAnnotationStatus`. Status is never empty; regions are empty for
-any chain whose status is not `Annotated`.
+Output: for each mapped chain seven `<chain>_<region>_aa` columns plus one
+`<chain>_regionAnnotationStatus`, one row per kept record.
+
+A record is kept only when every mapped chain is `Annotated`. `--out_records_tsv` writes the
+kept input rows. `--out_stats` counts every record, kept or not.
 
 Why the lookup keys on `key|chain` rather than on the record key
 ---------------------------------------------------------------
@@ -148,6 +150,11 @@ def main() -> None:
         )
     p.add_argument("--out_tsv", required=True, help="Output TSV path")
     p.add_argument("--out_stats", required=False, help="Optional per-chain outcome counts TSV")
+    p.add_argument(
+        "--out_records_tsv",
+        required=False,
+        help="Optional copy of the input rows, restricted to the records kept in --out_tsv",
+    )
     args = p.parse_args()
 
     df = pl.read_csv(args.input_tsv, separator="\t", infer_schema_length=0)
@@ -172,6 +179,8 @@ def main() -> None:
         columns.append(status_column(chain))
 
     rows: List[List[str]] = []
+    kept_keys: List[str] = []
+    seen = 0
     # Per declared chain: the three statuses, plus how many of the annotated ones ANARCI
     # bucketed as the *other* chain. See `write_stats` for what that number is for.
     tally: Dict[str, Dict[str, int]] = {
@@ -184,7 +193,9 @@ def main() -> None:
         if not key:
             continue
 
+        seen += 1
         out_row: List[str] = [key]
+        complete = True
         for chain in chains:
             sequence = (row.get(sequence_column(chain)) or "").strip()
 
@@ -204,10 +215,20 @@ def main() -> None:
             out_row.extend(located[region] for region in REGIONS)
             out_row.append(status)
             tally[chain][status] += 1
+            if status != STATUS_ANNOTATED:
+                complete = False
 
-        rows.append(out_row)
+        if complete:
+            rows.append(out_row)
+            kept_keys.append(key)
 
     pl.DataFrame(rows, schema=columns, orient="row").write_csv(args.out_tsv, separator="\t")
+    if args.out_records_tsv:
+        # Input columns unchanged; only rows are filtered.
+        kept = set(kept_keys)
+        df.filter(
+            pl.col(args.key_column).str.strip_chars().is_in(list(kept))
+        ).write_csv(args.out_records_tsv, separator="\t")
     if args.out_stats:
         write_stats(args.out_stats, chains, tally)
 
@@ -218,7 +239,8 @@ def main() -> None:
             f"{t[STATUS_NOT_APPLICABLE]} not applicable, {t[STATUS_FAILED]} failed, "
             f"{t['chainDisagreed']} numbered as the other chain"
         )
-    print(f"Wrote {len(rows)} records to {args.out_tsv}")
+    dropped = seen - len(rows)
+    print(f"Wrote {len(rows)} records to {args.out_tsv}; left out {dropped} not annotated on every chain")
 
 
 if __name__ == "__main__":

@@ -16,14 +16,17 @@ import { blockDataModel } from "./data-model";
 import type {
   BareSetMapping,
   BlockArgs,
+  RowReport,
   BlockData,
   ColumnDescription,
   ColumnProfile,
   ImportFormat,
 } from "./types";
-import { bareSetValid, collisionCheckKey, datasetCheckKey } from "./types";
+import { parseTsvRows } from "./tsv";
+import { bareSetValid, collisionCheckKey, datasetCheckKey, rowReportKey } from "./types";
 
 export * from "./types";
+export { parseTsvRows } from "./tsv";
 export { upgradeLegacyData } from "./data-model";
 
 /** A column's spec, flattened to what a caller can assert on without reaching into the driver. */
@@ -248,12 +251,12 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
    * Identity values repeated on rows that are not identical, with the mapping they were found
    * under. One value, so the two can never be read from different runs.
    *
-   * Not `retentive`: this reports a defect, so a briefly absent verdict beats a stale one.
+   * Retentive: a verdict kept across a mapping change carries the old key and is ignored.
    */
-  .output("identityCollisions", (ctx) => {
+  .retentiveOutput("identityCollisions", (ctx) => {
     const mapping = ctx.prerun
       ?.resolve({ field: "collisionsFor", allowPermanentAbsence: true })
-      ?.getDataAsJsonOrUndefined<Pick<BareSetMapping, "identity">>();
+      ?.getDataAsJsonOrUndefined<Pick<BareSetMapping, "identity" | "sequences">>();
     const key = collisionCheckKey(mapping);
     if (key === undefined) return undefined;
 
@@ -262,12 +265,40 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       ?.getDataAsString();
     if (raw === undefined) return undefined;
 
-    // A one-column TSV: a header, then one colliding value per line.
-    const lines = raw
-      .split("\n")
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-    return { key, values: lines.slice(1) };
+    // A one-column TSV of colliding ids.
+    return { key, values: parseTsvRows(raw).map(([id]) => id ?? "") };
+  })
+
+  /** Rows that will not become records of their own, keyed on the mapping it was computed for. */
+  .output("rowReport", (ctx): RowReport | undefined => {
+    const mapping = ctx.prerun
+      ?.resolve({ field: "rowReportFor", allowPermanentAbsence: true })
+      ?.getDataAsJsonOrUndefined<Pick<BareSetMapping, "identity" | "sequences">>();
+    const key = rowReportKey(mapping);
+    if (key === undefined) return undefined;
+
+    const summary = ctx.prerun
+      ?.resolve({ field: "rowReportSummary", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    const missing = ctx.prerun
+      ?.resolve({ field: "rowReportMissing", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    const collapsed = ctx.prerun
+      ?.resolve({ field: "rowReportCollapsed", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (summary === undefined || missing === undefined || collapsed === undefined) return undefined;
+
+    // Headed TSVs: summary = rowCount, missingSequence; missing = id; collapsed = id, rowCount.
+    // A header-only file groups to no summary row: zero rows, not "not computed".
+    const [counts] = parseTsvRows(summary);
+
+    return {
+      key,
+      rowCount: Number(counts?.[0] ?? 0),
+      missingSequence: Number(counts?.[1] ?? 0),
+      missingIds: parseTsvRows(missing).map(([id]) => id ?? ""),
+      collapsed: parseTsvRows(collapsed).map(([id, n]) => ({ id: id ?? "", rows: Number(n) })),
+    };
   })
 
   .retentiveOutput("datasetOptions", (ctx) => {

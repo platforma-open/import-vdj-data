@@ -1,10 +1,12 @@
 import type {
   BareSetMapping,
   ImportedProperty,
+  RowReport,
 } from "@platforma-open/milaboratories.import-vdj.model";
 import {
   collisionCheckKey,
   propertyCollisions,
+  rowReportKey,
 } from "@platforma-open/milaboratories.import-vdj.model";
 import { formatOptions } from "./constants";
 
@@ -19,6 +21,10 @@ const EMPTY_SAMPLES_SHOWN = 5;
  * trimmed: the id column can hold sequences, and cutting those hides what tells them apart.
  */
 const COLLISIONS_SHOWN = 3;
+
+/** Ids named per row-report message before "and N more". */
+const COLLAPSED_SHOWN = 3;
+const MISSING_SHOWN = 3;
 
 /**
  * `a, b, c and 4 more`. Long lists are truncated rather than scrolled: the values can be
@@ -62,6 +68,23 @@ export function missingColumnsMessage(
 }
 
 /**
+ * A chain slot is mapped to a column whose values use only nucleotide letters. Warned rather than
+ * refused: the alphabet test cannot tell a nucleotide column from a protein made of A, C, G and T
+ * alone, though no variable domain is. Empty when the column is not one of those.
+ */
+export function nucleotideColumnMessage(
+  column: string | undefined,
+  nucleotideColumns: string[] | undefined,
+): string {
+  if (!column || !(nucleotideColumns ?? []).includes(column)) return "";
+  return (
+    `"${column}" holds only A, C, G, T or N, so it looks like a nucleotide sequence. ` +
+    `Chains are numbered as amino-acid sequences: records from this column fail region ` +
+    `annotation and are left out of the dataset. Pick an amino-acid column instead.`
+  );
+}
+
+/**
  * The identity column repeats on rows that are not identical, so two rows would merge into one
  * record. Empty when it does not.
  */
@@ -76,7 +99,7 @@ export function identityCollisionMessage(
   if (values.length === 0) return "";
   return (
     `Repeated on rows that are not identical: ${andMore(values, COLLISIONS_SHOWN)}. ` +
-    `Two rows sharing an id become one record — pick a different column, or fix the file.`
+    `Two rows sharing an id become one record — pick a different column, or review the file.`
   );
 }
 
@@ -92,5 +115,48 @@ export function propertyCollisionMessage(properties: ImportedProperty[] | undefi
     `These headers would become the same column: ${pairs}. ` +
     `Rename one in the file — importing both is not possible, and dropping one silently would ` +
     `lose a column you asked for.`
+  );
+}
+
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** The report if it is for the current mapping. */
+function currentReport(
+  report: RowReport | undefined,
+  mapping: BareSetMapping | undefined,
+): RowReport | undefined {
+  return report !== undefined && report.key === rowReportKey(mapping) ? report : undefined;
+}
+
+/** Rows missing a sequence on a mapped chain. Empty when none. Names chains only when paired. */
+export function missingSequenceMessage(
+  report: RowReport | undefined,
+  mapping: BareSetMapping | undefined,
+): string {
+  const current = currentReport(report, mapping);
+  if (current === undefined || current.missingSequence === 0) return "";
+  const ids =
+    current.missingIds.length > 0 ? `: ${andMore(current.missingIds, MISSING_SHOWN)}` : "";
+  const n = current.missingSequence;
+  const paired = Object.values(mapping?.sequences ?? {}).filter(Boolean).length > 1;
+  const what = paired ? "No sequence for at least one chain" : "No sequence";
+  return `${what}${ids}. ${n === 1 ? "This row is" : `These ${n} rows are`} ignored.`;
+}
+
+/** Verbatim repeats, collapsed into one record per id. Empty when none. */
+export function collapsedRowsMessage(
+  report: RowReport | undefined,
+  mapping: BareSetMapping | undefined,
+): string {
+  const current = currentReport(report, mapping);
+  if (current === undefined) return "";
+  const collapsedRows = current.collapsed.reduce((sum, c) => sum + c.rows - 1, 0);
+  if (collapsedRows === 0) return "";
+  const named = current.collapsed.map((c) => `${c.id} (${c.rows} rows)`);
+  return (
+    `Identical rows: ${andMore(named, COLLAPSED_SHOWN)}. ` +
+    `Rows sharing an id become one record, so ${plural(collapsedRows, "row is", "rows are")} collapsed.`
   );
 }

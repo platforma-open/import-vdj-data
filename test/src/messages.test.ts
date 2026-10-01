@@ -1,4 +1,4 @@
-import { collisionCheckKey } from "@platforma-open/milaboratories.import-vdj.model";
+import { collisionCheckKey, rowReportKey } from "@platforma-open/milaboratories.import-vdj.model";
 import { describe, expect, test } from "vitest";
 import {
   emptySamplesMessage,
@@ -6,7 +6,93 @@ import {
   identityCollisionMessage,
   missingColumnsMessage,
   propertyCollisionMessage,
+  collapsedRowsMessage,
+  missingSequenceMessage,
+  nucleotideColumnMessage,
 } from "../../ui/src/pages/messages";
+
+const MAPPING = {
+  identity: "mAb ID",
+  chainSelection: "IG" as const,
+  sequences: { IGHeavy: "VH", IGLight: "VL" },
+  scheme: "imgt" as const,
+};
+const report = (
+  missingSequence: number,
+  collapsed: { id: string; rows: number }[],
+  missingIds: string[] = [],
+) => ({
+  key: rowReportKey(MAPPING)!,
+  rowCount: 20,
+  missingSequence,
+  missingIds,
+  collapsed,
+});
+
+describe("row report", () => {
+  test("says nothing when every row becomes its own record", () => {
+    expect(missingSequenceMessage(report(0, []), MAPPING)).toBe("");
+    expect(collapsedRowsMessage(report(0, []), MAPPING)).toBe("");
+    expect(missingSequenceMessage(undefined, MAPPING)).toBe("");
+    expect(collapsedRowsMessage(undefined, MAPPING)).toBe("");
+  });
+  test("names rows without a sequence, like the non-unique id warning", () => {
+    expect(missingSequenceMessage(report(3, [], ["AB-1", "AB-2", "AB-3", "AB-4"]), MAPPING)).toBe(
+      "No sequence for at least one chain: AB-1, AB-2, AB-3 and 1 more. These 3 rows are ignored.",
+    );
+    expect(missingSequenceMessage(report(1, [], ["AB-1"]), MAPPING)).toBe(
+      "No sequence for at least one chain: AB-1. This row is ignored.",
+    );
+  });
+  test("a single-chain mapping does not mention chains", () => {
+    const heavyOnly = {
+      ...MAPPING,
+      chainSelection: "IGHeavy" as const,
+      sequences: { IGHeavy: "VH" },
+    };
+    const single = { ...report(2, [], ["AB-1", "AB-2"]), key: rowReportKey(heavyOnly)! };
+    expect(missingSequenceMessage(single, heavyOnly)).toBe(
+      "No sequence: AB-1, AB-2. These 2 rows are ignored.",
+    );
+  });
+  test("still counts rows without a sequence that have no id to name", () => {
+    expect(missingSequenceMessage(report(2, []), MAPPING)).toBe(
+      "No sequence for at least one chain. These 2 rows are ignored.",
+    );
+  });
+  test("names collapsed ids, most repeated first, and counts the rows they absorbed", () => {
+    const collapsed = [
+      { id: "AB-7", rows: 3 },
+      { id: "AB-2", rows: 2 },
+      { id: "AB-3", rows: 2 },
+      { id: "AB-9", rows: 2 },
+    ];
+    expect(collapsedRowsMessage(report(0, collapsed), MAPPING)).toBe(
+      "Identical rows: AB-7 (3 rows), AB-2 (2 rows), AB-3 (2 rows) and 1 more. " +
+        "Rows sharing an id become one record, so 5 rows are collapsed.",
+    );
+  });
+  test("each reason is its own message", () => {
+    const both = report(2, [{ id: "AB-1", rows: 2 }], ["AB-5", "AB-6"]);
+    expect(missingSequenceMessage(both, MAPPING)).toBe(
+      "No sequence for at least one chain: AB-5, AB-6. These 2 rows are ignored.",
+    );
+    expect(collapsedRowsMessage(both, MAPPING)).toBe(
+      "Identical rows: AB-1 (2 rows). Rows sharing an id become one record, so 1 row is collapsed.",
+    );
+  });
+  test("a report on another mapping says nothing", () => {
+    const remapped = { ...MAPPING, sequences: { IGHeavy: "VH", IGLight: "other" } };
+    expect(missingSequenceMessage(report(3, []), remapped)).toBe("");
+    expect(collapsedRowsMessage(report(0, [{ id: "AB-1", rows: 2 }]), remapped)).toBe("");
+  });
+  test("the key ignores slot order and needs an id and a sequence", () => {
+    const reordered = { ...MAPPING, sequences: { IGLight: "VL", IGHeavy: "VH" } };
+    expect(rowReportKey(reordered)).toBe(rowReportKey(MAPPING));
+    expect(rowReportKey({ ...MAPPING, identity: "" })).toBeUndefined();
+    expect(rowReportKey({ ...MAPPING, sequences: {} })).toBeUndefined();
+  });
+});
 
 describe("ui messages", () => {
   test("empty samples: under the cap", () => {
@@ -52,7 +138,7 @@ describe("ui messages", () => {
         mapping,
       ),
     ).toBe(
-      "Repeated on rows that are not identical: x, y, z and 2 more. Two rows sharing an id become one record — pick a different column, or fix the file.",
+      "Repeated on rows that are not identical: x, y, z and 2 more. Two rows sharing an id become one record — pick a different column, or review the file.",
     );
     expect(identityCollisionMessage({ key: keyFor(mapping), values: [] }, mapping)).toBe("");
     expect(identityCollisionMessage(undefined, mapping)).toBe("");
@@ -63,20 +149,19 @@ describe("ui messages", () => {
     expect(identityCollisionMessage({ key: keyFor(other), values: ["x"] }, mapping)).toBe("");
   });
 
-  test("the rest of the mapping is not part of the question", () => {
-    // Whole rows are compared, so a remapped chain or a new property reaches the same verdict;
-    // discarding it would re-scan the file to be told the same thing.
+  test("the key covers the id and sequence columns, not properties", () => {
+    // Rows missing a mapped sequence are left out of the comparison, so sequences are in the key.
     const remapped = { identity: "id", sequences: { IGHeavy: "VH2" } } as never;
     const withProperty = {
       identity: "id",
       sequences: { IGHeavy: "VH" },
       properties: [{ header: "Assay", valueType: "String" }],
     } as never;
-    expect(keyFor(remapped)).toBe(keyFor(mapping));
+    expect(keyFor(remapped)).not.toBe(keyFor(mapping));
     expect(keyFor(withProperty)).toBe(keyFor(mapping));
     expect(identityCollisionMessage({ key: keyFor(mapping), values: ["x"] }, withProperty)).toBe(
       "Repeated on rows that are not identical: x. Two rows sharing an id become one record — " +
-        "pick a different column, or fix the file.",
+        "pick a different column, or review the file.",
     );
   });
   test("property collisions", () => {
@@ -89,5 +174,20 @@ describe("ui messages", () => {
     );
     expect(propertyCollisionMessage([])).toBe("");
     expect(propertyCollisionMessage(undefined)).toBe("");
+  });
+});
+
+describe("nucleotide column", () => {
+  test("warns for a chain mapped to a nucleotide column", () => {
+    expect(nucleotideColumnMessage("VDJRegionNt", ["VDJRegionNt", "VDJRegionNtCoding"])).toBe(
+      '"VDJRegionNt" holds only A, C, G, T or N, so it looks like a nucleotide sequence. ' +
+        "Chains are numbered as amino-acid sequences: records from this column fail region " +
+        "annotation and are left out of the dataset. Pick an amino-acid column instead.",
+    );
+  });
+  test("says nothing for an amino-acid column, an empty slot or an old profile", () => {
+    expect(nucleotideColumnMessage("VDJRegionAA", ["VDJRegionNt"])).toBe("");
+    expect(nucleotideColumnMessage(undefined, ["VDJRegionNt"])).toBe("");
+    expect(nucleotideColumnMessage("VDJRegionNt", undefined)).toBe("");
   });
 });
