@@ -126,7 +126,7 @@ buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
 	}
 	// Emitted only when a feature was assembled: with a CDR3 key nothing can fail to cover it
 	if !is_undefined(columnsInfo.spanNt) {
-		feature := columnsInfo.assemblingFeature
+		feature := columnsInfo.assemblingFeatureLabel
 		cols += [col("records-not-covering", "recordsNotCoveringAssemblingFeature",
 			"Discarded: Not Covering " + feature,
 			"Rows discarded because they do not span " + feature + ", among those that had V and J genes and a CDR3.",

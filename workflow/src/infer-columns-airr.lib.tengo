@@ -79,6 +79,22 @@ assemblingFeatures := {
 	"CDR3_TO_FR4": ["cdr3", "fr4"]
 }
 
+// The names scientists see for each feature, matching the block's settings panel
+assemblingFeatureLabels := {
+	"CDR3": "CDR3",
+	"VDJRegion": "VDJRegion",
+	"FR2_TO_FR4": "FR2 - FR4",
+	"{FR1Begin:CDR3End}": "FR1 - CDR3",
+	"CDR1_TO_FR4": "CDR1 - FR4",
+	"{CDR1Begin:CDR3End}": "CDR1 - CDR3",
+	"{FR2Begin:CDR3End}": "FR2 - CDR3",
+	"CDR2_TO_FR4": "CDR2 - FR4",
+	"{CDR2Begin:CDR3End}": "CDR2 - CDR3",
+	"FR3_TO_FR4": "FR3 - FR4",
+	"{FR3Begin:CDR3End}": "FR3 - CDR3",
+	"CDR3_TO_FR4": "CDR3 - FR4"
+}
+
 // What a file must cover before a column counts as one it carries
 DEFAULT_ASSEMBLING_FEATURE := "CDR3"
 
@@ -266,6 +282,7 @@ getColumns := func(header, ...opts) {
 		cellTagColumns: cellTagColumns,
 		cdr3FallbackToAa: columnMapping["cdr3-aa"] != undefined,
 		assemblingFeature: feature,
+		assemblingFeatureLabel: assemblingFeatureLabels[feature],
 		spanNt: spanNt,
 		spanAa: spanAa
 	}
