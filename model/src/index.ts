@@ -288,7 +288,8 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       ?.getDataAsString();
     if (summary === undefined || missing === undefined || collapsed === undefined) return undefined;
 
-    // Headed TSVs: summary = rowCount, missingSequence; missing = id; collapsed = id, rowCount.
+    // Headed TSVs: summary = rowCount, missingSequence, missingId; missing = id;
+    // collapsed = id, rowCount.
     // A header-only file groups to no summary row: zero rows, not "not computed".
     const [counts] = parseTsvRows(summary);
 
@@ -296,6 +297,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       key,
       rowCount: Number(counts?.[0] ?? 0),
       missingSequence: Number(counts?.[1] ?? 0),
+      missingId: Number(counts?.[2] ?? 0),
       missingIds: parseTsvRows(missing).map(([id]) => id ?? ""),
       collapsed: parseTsvRows(collapsed).map(([id, n]) => ({ id: id ?? "", rows: Number(n) })),
     };
@@ -614,7 +616,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
     // Anchor on the count its own path always emits — the two paths share this output but no columns.
     const primary =
-      pCols.find((c) => c.spec.name.endsWith("/annotatedCount")) ??
+      pCols.find((c) => c.spec.name.endsWith("/chainDisagreedCount")) ??
       pCols.find((c) => c.spec.name === "pl7.app/vdj/stat/clonotypeCount");
     if (primary === undefined) {
       return undefined;

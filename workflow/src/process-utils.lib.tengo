@@ -73,31 +73,41 @@ hasGene := func(columnsInfo, alleleMode, prefix) {
 	return false
 }
 
-// What the row filters discarded, per sample and across every chain -- a row with no V call
-// belongs to no chain, and each count is its own filter's cost, not an overlapping total.
-buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
-	d := { "pl7.app/vdj/clonotypingRunId": blockId }
-	// Descending, so the table reads left to right in the order the filters actually run
-	col := func(id, name, label, description, visibility, order) {
-		return {
-			id: id,
-			column: id,
-			spec: {
-				name: "pl7.app/vdj/stat/" + name,
-				valueType: "Long",
-				domain: d,
-				annotations: {
-					"pl7.app/label": label,
-					"pl7.app/description": description,
-					"pl7.app/table/visibility": visibility,
-					"pl7.app/table/orderPriority": order
-				}
+// One per-sample row counter: no chain in the domain, since a discarded row belongs to none.
+// Shared with the bare-set path, so the counters both paths emit are the same columns.
+recordStatColumn := func(blockId, id, name, label, description, visibility, order) {
+	return {
+		id: id,
+		column: id,
+		spec: {
+			name: "pl7.app/vdj/stat/" + name,
+			valueType: "Long",
+			domain: { "pl7.app/vdj/clonotypingRunId": blockId },
+			annotations: {
+				"pl7.app/label": label,
+				"pl7.app/description": description,
+				"pl7.app/table/visibility": visibility,
+				"pl7.app/table/orderPriority": order
 			}
 		}
 	}
+}
 
-	cols := [col("record-count", "recordCount", "Rows Read",
-		"Rows from this sample.", "default", "100000")]
+// The count every discard counter is a share of; first in the table.
+rowsReadColumn := func(blockId, id) {
+	return recordStatColumn(blockId, id, "recordCount", "Rows Read",
+		"Rows from this sample.", "default", "100000")
+}
+
+// What the row filters discarded, per sample and across every chain -- a row with no V call
+// belongs to no chain, and each count is its own filter's cost, not an overlapping total.
+buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
+	// Descending, so the table reads left to right in the order the filters actually run
+	col := func(id, name, label, description, visibility, order) {
+		return recordStatColumn(blockId, id, name, label, description, visibility, order)
+	}
+
+	cols := [rowsReadColumn(blockId, "record-count")]
 	if hasGene(columnsInfo, alleleMode, "v") {
 		cols += [col("records-no-v", "recordsWithoutVGene", "Discarded: No V Gene",
 			"Rows discarded because no V gene was called.", "optional", "99000")]
@@ -163,6 +173,8 @@ export {
 	columnsToSchema: columnsToSchema,
 	buildStatsColumns: buildStatsColumns,
 	buildRecordStatsColumns: buildRecordStatsColumns,
+	recordStatColumn: recordStatColumn,
+	rowsReadColumn: rowsReadColumn,
 	hasGene: hasGene,
 	recordStatsTrace: recordStatsTrace,
 	buildClonotypeKeyStructure: buildClonotypeKeyStructure,

@@ -78,7 +78,7 @@ export function nucleotideColumnMessage(
 ): string {
   if (!column || !(nucleotideColumns ?? []).includes(column)) return "";
   return (
-    `"${column}" holds only A, C, G, T or N, so it looks like a nucleotide sequence. ` +
+    `"${column}" holds only A, C, G, T, U or N, so it looks like a nucleotide sequence. ` +
     `Chains are numbered as amino-acid sequences: records from this column fail region ` +
     `annotation and are left out of the dataset. Pick an amino-acid column instead.`
   );
@@ -130,19 +130,30 @@ function currentReport(
   return report !== undefined && report.key === rowReportKey(mapping) ? report : undefined;
 }
 
-/** Rows missing a sequence on a mapped chain. Empty when none. Names chains only when paired. */
+/**
+ * Rows missing a sequence on a mapped chain, or missing the id. Empty when none. Names chains
+ * only when paired. Rows with no id are counted rather than named, and said to have no id only:
+ * whether they have a sequence is not claimed either way.
+ */
 export function missingSequenceMessage(
   report: RowReport | undefined,
   mapping: BareSetMapping | undefined,
 ): string {
   const current = currentReport(report, mapping);
-  if (current === undefined || current.missingSequence === 0) return "";
-  const ids =
-    current.missingIds.length > 0 ? `: ${andMore(current.missingIds, MISSING_SHOWN)}` : "";
-  const n = current.missingSequence;
+  if (current === undefined) return "";
+  const n = current.missingSequence + current.missingId;
+  if (n === 0) return "";
+  const ignored = `${n === 1 ? "This row is" : `These ${n} rows are`} ignored.`;
+  const named = andMore(current.missingIds, MISSING_SHOWN);
   const paired = Object.values(mapping?.sequences ?? {}).filter(Boolean).length > 1;
-  const what = paired ? "No sequence for at least one chain" : "No sequence";
-  return `${what}${ids}. ${n === 1 ? "This row is" : `These ${n} rows are`} ignored.`;
+  const chains = paired ? " for at least one chain" : "";
+  if (current.missingId === 0) {
+    return `Empty sequence${chains}${named ? `: ${named}` : ""}. ${ignored}`;
+  }
+  const unnamed = plural(current.missingId, "row", "rows") + " without an id";
+  return named
+    ? `Empty sequence${chains}: ${named} and ${unnamed}. ${ignored}`
+    : `${unnamed[0].toUpperCase()}${unnamed.slice(1)}. ${ignored}`;
 }
 
 /** Verbatim repeats, collapsed into one record per id. Empty when none. */

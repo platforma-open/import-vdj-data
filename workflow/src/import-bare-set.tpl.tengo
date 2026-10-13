@@ -1,11 +1,13 @@
 // Import one sample's worth of a bare paired set.
 //
 // Runs once per sample, as the body of a `pframes.processColumn` step. Produces two TSVs on
-// the same key, which the caller imports into one frame:
+// the same key, which the caller imports into one frame, plus the rows this pass discarded:
 //
 //   records.tsv   variantKey, recordLabel, clonotypePresence, <chain>_sequence,
 //                 <chain>_<V|J>Gene and <chain>_<V|J>Allele for each gene the file supplied
 //   regions.tsv   variantKey, <chain>_<region>_aa x7
+//   import-stats  rowCount, rowsWithoutId, rowsWithRepeatedId, rowsWithoutSequence — one row,
+//                 see bare-set-specs
 //
 // They are kept separate rather than joined because both are keyed on `variantKey` and both
 // go into the same pFrameBuilder against the same axis, so a join would buy nothing.
@@ -30,7 +32,7 @@ pt := import("@platforma-sdk/workflow-tengo:pt")
 
 specs := import(":bare-set-specs")
 
-self.defineOutputs("records")
+self.defineOutputs("records", "importStats")
 
 self.body(func(inputs) {
 	inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
@@ -111,12 +113,22 @@ self.body(func(inputs) {
 		df = df.withColumns(geneExprs...)
 	}
 
+	// A row without an id (null, empty or whitespace) is not a record: filling it with a literal
+	// would merge every such row into one. Dropped here, counted here and by `bare-set-collisions`.
+	missingId := pt.col(specs.labelColumn).fillNull("").
+		strReplace("\\s+", "", { replaceAll: true }).eq("")
+	readStats := df.select(
+		pt.col(specs.labelColumn).fillNull("").count().alias("rowCount"),
+		missingId.cast("Int64").sum().alias("rowsWithoutId")
+	)
+	df = df.filter(missingId.not())
+
 	// The record's key: sha256 of the identity column alone, base64_alphanumeric, truncated
-	// to 120 bits, nulls filled with the literal NA. This is the block's existing key-minting
-	// mechanism given a one-column key list — the sequences play no part in it, so two
-	// antibodies sharing a heavy chain stay two records.
+	// to 120 bits. This is the block's existing key-minting mechanism given a one-column key
+	// list — the sequences play no part in it, so two antibodies sharing a heavy chain stay two
+	// records.
 	df = df.withColumns(
-		pt.concatStr([pt.col(specs.labelColumn).fillNull("NA")], { delimiter: "|" }).
+		pt.concatStr([pt.col(specs.labelColumn)], { delimiter: "|" }).
 			hash("sha256", "base64_alphanumeric", 120).
 			alias(specs.keyColumn)
 	)
@@ -128,7 +140,8 @@ self.body(func(inputs) {
 
 	// An id on differing complete rows is refused before the run, so the only duplicates left
 	// are verbatim repeats and rows missing a sequence. Those sort last (stable sort), so the
-	// collapse keeps the complete row; the annotation pass drops a record that has none.
+	// collapse keeps the complete row; a record left with none is dropped right after, so
+	// annotation only ever sees records with every sequence.
 	// `bare-set-collisions` compares every column of the file, not just the ones kept below.
 	//
 	// keep and maintainOrder are pinned, not left to default. The default keep is
@@ -151,10 +164,28 @@ self.body(func(inputs) {
 			strReplace("\\s+", "", { replaceAll: true }).eq("")
 		missingExpr = missingExpr == undefined ? blank : missingExpr.or(blank)
 	}
+	// Every row with an id past the first is collapsed into it: rows minus distinct keys. Two
+	// steps, since an aggregation in pt takes no arithmetic.
+	repeatStats := df.select(
+		pt.col(specs.keyColumn).count().alias("rowsWithId"),
+		pt.col(specs.keyColumn).nUnique().alias("distinctIds")
+	).select(pt.col("rowsWithId").minus(pt.col("distinctIds")).alias("rowsWithRepeatedId"))
+
 	df = df.withColumns(missingExpr.alias("missingSequence")).
 		sort(["missingSequence"]).
-		select(keep...).
+		select(append(keep, "missingSequence")...).
 		unique({ subset: specs.keyColumn, keep: "first", maintainOrder: true })
+
+	// Counted after the collapse: a row missing a sequence whose id also has a complete row is
+	// already counted as a repeat.
+	sequenceStats := df.select(
+		pt.col("missingSequence").cast("Int64").sum().alias("rowsWithoutSequence")
+	)
+	readStats.join(repeatStats, { how: "cross" }).
+		join(sequenceStats, { how: "cross" }).
+		saveContent("import-stats.tsv")
+
+	df = df.filter(pt.col("missingSequence").not()).select(keep...)
 
 	df.save("records.tsv")
 	wf = wf.run()
@@ -165,6 +196,7 @@ self.body(func(inputs) {
 	// Returned as a map rather than the file directly: processColumn navigates `path` into the
 	// body's return value, and every working precedent in this block hands it a map to index.
 	return {
-		records: { main: wf.getFile("records.tsv") }
+		records: { main: wf.getFile("records.tsv") },
+		importStats: { main: wf.getFileContent("import-stats.tsv") }
 	}
 })

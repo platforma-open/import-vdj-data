@@ -15,12 +15,13 @@
 // Output: `regions` — a TSV with seven `<chain>_<region>_aa` columns per chain plus one
 //         `<chain>_regionAnnotationStatus` (not imported), for records annotated on every mapped chain.
 //         `records` — the input record TSV, restricted to the same records.
-//         `stats`   — one row per chain: annotated / notApplicable / failed counts, plus
-//         `chainDisagreed`, the number of annotated records ANARCI numbered as the *other*
-//         chain. Nothing acts on that number; it exists because the alternative is that
-//         mapping the sequence columns to the wrong slots imports cleanly with every chain
-//         label wrong, and because the threshold at which such disagreement should stop a
-//         run is deferred precisely for want of a measured rate.
+//         `stats`   — one row per chain: `chainDisagreed`, the number of kept records ANARCI
+//         numbered as the *other* chain. Nothing acts on that number; it exists because the
+//         alternative is that mapping the sequence columns to the wrong slots imports cleanly
+//         with every chain label wrong, and because the threshold at which such disagreement
+//         should stop a run is deferred precisely for want of a measured rate.
+//         `recordStats` — one row: records left out because a sequence could not be numbered,
+//         each counted once. Pass 1 has already dropped records missing a sequence.
 //
 // Three steps: build a FASTA, number it with ANARCI, project the numbering onto region
 // ranges. ANARCI is the shared, already-published artifact — reused, not introduced here.
@@ -51,7 +52,7 @@ BUCKETS := ["H", "KL", "A", "B", "G", "D"]
 
 bucketCsv := func(bucket) { return "anarci.csv_" + bucket + ".csv" }
 
-self.defineOutputs("regions", "records", "stats")
+self.defineOutputs("regions", "records", "stats", "recordStats")
 
 self.body(func(inputs) {
 	keyColumn := inputs.keyColumn
@@ -134,7 +135,8 @@ self.body(func(inputs) {
 		arg("--scheme").arg(scheme).
 		arg("--out_tsv").arg("regions.tsv").
 		arg("--out_records_tsv").arg("records.tsv").
-		arg("--out_stats").arg("region-stats.tsv")
+		arg("--out_stats").arg("region-stats.tsv").
+		arg("--out_record_stats").arg("record-stats.tsv")
 
 	for bucket in BUCKETS {
 		regionsBuilder = regionsBuilder.
@@ -146,6 +148,7 @@ self.body(func(inputs) {
 		saveFile("regions.tsv").
 		saveFile("records.tsv").
 		saveFileContent("region-stats.tsv").
+		saveFileContent("record-stats.tsv").
 		printErrStreamToStdout().
 		cache(CACHE_MILLIS).
 		run()
@@ -154,9 +157,9 @@ self.body(func(inputs) {
 		regions: { main: regionsCmd.getFile("regions.tsv") },
 		// Kept records only; all dataset columns except stats are imported from here or `regions`.
 		records: { main: regionsCmd.getFile("records.tsv") },
-		// Per-chain outcome counts. The other formats show per-chain import statistics in the
-		// block's table; a bare set has no counts to sum, so this is what it has to show —
-		// how many records were annotated, and how many the instrument could not place.
-		stats: { main: regionsCmd.getFileContent("region-stats.tsv") }
+		// Per chain: kept records numbered as the other chain.
+		stats: { main: regionsCmd.getFileContent("region-stats.tsv") },
+		// Records left out, per sample, each once.
+		recordStats: { main: regionsCmd.getFileContent("record-stats.tsv") }
 	}
 })

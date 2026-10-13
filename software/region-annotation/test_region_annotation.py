@@ -144,17 +144,29 @@ def main():
     # One row per declared chain, keyed on the locus — the workflow reads this with a chain axis.
     stats = {r["chain"]: r for r in csv.DictReader(open(stats_tsv), delimiter="\t")}
     assert list(stats) == ["IGHeavy", "IGLight"], list(stats)
-    # IGHeavy: K1 K2 K5 annotated, K3 K4 failed, none unsupplied.
-    assert stats["IGHeavy"] == {"chain": "IGHeavy", "annotated": "3", "notApplicable": "0",
-                                "failed": "2", "chainDisagreed": "1"}, stats["IGHeavy"]
-    # IGLight: only K1 supplied and annotated; K2..K5 unsupplied. K1's light chain is in KL,
-    # which is where a declared IGLight belongs, so nothing disagrees.
-    assert stats["IGLight"] == {"chain": "IGLight", "annotated": "1", "notApplicable": "4",
-                                "failed": "0", "chainDisagreed": "0"}, stats["IGLight"]
-    print("  stats: a row per chain, counts correct; K5 is the one chainDisagreed, and it is"
-          " counted without changing its status or its values")
+    # Kept records only: K5's heavy chain is bucketed KL, but K5 has no light chain and is left
+    # out, so it is not counted. K1 is kept and agrees on both chains.
+    assert stats["IGHeavy"] == {"chain": "IGHeavy", "chainDisagreed": "0"}, stats["IGHeavy"]
+    assert stats["IGLight"] == {"chain": "IGLight", "chainDisagreed": "0"}, stats["IGLight"]
+    print("  stats: a row per chain; a left-out record's disagreement is not counted")
 
-    print("  stats: every record counted, including the ones left out of the dataset")
+    # Per-record counts. K3 has both sequences and neither is numbered. K2 has no light
+    # sequence: the workflow drops such a record before this step, and it is not failed.
+    counts_tsv = os.path.join(work, "counts.tsv")
+    with open(counts_tsv, "w", newline="") as f:
+        w = csv.writer(f, delimiter="\t")
+        w.writerow(["variantKey", "IGHeavy_sequence", "IGLight_sequence"])
+        w.writerow(["K1", "EVQLVQ", "DIQMTQ"])
+        w.writerow(["K2", "EVQLVQ", ""])
+        w.writerow(["K3", "EVQLVQ", "DIQMTQ"])
+        w.writerow(["", "EVQLVQ", "DIQMTQ"])
+    record_stats_tsv = os.path.join(work, "record-stats.tsv")
+    run(os.path.join(SRC, "main.py"), "--input_tsv", counts_tsv, "--key_column", "variantKey",
+        "--scheme", "kabat", "--csv_h", h_csv, "--csv_kl", kl_csv,
+        "--out_tsv", os.path.join(work, "counts_out.tsv"), "--out_record_stats", record_stats_tsv)
+    record_stats = list(csv.DictReader(open(record_stats_tsv), delimiter="\t"))
+    assert record_stats == [{"recordsFailedToAnnotate": "1"}], record_stats
+    print("  record stats: one row, a record failing on both chains counted once")
 
     # Chain disagreement alone does not drop a record.
     heavy_tsv = os.path.join(work, "heavy.tsv")
@@ -163,8 +175,12 @@ def main():
         w.writerow(["variantKey", "IGHeavy_sequence"])
         w.writerow(["K5", "DIQMTQ"])
     heavy_out = os.path.join(work, "heavy_out.tsv")
+    heavy_stats = os.path.join(work, "heavy_stats.tsv")
     run(os.path.join(SRC, "main.py"), "--input_tsv", heavy_tsv, "--key_column", "variantKey",
-        "--scheme", "kabat", "--csv_h", h_csv, "--csv_kl", kl_csv, "--out_tsv", heavy_out)
+        "--scheme", "kabat", "--csv_h", h_csv, "--csv_kl", kl_csv, "--out_tsv", heavy_out,
+        "--out_stats", heavy_stats)
+    assert list(csv.DictReader(open(heavy_stats), delimiter="\t")) == [
+        {"chain": "IGHeavy", "chainDisagreed": "1"}]
     k5 = list(csv.DictReader(open(heavy_out), delimiter="\t"))
     assert [r["variantKey"] for r in k5] == ["K5"], k5
     for region in REGIONS:

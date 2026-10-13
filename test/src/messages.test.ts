@@ -21,10 +21,12 @@ const report = (
   missingSequence: number,
   collapsed: { id: string; rows: number }[],
   missingIds: string[] = [],
+  missingId = 0,
 ) => ({
   key: rowReportKey(MAPPING)!,
   rowCount: 20,
   missingSequence,
+  missingId,
   missingIds,
   collapsed,
 });
@@ -38,10 +40,10 @@ describe("row report", () => {
   });
   test("names rows without a sequence, like the non-unique id warning", () => {
     expect(missingSequenceMessage(report(3, [], ["AB-1", "AB-2", "AB-3", "AB-4"]), MAPPING)).toBe(
-      "No sequence for at least one chain: AB-1, AB-2, AB-3 and 1 more. These 3 rows are ignored.",
+      "Empty sequence for at least one chain: AB-1, AB-2, AB-3 and 1 more. These 3 rows are ignored.",
     );
     expect(missingSequenceMessage(report(1, [], ["AB-1"]), MAPPING)).toBe(
-      "No sequence for at least one chain: AB-1. This row is ignored.",
+      "Empty sequence for at least one chain: AB-1. This row is ignored.",
     );
   });
   test("a single-chain mapping does not mention chains", () => {
@@ -52,12 +54,25 @@ describe("row report", () => {
     };
     const single = { ...report(2, [], ["AB-1", "AB-2"]), key: rowReportKey(heavyOnly)! };
     expect(missingSequenceMessage(single, heavyOnly)).toBe(
-      "No sequence: AB-1, AB-2. These 2 rows are ignored.",
+      "Empty sequence: AB-1, AB-2. These 2 rows are ignored.",
     );
   });
-  test("still counts rows without a sequence that have no id to name", () => {
-    expect(missingSequenceMessage(report(2, []), MAPPING)).toBe(
-      "No sequence for at least one chain. These 2 rows are ignored.",
+  test("counts rows without an id in the same banner, without claiming they have a sequence", () => {
+    expect(missingSequenceMessage(report(0, [], [], 1), MAPPING)).toBe(
+      "1 row without an id. This row is ignored.",
+    );
+    expect(missingSequenceMessage(report(2, [], ["AB-1", "AB-2"], 3), MAPPING)).toBe(
+      "Empty sequence for at least one chain: AB-1, AB-2 and 3 rows without an id. " +
+        "These 5 rows are ignored.",
+    );
+    const heavyOnly = {
+      ...MAPPING,
+      chainSelection: "IGHeavy" as const,
+      sequences: { IGHeavy: "VH" },
+    };
+    const single = { ...report(1, [], ["AB-1"], 2), key: rowReportKey(heavyOnly)! };
+    expect(missingSequenceMessage(single, heavyOnly)).toBe(
+      "Empty sequence: AB-1 and 2 rows without an id. These 3 rows are ignored.",
     );
   });
   test("names collapsed ids, most repeated first, and counts the rows they absorbed", () => {
@@ -75,7 +90,7 @@ describe("row report", () => {
   test("each reason is its own message", () => {
     const both = report(2, [{ id: "AB-1", rows: 2 }], ["AB-5", "AB-6"]);
     expect(missingSequenceMessage(both, MAPPING)).toBe(
-      "No sequence for at least one chain: AB-5, AB-6. These 2 rows are ignored.",
+      "Empty sequence for at least one chain: AB-5, AB-6. These 2 rows are ignored.",
     );
     expect(collapsedRowsMessage(both, MAPPING)).toBe(
       "Identical rows: AB-1 (2 rows). Rows sharing an id become one record, so 1 row is collapsed.",
@@ -180,7 +195,7 @@ describe("ui messages", () => {
 describe("nucleotide column", () => {
   test("warns for a chain mapped to a nucleotide column", () => {
     expect(nucleotideColumnMessage("VDJRegionNt", ["VDJRegionNt", "VDJRegionNtCoding"])).toBe(
-      '"VDJRegionNt" holds only A, C, G, T or N, so it looks like a nucleotide sequence. ' +
+      '"VDJRegionNt" holds only A, C, G, T, U or N, so it looks like a nucleotide sequence. ' +
         "Chains are numbered as amino-acid sequences: records from this column fail region " +
         "annotation and are left out of the dataset. Pick an amino-acid column instead.",
     );

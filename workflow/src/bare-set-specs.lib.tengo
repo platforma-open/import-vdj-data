@@ -21,6 +21,7 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 strings := import("@platforma-sdk/workflow-tengo:strings")
+processUtils := import(":process-utils")
 
 // Declared chains, in emission order. `A` heavy, `B` light — the vocabulary of
 // `pl7.app/vdj/scClonotypeChain`, which `sequence-properties` already reads.
@@ -587,10 +588,9 @@ propertyCollisions := func(properties) {
 /**
  * Per-chain import statistics, shown in the block's own table. One row per declared chain.
  *
- * A bare set has nothing to count in the usual sense — no reads, no UMIs, and its cross-sample
- * aggregates are deliberately not emitted — so what it reports instead is the outcome of the
- * annotation: how many records were placed, how many the input could not support an answer for,
- * and how many the instrument could not resolve. `chainDisagreed` is the measurement the
+ * What was imported and what was left out is counted per row, not per chain — see
+ * `importStatsColumns` — so the one per-chain number is the one nothing else shows: how many
+ * imported records ANARCI numbered as the other chain. It is the measurement the
  * declared-versus-inferred question is deferred for want of.
  *
  * A row each rather than a column each, so the two chains of a paired set can be read against
@@ -600,25 +600,11 @@ statsColumns := func(blockId) {
 	cols := []
 	entries := [
 		{
-			column: "annotated", name: "annotatedCount", label: "Annotated", order: "90000",
-			description: "Records whose FR and CDR boundaries were located for this chain."
-		},
-		{
-			column: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000",
-			description: "Records with no sequence supplied for this chain. Left out of the dataset, " +
-				"which keeps only records annotated on every chain."
-		},
-		{
-			column: "failed", name: "failedCount", label: "Failed", order: "88000",
-			description: "Records whose supplied sequence could not be numbered, left out of the dataset. " +
-				"A count much above zero usually means the mapped column does not hold amino-acid variable domains."
-		},
-		{
 			column: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain",
 			order: "87000",
-			description: "Records ANARCI numbered as a different chain to the slot they were mapped to. " +
-				"Reported only — the regions are recorded under the mapped chain either way. Nearly all " +
-				"records on both chains means the sequence columns were mapped the wrong way round."
+			description: "Imported records ANARCI numbered as a different chain to the slot they were " +
+				"mapped to. Reported only — the regions are recorded under the mapped chain either way. " +
+				"Nearly all records on both chains means the sequence columns were mapped the wrong way round."
 		}
 	]
 	for e in entries {
@@ -641,6 +627,44 @@ statsColumns := func(blockId) {
 		})
 	}
 	return cols
+}
+
+/**
+ * Per-sample row counts, next to the per-chain ones. Those overlap — a record missing its light
+ * chain is counted on both chains — so nothing there says how many rows were imported.
+ *
+ * These are the other formats' counters: `Rows Read` is the same column, and the discards
+ * partition it the same way — each row is counted under the first step that drops it, so rows
+ * read minus every discard is what was imported. Two passes drop rows, so the counters come in
+ * two sets: the import pass's (id, repeats, sequence) and the annotation pass's (numbering).
+ */
+importStatsColumns := func(blockId) {
+	return [
+		processUtils.rowsReadColumn(blockId, "rowCount"),
+		processUtils.recordStatColumn(blockId, "rowsWithoutId", "recordsWithoutId",
+			"Discarded: No Id", "Rows without an id, empty or whitespace only.",
+			"default", "99000"),
+		processUtils.recordStatColumn(blockId, "rowsWithRepeatedId", "recordsWithRepeatedId",
+			"Discarded: Repeated Id",
+			"Rows sharing an id with an earlier row, which becomes the one record for that id. " +
+				"A row with every sequence is kept over one without.",
+			"default", "98000"),
+		processUtils.recordStatColumn(blockId, "rowsWithoutSequence", "recordsWithoutSequence",
+			"Discarded: No Sequence",
+			"Rows with no sequence for at least one mapped chain, among those kept so far. Dropped " +
+				"before annotation, so no chain of them is numbered.",
+			"default", "97000")
+	]
+}
+
+annotationStatsColumns := func(blockId) {
+	return [
+		processUtils.recordStatColumn(blockId, "recordsFailedToAnnotate", "recordsFailedToAnnotate",
+			"Discarded: Failed to Annotate",
+			"Rows whose supplied sequence could not be numbered, among those with a sequence on " +
+				"every mapped chain.",
+			"default", "96000")
+	]
 }
 
 /**
@@ -805,6 +829,8 @@ export {
 	sampleAxis: sampleAxis,
 	statsColumns: statsColumns,
 	statsAxis: statsAxis,
+	importStatsColumns: importStatsColumns,
+	annotationStatsColumns: annotationStatsColumns,
 	chainLabelColumn: chainLabelColumn,
 	mainSequenceColumn: mainSequenceColumn,
 	regionColumnSpec: regionColumnSpec,

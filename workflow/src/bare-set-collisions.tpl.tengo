@@ -1,14 +1,14 @@
 // Prerun check of a bare set: id collisions, and the rows that will not become records.
 // One file read and one polars run, so both answers arrive together.
 //
-// Rows with no sequence on a mapped chain (null, empty or whitespace, as the annotation pass
-// reads it) are ignored by the import, so they are only counted.
+// Rows with no id, or no sequence on a mapped chain (null, empty or whitespace, as the
+// annotation pass reads it), are ignored by the import, so they are only counted.
 //
-// collisions: ids on rows with every sequence that are not identical. Rows are compared over
+// collisions: ids on rows with an id and every sequence that are not identical. Rows are compared over
 // every column, so a stray differing column makes a conflict; only verbatim repeats collapse.
 //
-// row report (once a sequence is mapped): rows without a sequence, then verbatim repeats among
-// the rest.
+// row report (once a sequence is mapped): rows without an id, rows with an id but without a
+// sequence, then verbatim repeats among the rest.
 
 self := import("@platforma-sdk/workflow-tengo:tpl")
 ll := import("@platforma-sdk/workflow-tengo:ll")
@@ -18,6 +18,7 @@ specs := import(":bare-set-specs")
 
 COUNT_COLUMN := "rowCount"
 MISSING := "missingSequence"
+MISSING_ID := "missingId"
 
 self.defineOutputs("collisions", "summary", "missing", "collapsed")
 
@@ -64,11 +65,13 @@ self.body(func(inputs) {
 
 	df := pt.concat(frames)
 
-	// With no sequence mapped nothing counts as missing.
-	missingExpr := pt.lit(false)
 	blank := func(header) {
 		return pt.col(header).fillNull("").strReplace("\\s+", "", { replaceAll: true }).eq("")
 	}
+	// No id has no record to land in: the import drops the row rather than minting a shared key.
+	missingIdExpr := blank(mapping.identity)
+	// With no sequence mapped nothing counts as missing.
+	missingExpr := pt.lit(false)
 	for i, header in sequenceHeaders {
 		if i == 0 {
 			missingExpr = blank(header)
@@ -76,9 +79,11 @@ self.body(func(inputs) {
 			missingExpr = missingExpr.or(blank(header))
 		}
 	}
-	withSequences := df.filter(missingExpr.not())
+	// A row without an id counts there only, not again as missing a sequence.
+	missingSequenceExpr := missingIdExpr.not().and(missingExpr)
+	withSequences := df.filter(missingIdExpr.or(missingExpr).not())
 
-	// Collisions, among rows with every sequence: the others are ignored by the import.
+	// Collisions, among rows with an id and every sequence: the others are ignored by the import.
 	// keep/maintainOrder pinned for a reproducible plan; grouped on the source header.
 	collisions := withSequences.unique({ keep: "first", maintainOrder: true }).
 		groupBy(mapping.identity).agg(
@@ -89,16 +94,18 @@ self.body(func(inputs) {
 	collisions.saveContent("collisions.tsv")
 
 	summary := df.withColumns(
-		pt.when(missingExpr).then(pt.lit(1)).otherwise(pt.lit(0)).alias(MISSING),
+		pt.when(missingSequenceExpr).then(pt.lit(1)).otherwise(pt.lit(0)).alias(MISSING),
+		pt.when(missingIdExpr).then(pt.lit(1)).otherwise(pt.lit(0)).alias(MISSING_ID),
 		pt.lit("all").alias("group")
 	).groupBy("group").agg(
 		pt.col(MISSING).count().alias(COUNT_COLUMN),
-		pt.col(MISSING).sum().alias(MISSING)
-	).select(COUNT_COLUMN, MISSING)
+		pt.col(MISSING).sum().alias(MISSING),
+		pt.col(MISSING_ID).sum().alias(MISSING_ID)
+	).select(COUNT_COLUMN, MISSING, MISSING_ID)
 	summary.saveContent("summary.tsv")
 
 	// Distinct ids of rows without a sequence; rows with no id are only counted.
-	missing := df.filter(missingExpr.and(pt.col(mapping.identity).isNotNull())).
+	missing := df.filter(missingSequenceExpr).
 		select(pt.col(mapping.identity).alias(specs.labelColumn)).
 		unique({ keep: "first", maintainOrder: true }).
 		sort([specs.labelColumn])

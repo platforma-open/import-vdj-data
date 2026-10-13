@@ -28,6 +28,51 @@ import { ImportVdjBlockPointer } from "this-block";
  * field has to be present or the model reads undefined where it expects a default — most
  * visibly `tableState`, which the stats table is built from.
  */
+type StatsProject = { getBlockState(blockId: string): Parameters<typeof awaitStableState>[0] };
+type StatsDriver = {
+  getSpec(handle: PTableHandle): Promise<{ type: string; spec: { name: string } }[]>;
+  getData(handle: PTableHandle, columns: number[]): Promise<{ data: unknown }[]>;
+};
+
+/**
+ * The per-sample row counts of a finished bare-set run: the other formats' `Rows Read` and the
+ * bare set's discards. They have the sample axis only, so the stats table repeats them on each
+ * chain's row; every row must agree.
+ */
+async function recordStats(
+  project: StatsProject,
+  blockId: string,
+  ml: { driverKit: { pFrameDriver: StatsDriver } },
+): Promise<Record<string, number>> {
+  const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+    outputs?: Record<string, unknown>;
+  };
+  const handle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })?.value
+    ?.fullTableHandle;
+  if (handle === undefined) throw new Error("no stats table");
+  const driver = ml.driverKit.pFrameDriver;
+  const specs = await driver.getSpec(handle);
+  const names = [
+    "recordCount",
+    "recordsWithoutId",
+    "recordsWithRepeatedId",
+    "recordsWithoutSequence",
+    "recordsFailedToAnnotate",
+  ];
+  const indices = names.map((n) =>
+    specs.findIndex((s) => s.type === "column" && s.spec.name === `pl7.app/vdj/stat/${n}`),
+  );
+  if (indices.some((i) => i < 0)) throw new Error(`record stats missing: ${indices}`);
+  const data = await driver.getData(handle, indices);
+  const result: Record<string, number> = {};
+  names.forEach((n, i) => {
+    const values = Array.from(data[i].data as ArrayLike<number | bigint>, Number);
+    if (new Set(values).size !== 1) throw new Error(`${n} differs between rows: ${values}`);
+    result[n] = values[0];
+  });
+  return result;
+}
+
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
   const bareSet = fields.bareSet as { identity: string } | undefined;
   return {
@@ -810,21 +855,25 @@ blockTest(
     expect(regions.length).toBe(14);
     expect(regions.every((c) => c.domain["pl7.app/vdj/numberingSchema"] === "imgt")).toBe(true);
 
-    // The regions were located, not merely declared: all four records annotated on both chains,
+    // The regions were located, not merely declared: all four rows imported, none left out,
     // none numbered as the other chain.
+    expect(await recordStats(project, blockId, ml)).toEqual({
+      recordCount: 4,
+      recordsWithoutId: 0,
+      recordsWithRepeatedId: 0,
+      recordsWithoutSequence: 0,
+      recordsFailedToAnnotate: 0,
+    });
     const statsHandle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
       ?.value?.fullTableHandle;
     expect(statsHandle).toBeDefined();
     const driver = ml.driverKit.pFrameDriver;
     const statSpecs = await driver.getSpec(statsHandle!);
-    const statIndex = (name: string) =>
-      statSpecs.findIndex((c) => c.type === "column" && c.spec.name.endsWith(name));
-    const counts = await driver.getData(statsHandle!, [
-      statIndex("/annotatedCount"),
-      statIndex("/chainDisagreedCount"),
-    ]);
-    expect(Array.from(counts[0].data as Int32Array)).toEqual([4, 4]);
-    expect(Array.from(counts[1].data as Int32Array)).toEqual([0, 0]);
+    const disagreed = statSpecs.findIndex(
+      (c) => c.type === "column" && c.spec.name.endsWith("/chainDisagreedCount"),
+    );
+    const counts = await driver.getData(statsHandle!, [disagreed]);
+    expect(Array.from(counts[0].data as Int32Array)).toEqual([0, 0]);
   },
 );
 
@@ -955,11 +1004,12 @@ blockTest(
   },
 );
 
-// Prerun reports rows without a sequence (empty or whitespace) and verbatim repeats.
+// Prerun reports rows without a sequence or an id (empty or whitespace) and verbatim repeats.
+// The run then counts records read and left out, once per sample rather than per chain.
 blockTest(
   "reports rows without a sequence and identical rows before the run",
-  { timeout: 300000 },
-  async ({ rawPrj: project, helpers, expect }) => {
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
     const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
     const handle = await helpers.getLocalFileHandle("./assets/bare-set-row-report.tsv");
     const bareSet = {
@@ -990,6 +1040,7 @@ blockTest(
       key: string;
       rowCount: number;
       missingSequence: number;
+      missingId: number;
       missingIds: string[];
       collapsed: { id: string; rows: number }[];
     };
@@ -1000,19 +1051,34 @@ blockTest(
     const report = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Report | undefined;
 
     expect(report?.key).toBe(rowReportKey(bareSet));
-    expect(report?.rowCount).toBe(8);
+    expect(report?.rowCount).toBe(10);
     expect(report?.missingSequence).toBe(2);
+    // One empty id, one whitespace-only; both rows differ and still are no collision.
+    expect(report?.missingId).toBe(2);
     expect(report?.missingIds).toEqual(["AB-010", "AB-011"]);
     // Most repeated first.
     expect(report?.collapsed).toEqual([
       { id: "AB-001", rows: 3 },
       { id: "AB-002", rows: 2 },
     ]);
+
+    // Ten rows: two without an id, three repeats of AB-001 and AB-002, and AB-010 and AB-011
+    // each miss a chain. Three are imported.
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+    expect(await recordStats(project, blockId, ml)).toEqual({
+      recordCount: 10,
+      recordsWithoutId: 2,
+      recordsWithRepeatedId: 3,
+      recordsWithoutSequence: 2,
+      recordsFailedToAnnotate: 0,
+    });
   },
 );
 
 // An id with an incomplete row (no light sequence) and a complete one is not a collision: the
 // incomplete row is ignored, and the collapse keeps the complete one even though it comes second.
+// Two complete rows with an empty and a whitespace-only id are dropped, not merged into a record.
 blockTest(
   "keeps the complete row of an id that also has a row without a sequence",
   { timeout: 600000 },
@@ -1054,24 +1120,15 @@ blockTest(
     await project.runBlock(blockId);
     await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
 
-    // Both records annotated on both chains: had the incomplete row won the collapse, AB-001
-    // would show as Not applicable on the light chain.
-    const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
-      outputs?: Record<string, unknown>;
-    };
-    const statsHandle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
-      ?.value?.fullTableHandle;
-    expect(statsHandle).toBeDefined();
-    const driver = ml.driverKit.pFrameDriver;
-    const specs = await driver.getSpec(statsHandle!);
-    const index = (name: string) =>
-      specs.findIndex((s) => s.type === "column" && s.spec.name.endsWith(name));
-    const annotated = index("/annotatedCount");
-    const notApplicable = index("/notApplicableCount");
-    expect(annotated).toBeGreaterThanOrEqual(0);
-    const data = await driver.getData(statsHandle!, [annotated, notApplicable]);
-    expect(Array.from(data[0].data as Int32Array)).toEqual([2, 2]);
-    expect(Array.from(data[1].data as Int32Array)).toEqual([0, 0]);
+    // Both records imported: had the incomplete row won the collapse, AB-001 would be left out
+    // for a missing sequence; had the id-less rows been kept, there would be a third record.
+    expect(await recordStats(project, blockId, ml)).toEqual({
+      recordCount: 5,
+      recordsWithoutId: 2,
+      recordsWithRepeatedId: 1,
+      recordsWithoutSequence: 0,
+      recordsFailedToAnnotate: 0,
+    });
   },
 );
 
@@ -1105,7 +1162,7 @@ blockTest(
       }),
     });
 
-    type Report = { key: string; rowCount: number; missingSequence: number };
+    type Report = { key: string; rowCount: number; missingSequence: number; missingId: number };
     const state = (await awaitStableState(project.getBlockState(blockId), 200000)) as {
       outputs?: Record<string, unknown>;
     };
@@ -1114,6 +1171,7 @@ blockTest(
     expect(report?.key).toBe(rowReportKey(bareSet));
     expect(report?.rowCount).toBe(0);
     expect(report?.missingSequence).toBe(0);
+    expect(report?.missingId).toBe(0);
   },
 );
 

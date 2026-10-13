@@ -245,7 +245,10 @@ export function rowReportKey(
 export type RowReport = {
   key: string;
   rowCount: number;
+  /** Rows with an id but no sequence on a mapped chain. */
   missingSequence: number;
+  /** Rows with no id (empty or whitespace), with or without a sequence. */
+  missingId: number;
   /** Distinct, sorted. Rows with no id are only counted. */
   missingIds: string[];
   collapsed: { id: string; rows: number }[];

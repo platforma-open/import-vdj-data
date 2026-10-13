@@ -266,7 +266,8 @@ const propertyCollisionMessage = computed(() =>
     Validating the selected columns. This can take a moment, please wait...
   </PlAlert>
   <!-- Not shown for a refused id column: nothing is imported then. -->
-  <template v-else>
+  <!-- One block, so the reports sit closer to each other than to the fields around them. -->
+  <div v-else-if="missingSequenceMessage || collapsedRowsMessage" class="alert-col">
     <PlAlert
       v-if="missingSequenceMessage"
       type="info"
@@ -283,7 +284,7 @@ const propertyCollisionMessage = computed(() =>
     >
       {{ collapsedRowsMessage }}
     </PlAlert>
-  </template>
+  </div>
 
   <div class="field-col">
     <PlDropdown
@@ -371,6 +372,12 @@ const propertyCollisionMessage = computed(() =>
 </template>
 
 <style scoped>
+.alert-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .field-col {
   display: grid;
   grid-template-columns: 1fr;

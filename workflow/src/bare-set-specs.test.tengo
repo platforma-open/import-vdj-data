@@ -448,8 +448,8 @@ Test_columnsBySource_stampsTheChainOnlyWhenPaired := func() {
 // axis does — and a label column carries the panel's own words for it.
 Test_statsColumns_areKeyedOnTheChainAxis := func() {
 	cols := specs.statsColumns("b1")
-	test.isEqual(4, len(cols), "four statistics, whatever the chains")
-	test.isEqual("annotated", cols[0].column, "TSV header is not chain-prefixed")
+	test.isEqual(1, len(cols), "one statistic, whatever the chains")
+	test.isEqual("chainDisagreed", cols[0].column, "TSV header is not chain-prefixed")
 	test.isTrue(
 		cols[0].spec.domain["pl7.app/vdj/scClonotypeChain"] == undefined,
 		"the chain is the axis, not a column domain"
@@ -466,8 +466,7 @@ Test_statsColumns_areKeyedOnTheChainAxis := func() {
 }
 
 
-// Every statistic explains what it counts — the four labels repeat the status vocabulary, so a
-// reader hovering either place gets the same answer.
+// Every statistic explains what it counts.
 Test_statsColumns_eachDescribeWhatTheyCount := func() {
 	for col in specs.statsColumns("b1") {
 		desc := col.spec.annotations["pl7.app/description"]
