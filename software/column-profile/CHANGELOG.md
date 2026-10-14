@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.column-profile
 
+## 1.3.0
+
+### Minor Changes
+
+- 1de5e09: Directly imported sequence sets warn when a chain is mapped to a column that holds only nucleotide letters (A, C, G, T, U, N). Such columns pass the amino-acid alphabet check, since those letters are amino acids too, so they were offered as chains silently and every record then failed region annotation. The column profile now reports these columns as `nucleotide`.
+
 ## 1.2.0
 
 ### Minor Changes

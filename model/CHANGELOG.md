@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.import-vdj.model
 
+## 1.16.0
+
+### Minor Changes
+
+- 821754b: Directly imported sequence sets keep only records with a sequence on every mapped chain, annotated on every chain; a record missing a chain is dropped before annotation, and one that cannot be numbered after it. Rows with an empty id are ignored too, instead of being merged into one record. The block now says before the run how many rows have no id or no sequence for a chain and are ignored, and which identical rows are collapsed into one record. The import statistics show Rows Read per sample, as the other formats do, with the rows discarded for a missing id, a repeated id, a missing sequence or a sequence that could not be numbered, each row under one reason. The per-chain Annotated, Not applicable and Failed counts are removed: the discards replace them, and "Numbered as the other chain" stays, now counting imported records only. The per-chain region annotation status is no longer emitted as a dataset column. Its abundance column is labelled "Number of Variants" with unit "variants" instead of "Number of UMIs" / "molecules"
+- 1de5e09: Directly imported sequence sets warn when a chain is mapped to a column that holds only nucleotide letters (A, C, G, T, U, N). Such columns pass the amino-acid alphabet check, since those letters are amino acids too, so they were offered as chains silently and every record then failed region annotation. The column profile now reports these columns as `nucleotide`.
+
+### Patch Changes
+
+- 93ae1a6: Update SDK to 1.84.20 (workflow-tengo 6.15, block-tools 2.16.13, tengo-builder 4.1.11)
+
 ## 1.15.0
 
 ### Minor Changes
