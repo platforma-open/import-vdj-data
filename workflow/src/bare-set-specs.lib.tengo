@@ -21,6 +21,7 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 json := import("json")
 ll := import("@platforma-sdk/workflow-tengo:ll")
 strings := import("@platforma-sdk/workflow-tengo:strings")
+processUtils := import(":process-utils")
 
 // Declared chains, in emission order. `A` heavy, `B` light — the vocabulary of
 // `pl7.app/vdj/scClonotypeChain`, which `sequence-properties` already reads.
@@ -124,7 +125,6 @@ sequenceColumn := func(chain) { return chain + "_sequence" }
 geneColumn := func(chain, gene) { return chain + "_" + gene + "Gene" }
 alleleColumn := func(chain, gene) { return chain + "_" + gene + "Allele" }
 regionColumn := func(chain, region) { return chain + "_" + region + "_aa" }
-statusColumn := func(chain) { return chain + "_regionAnnotationStatus" }
 
 // --- helpers ----------------------------------------------------------------------------
 
@@ -316,8 +316,7 @@ mainSequenceColumn := func(chain, paired) {
  * liabilities are still computed, and computed against the wrong positions.
  *
  * A chain with no located boundaries carries **no value** in any of its seven — not an empty
- * string ([[unnumberable-record-is-identified]]); its state is read from the status column.
- * That is what `allowNA` is for here.
+ * string ([[unnumberable-record-is-identified]]). That is what `allowNA` is for here.
  */
 regionColumnSpec := func(chain, region, scheme, paired) {
 	validateChain(chain)
@@ -428,64 +427,15 @@ alleleColumnSpec := func(chain, gene, paired) {
 }
 
 /**
- * Whether this chain's boundaries could be located, one column per chain per record.
- * [[bare-set-region-status-column]].
- *
- * Per chain rather than per record because the two chains are annotated independently: one
- * status per record could not express a heavy chain located and a light chain failed, and
- * would have to pick one outcome to report.
- *
- * Never null — it carries the success member too, so absence of a verdict is not a state.
- * `String` is not a preference: `xsv.importFile` rejects `Boolean`.
- *
- * `46895` puts it between FR4 (46900) and `pl7.app/vdj/isotype` (46890), so the verdict sits
- * with the boundaries it describes rather than among the identity columns.
- */
-statusColumnSpec := func(chain, scheme, paired) {
-	validateChain(chain)
-	validateScheme(scheme)
-	return {
-		id: "region-status-" + chain,
-		column: statusColumn(chain),
-		allowNA: false,
-		spec: {
-			name: "pl7.app/vdj/regionAnnotationStatus",
-			valueType: "String",
-			// No `/index` key, unlike the sequence columns: the status is a property of the
-			// chain's annotation attempt, not of one of its sequences.
-			domain: maps.merge(
-				{ "pl7.app/vdj/numberingSchema": scheme },
-				paired ? { "pl7.app/vdj/scClonotypeChain": PAIRED_CHAIN_DOMAIN[chain] } : {}
-			),
-			annotations: a("46895", "default", {
-				"pl7.app/label": CHAIN_LABELS[chain] + " region annotation status",
-				"pl7.app/isDiscreteFilter": "true",
-				"pl7.app/discreteValues": "[\"Annotated\",\"Not applicable\",\"Failed\"]",
-				// The three values are terse and one of them reads as a diagnosis when it is not,
-				// so the column says what it means. `Not applicable` is expected on any panel
-				// where a chain is only partly filled in, and is the value most likely to be
-				// misread as a problem.
-				"pl7.app/description": "Whether this chain's FR and CDR boundaries could be located. " +
-					"Annotated: located, and the region columns hold them. " +
-					"Not applicable: no sequence was supplied for this chain on this record — nothing to locate. " +
-					"Failed: a sequence was supplied but could not be numbered, which usually means the column " +
-					"mapped to this chain does not hold amino-acid variable domains."
-			})
-		}
-	}
-}
-
-/**
  * The synthetic abundance. [[bare-set-synthetic-abundance-column]].
  *
  * The value is the literal 1 on every row, never null. One per **record**, not per chain —
  * presence is a property of the record, and the record is the pair.
  *
- * **The spec is the block's own `umi-count` spec, adopted whole** — name, type, unit, label
- * and order are copied unchanged from `infer-columns-common.lib.tengo:50-66`, with
- * `abundance/isPrimary` and `isAnchor` stamped as the block already stamps them on whichever
- * count is primary. The column introduces no vocabulary and nothing for a consumer to have
- * been taught. The fabrication is confined to the value.
+ * The spec is the block's own `umi-count` spec (`infer-columns-common.lib.tengo`) with the
+ * label and unit replaced: the value counts records, not molecules. The name is kept because
+ * the clustering blocks derive their aggregate names from it; consumers find the column by
+ * its annotations.
  *
  * That annotation set is also exactly what makes Clustering run: its bundle does an
  * `addSingle` for the triple isAbundance / normalized:"false" / isPrimary:"true", and
@@ -495,11 +445,6 @@ statusColumnSpec := func(chain, scheme, paired) {
  * documented platform vocabulary in service of a column meant to be short-lived. Nothing on
  * the data distinguishes it from a measured abundance, so if the column outlives the plan
  * that removes it there is no way to find it by query.
- *
- * **The label travels, and that is the cost's real extent.** A panel that was never sequenced
- * is presented as "Number of UMIs" in every consuming block, and Clustering reads the name off
- * this spec and carries molecule-named aggregates into its own outputs. The fabrication is
- * confined to the value; what the value is *called* is not confined to import.
  */
 abundanceColumnSpec := func() {
 	return {
@@ -511,10 +456,10 @@ abundanceColumnSpec := func() {
 			valueType: "Long",
 			domain: {},
 			annotations: a("88000", "default", {
-				"pl7.app/label": "Number of UMIs",
+				"pl7.app/label": "Number of Variants",
 				"pl7.app/min": "1",
 				"pl7.app/isAbundance": "true",
-				"pl7.app/abundance/unit": "molecules",
+				"pl7.app/abundance/unit": "variants",
 				"pl7.app/abundance/normalized": "false",
 				"pl7.app/abundance/isPrimary": "true",
 				"pl7.app/isAnchor": "true"
@@ -643,10 +588,9 @@ propertyCollisions := func(properties) {
 /**
  * Per-chain import statistics, shown in the block's own table. One row per declared chain.
  *
- * A bare set has nothing to count in the usual sense — no reads, no UMIs, and its cross-sample
- * aggregates are deliberately not emitted — so what it reports instead is the outcome of the
- * annotation: how many records were placed, how many the input could not support an answer for,
- * and how many the instrument could not resolve. `chainDisagreed` is the measurement the
+ * What was imported and what was left out is counted per row, not per chain — see
+ * `importStatsColumns` — so the one per-chain number is the one nothing else shows: how many
+ * imported records ANARCI numbered as the other chain. It is the measurement the
  * declared-versus-inferred question is deferred for want of.
  *
  * A row each rather than a column each, so the two chains of a paired set can be read against
@@ -656,25 +600,11 @@ statsColumns := func(blockId) {
 	cols := []
 	entries := [
 		{
-			column: "annotated", name: "annotatedCount", label: "Annotated", order: "90000",
-			description: "Records whose FR and CDR boundaries were located for this chain."
-		},
-		{
-			column: "notApplicable", name: "notApplicableCount", label: "Not applicable", order: "89000",
-			description: "Records with no sequence supplied for this chain. Expected on a panel where " +
-				"one chain is only partly filled in; not a failure."
-		},
-		{
-			column: "failed", name: "failedCount", label: "Failed", order: "88000",
-			description: "Records whose supplied sequence could not be numbered. A count much above zero " +
-				"usually means the mapped column does not hold amino-acid variable domains."
-		},
-		{
 			column: "chainDisagreed", name: "chainDisagreedCount", label: "Numbered as the other chain",
 			order: "87000",
-			description: "Records ANARCI numbered as a different chain to the slot they were mapped to. " +
-				"Reported only — the regions are recorded under the mapped chain either way. Nearly all " +
-				"records on both chains means the sequence columns were mapped the wrong way round."
+			description: "Imported records ANARCI numbered as a different chain to the slot they were " +
+				"mapped to. Reported only — the regions are recorded under the mapped chain either way. " +
+				"Nearly all records on both chains means the sequence columns were mapped the wrong way round."
 		}
 	]
 	for e in entries {
@@ -697,6 +627,44 @@ statsColumns := func(blockId) {
 		})
 	}
 	return cols
+}
+
+/**
+ * Per-sample row counts, next to the per-chain ones. Those overlap — a record missing its light
+ * chain is counted on both chains — so nothing there says how many rows were imported.
+ *
+ * These are the other formats' counters: `Rows Read` is the same column, and the discards
+ * partition it the same way — each row is counted under the first step that drops it, so rows
+ * read minus every discard is what was imported. Two passes drop rows, so the counters come in
+ * two sets: the import pass's (id, repeats, sequence) and the annotation pass's (numbering).
+ */
+importStatsColumns := func(blockId) {
+	return [
+		processUtils.rowsReadColumn(blockId, "rowCount"),
+		processUtils.recordStatColumn(blockId, "rowsWithoutId", "recordsWithoutId",
+			"Discarded: No Id", "Rows without an id, empty or whitespace only.",
+			"default", "99000"),
+		processUtils.recordStatColumn(blockId, "rowsWithRepeatedId", "recordsWithRepeatedId",
+			"Discarded: Repeated Id",
+			"Rows sharing an id with an earlier row, which becomes the one record for that id. " +
+				"A row with every sequence is kept over one without.",
+			"default", "98000"),
+		processUtils.recordStatColumn(blockId, "rowsWithoutSequence", "recordsWithoutSequence",
+			"Discarded: No Sequence",
+			"Rows with no sequence for at least one mapped chain, among those kept so far. Dropped " +
+				"before annotation, so no chain of them is numbered.",
+			"default", "97000")
+	]
+}
+
+annotationStatsColumns := func(blockId) {
+	return [
+		processUtils.recordStatColumn(blockId, "recordsFailedToAnnotate", "recordsFailedToAnnotate",
+			"Discarded: Failed to Annotate",
+			"Rows whose supplied sequence could not be numbered, among those with a sequence on " +
+				"every mapped chain.",
+			"default", "96000")
+	]
 }
 
 /**
@@ -786,7 +754,6 @@ allColumns := func(chains, scheme, properties, genes) {
 		for region in REGIONS {
 			columns = append(columns, regionColumnSpec(chain, region, scheme, paired))
 		}
-		columns = append(columns, statusColumnSpec(chain, scheme, paired))
 	}
 
 	return columns
@@ -832,7 +799,6 @@ columnsBySource := func(chains, scheme, properties, genes) {
 		for region in REGIONS {
 			regions = append(regions, regionColumnSpec(chain, region, scheme, paired))
 		}
-		regions = append(regions, statusColumnSpec(chain, scheme, paired))
 	}
 
 	return {
@@ -858,16 +824,16 @@ export {
 	geneColumnSpec: geneColumnSpec,
 	alleleColumnSpec: alleleColumnSpec,
 	regionColumn: regionColumn,
-	statusColumn: statusColumn,
 
 	keyAxis: keyAxis,
 	sampleAxis: sampleAxis,
 	statsColumns: statsColumns,
 	statsAxis: statsAxis,
+	importStatsColumns: importStatsColumns,
+	annotationStatsColumns: annotationStatsColumns,
 	chainLabelColumn: chainLabelColumn,
 	mainSequenceColumn: mainSequenceColumn,
 	regionColumnSpec: regionColumnSpec,
-	statusColumnSpec: statusColumnSpec,
 	abundanceColumnSpec: abundanceColumnSpec,
 	labelColumnSpec: labelColumnSpec,
 	propertyColumn: propertyColumn,

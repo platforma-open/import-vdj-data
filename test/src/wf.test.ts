@@ -13,7 +13,7 @@
   the identity's hash: a sequence-derived key would merge antibodies that share a sequence.
 */
 
-import { collisionCheckKey } from "@platforma-open/milaboratories.import-vdj.model";
+import { collisionCheckKey, rowReportKey } from "@platforma-open/milaboratories.import-vdj.model";
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
 import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
 import type { PTableHandle } from "@platforma-sdk/model";
@@ -28,6 +28,51 @@ import { ImportVdjBlockPointer } from "this-block";
  * field has to be present or the model reads undefined where it expects a default — most
  * visibly `tableState`, which the stats table is built from.
  */
+type StatsProject = { getBlockState(blockId: string): Parameters<typeof awaitStableState>[0] };
+type StatsDriver = {
+  getSpec(handle: PTableHandle): Promise<{ type: string; spec: { name: string } }[]>;
+  getData(handle: PTableHandle, columns: number[]): Promise<{ data: unknown }[]>;
+};
+
+/**
+ * The per-sample row counts of a finished bare-set run: the other formats' `Rows Read` and the
+ * bare set's discards. They have the sample axis only, so the stats table repeats them on each
+ * chain's row; every row must agree.
+ */
+async function recordStats(
+  project: StatsProject,
+  blockId: string,
+  ml: { driverKit: { pFrameDriver: StatsDriver } },
+): Promise<Record<string, number>> {
+  const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+    outputs?: Record<string, unknown>;
+  };
+  const handle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })?.value
+    ?.fullTableHandle;
+  if (handle === undefined) throw new Error("no stats table");
+  const driver = ml.driverKit.pFrameDriver;
+  const specs = await driver.getSpec(handle);
+  const names = [
+    "recordCount",
+    "recordsWithoutId",
+    "recordsWithRepeatedId",
+    "recordsWithoutSequence",
+    "recordsFailedToAnnotate",
+  ];
+  const indices = names.map((n) =>
+    specs.findIndex((s) => s.type === "column" && s.spec.name === `pl7.app/vdj/stat/${n}`),
+  );
+  if (indices.some((i) => i < 0)) throw new Error(`record stats missing: ${indices}`);
+  const data = await driver.getData(handle, indices);
+  const result: Record<string, number> = {};
+  names.forEach((n, i) => {
+    const values = Array.from(data[i].data as ArrayLike<number | bigint>, Number);
+    if (new Set(values).size !== 1) throw new Error(`${n} differs between rows: ${values}`);
+    result[n] = values[0];
+  });
+  return result;
+}
+
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
   const bareSet = fields.bareSet as { identity: string } | undefined;
   return {
@@ -207,23 +252,11 @@ blockTest(
       }
     }
 
-    // One status per chain, a closed three-member enum.
-    for (const chain of ["A", "B"]) {
-      const status = columns.find(
-        (c) =>
-          c.name === "pl7.app/vdj/regionAnnotationStatus" &&
-          c.domain["pl7.app/vdj/scClonotypeChain"] === chain,
-      );
-      expect(status, `status for chain ${chain}`).toBeDefined();
-      expect(status!.annotations["pl7.app/discreteValues"]).toBe(
-        '["Annotated","Not applicable","Failed"]',
-      );
-    }
+    // The per-chain annotation status is in the stats only, not a dataset column.
+    expect(columns.find((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toBeUndefined();
 
-    // The synthetic abundance is the block's own umi-count spec adopted whole: exactly the
-    // triple Clustering's bundle queries, plus the anchor that makes the dataset selectable.
-    // The unit and the "Number of UMIs" label ride along with the adopted spec — the
-    // fabrication is confined to the value, not to what the value is called.
+    // The synthetic abundance: the triple Clustering's bundle queries, plus the anchor that makes
+    // the dataset selectable. Label and unit say it counts variants.
     const presence = columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount");
     expect(presence).toBeDefined();
     expect(presence!.valueType).toBe("Long");
@@ -231,8 +264,8 @@ blockTest(
     expect(presence!.annotations["pl7.app/abundance/normalized"]).toBe("false");
     expect(presence!.annotations["pl7.app/abundance/isPrimary"]).toBe("true");
     expect(presence!.annotations["pl7.app/isAnchor"]).toBe("true");
-    expect(presence!.annotations["pl7.app/abundance/unit"]).toBe("molecules");
-    expect(presence!.annotations["pl7.app/label"]).toBe("Number of UMIs");
+    expect(presence!.annotations["pl7.app/abundance/unit"]).toBe("variants");
+    expect(presence!.annotations["pl7.app/label"]).toBe("Number of Variants");
 
     // Exactly one column may claim the anchor and the primary abundance.
     expect(columns.filter((c) => c.annotations["pl7.app/isAnchor"] === "true")).toHaveLength(1);
@@ -322,7 +355,10 @@ blockTest(
         // watcher and these tests drive the block directly.
         prerunCheck: {
           check: "columns" as const,
-          subject: collisionCheckKey({ identity: "mAb ID" })!,
+          subject: collisionCheckKey({
+            identity: "mAb ID",
+            sequences: { IGHeavy: "VH", IGLight: "VL" },
+          })!,
           identityCollides: true,
         },
       }),
@@ -344,9 +380,10 @@ blockTest(
     const wrapped = state.outputs?.identityCollisions as { value?: Verdict } | Verdict | undefined;
     const found = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Verdict | undefined;
 
-    // The verdict names the id column and only that — that the rest of the mapping cannot enter
-    // the key is carried by `collisionCheckKey`'s signature, not by a case here.
-    expect(found?.key).toBe(collisionCheckKey({ identity: "mAb ID" }));
+    // Keyed on the id and sequence columns.
+    expect(found?.key).toBe(
+      collisionCheckKey({ identity: "mAb ID", sequences: { IGHeavy: "VH", IGLight: "VL" } }),
+    );
     // A different id column is a different question.
     expect(found?.key).not.toBe(collisionCheckKey({ identity: "VH" }));
     const collisions = found?.values ?? [];
@@ -401,9 +438,8 @@ blockTest(
       wrappedAfter && "key" in wrappedAfter ? wrappedAfter : wrappedAfter?.value
     ) as Verdict | undefined;
 
-    // The same verdict under the same key, so it carries over as the mapping is finished rather
-    // than being re-scanned.
-    expect(foundAfter?.key).toBe(found?.key);
+    // Re-checked for the new mapping; no row here lacks a sequence, so the verdict is the same.
+    expect(foundAfter?.key).toBe(collisionCheckKey(idOnly));
     const afterCollisions = foundAfter?.values ?? [];
     expect(afterCollisions).toContain("AB-001");
     expect(afterCollisions).toContain("AB-002");
@@ -576,8 +612,12 @@ blockTest(
     // The same pass types every column, over the whole file rather than a sample. "Affinity (nM)"
     // holds 0.8 / 1.4 / 12.0 / 3.1 / 0.9, so it is Double; the identity and the domains are text.
     const profile = (
-      state.outputs?.columnProfile as { value?: { types: Record<string, string> } } | undefined
+      state.outputs?.columnProfile as
+        | { value?: { types: Record<string, string>; nucleotide?: string[] } }
+        | undefined
     )?.value;
+    // VH and VL are protein, so nothing here reads as nucleotides.
+    expect(profile?.nucleotide).toEqual([]);
     expect(profile?.types).toEqual({
       "mAb ID": "String",
       VH: "String",
@@ -605,7 +645,7 @@ blockTest(
       expect(c.axes.map((a) => a.name)).toEqual(["pl7.app/variantKey"]);
     }
     expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
-    expect(columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toHaveLength(2);
+    expect(columns.find((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toBeUndefined();
 
     // A sort saved against a column the current run does not emit must not take the stats
     // output down with it. createPlDataTableV2 throws on the stale reference — the block sees
@@ -751,7 +791,7 @@ blockTest(
 blockTest(
   "imports a TCR-alpha/beta set, numbered under IMGT",
   { timeout: 600000 },
-  async ({ rawPrj: project, helpers, expect }) => {
+  async ({ rawPrj: project, helpers, expect, ml }) => {
     const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
     const handle = await helpers.getLocalFileHandle("./assets/bare-tcrab-set.tsv");
 
@@ -815,14 +855,25 @@ blockTest(
     expect(regions.length).toBe(14);
     expect(regions.every((c) => c.domain["pl7.app/vdj/numberingSchema"] === "imgt")).toBe(true);
 
-    // The regions were located, not merely declared. Without this the test passes on a run where
-    // ANARCI numbered nothing: the columns would still be here and every status would read
-    // Failed. Verified against a throwaway project before this assertion existed — all four
-    // records annotated on both chains, and chainDisagreed 0, meaning beta landed in ANARCI's B
-    // bucket and alpha in A, which is what the slot assignment claims.
-    const status = columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus");
-    expect(status).toHaveLength(2);
-    expect(status.map((c) => c.domain["pl7.app/vdj/scClonotypeChain"]).sort()).toEqual(["A", "B"]);
+    // The regions were located, not merely declared: all four rows imported, none left out,
+    // none numbered as the other chain.
+    expect(await recordStats(project, blockId, ml)).toEqual({
+      recordCount: 4,
+      recordsWithoutId: 0,
+      recordsWithRepeatedId: 0,
+      recordsWithoutSequence: 0,
+      recordsFailedToAnnotate: 0,
+    });
+    const statsHandle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
+      ?.value?.fullTableHandle;
+    expect(statsHandle).toBeDefined();
+    const driver = ml.driverKit.pFrameDriver;
+    const statSpecs = await driver.getSpec(statsHandle!);
+    const disagreed = statSpecs.findIndex(
+      (c) => c.type === "column" && c.spec.name.endsWith("/chainDisagreedCount"),
+    );
+    const counts = await driver.getData(statsHandle!, [disagreed]);
+    expect(Array.from(counts[0].data as Int32Array)).toEqual([0, 0]);
   },
 );
 
@@ -873,7 +924,7 @@ blockTest(
     // header was used, and the mapping resolved against it.
     expect(columns.length).toBeGreaterThan(0);
     expect(columns.find((c) => c.name === "pl7.app/vdj/uniqueMoleculeCount")).toBeDefined();
-    expect(columns.filter((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toHaveLength(2);
+    expect(columns.find((c) => c.name === "pl7.app/vdj/regionAnnotationStatus")).toBeUndefined();
     expect(columns.find((c) => c.name.startsWith("pl7.app/vdj/importedProperty/"))).toBeUndefined();
   },
 );
@@ -950,5 +1001,222 @@ blockTest(
     expect(gene("pl7.app/vdj/geneHit", "VGene", "B")[0].annotations["pl7.app/label"]).toBe(
       "Light V Gene",
     );
+  },
+);
+
+// Prerun reports rows without a sequence or an id (empty or whitespace) and verbatim repeats.
+// The run then counts records read and left out, once per sample rather than per chain.
+blockTest(
+  "reports rows without a sequence and identical rows before the run",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-set-row-report.tsv");
+    const bareSet = {
+      identity: "mAb ID",
+      chainSelection: "IG" as const,
+      sequences: { IGHeavy: "VH", IGLight: "VL" },
+      scheme: SCHEME,
+    };
+
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "row-report",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          datasetId: "SROWREPORT00000000000001",
+          label: "bare-set-row-report",
+          extension: "tsv",
+        },
+        bareSet,
+      }),
+    });
+
+    type Report = {
+      key: string;
+      rowCount: number;
+      missingSequence: number;
+      missingId: number;
+      missingIds: string[];
+      collapsed: { id: string; rows: number }[];
+    };
+    const state = (await awaitStableState(project.getBlockState(blockId), 200000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const wrapped = state.outputs?.rowReport as { value?: Report } | Report | undefined;
+    const report = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Report | undefined;
+
+    expect(report?.key).toBe(rowReportKey(bareSet));
+    expect(report?.rowCount).toBe(10);
+    expect(report?.missingSequence).toBe(2);
+    // One empty id, one whitespace-only; both rows differ and still are no collision.
+    expect(report?.missingId).toBe(2);
+    expect(report?.missingIds).toEqual(["AB-010", "AB-011"]);
+    // Most repeated first.
+    expect(report?.collapsed).toEqual([
+      { id: "AB-001", rows: 3 },
+      { id: "AB-002", rows: 2 },
+    ]);
+
+    // Ten rows: two without an id, three repeats of AB-001 and AB-002, and AB-010 and AB-011
+    // each miss a chain. Three are imported.
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+    expect(await recordStats(project, blockId, ml)).toEqual({
+      recordCount: 10,
+      recordsWithoutId: 2,
+      recordsWithRepeatedId: 3,
+      recordsWithoutSequence: 2,
+      recordsFailedToAnnotate: 0,
+    });
+  },
+);
+
+// An id with an incomplete row (no light sequence) and a complete one is not a collision: the
+// incomplete row is ignored, and the collapse keeps the complete one even though it comes second.
+// Two complete rows with an empty and a whitespace-only id are dropped, not merged into a record.
+blockTest(
+  "keeps the complete row of an id that also has a row without a sequence",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-set-incomplete-duplicate.tsv");
+    const bareSet = {
+      identity: "mAb ID",
+      chainSelection: "IG" as const,
+      sequences: { IGHeavy: "VH", IGLight: "VL" },
+      scheme: SCHEME,
+    };
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "incomplete-duplicate",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          datasetId: "SINCOMPLETEDUP0000000001",
+          label: "bare-set-incomplete-duplicate",
+          extension: "tsv",
+        },
+        bareSet,
+      }),
+    });
+
+    type Verdict = { key: string; values: string[] };
+    const before = (await awaitStableState(project.getBlockState(blockId), 200000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const wrapped = before.outputs?.identityCollisions as { value?: Verdict } | Verdict | undefined;
+    const verdict = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Verdict | undefined;
+    expect(verdict?.key).toBe(collisionCheckKey(bareSet));
+    expect(verdict?.values).toEqual([]);
+
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    // Both records imported: had the incomplete row won the collapse, AB-001 would be left out
+    // for a missing sequence; had the id-less rows been kept, there would be a third record.
+    expect(await recordStats(project, blockId, ml)).toEqual({
+      recordCount: 5,
+      recordsWithoutId: 2,
+      recordsWithRepeatedId: 1,
+      recordsWithoutSequence: 0,
+      recordsFailedToAnnotate: 0,
+    });
+  },
+);
+
+// A header-only file still gets a row report, so the panel stops waiting on it.
+blockTest(
+  "reports a header-only file as zero rows",
+  { timeout: 300000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-set-header-only.tsv");
+    const bareSet = {
+      identity: "mAb ID",
+      chainSelection: "IG" as const,
+      sequences: { IGHeavy: "VH", IGLight: "VL" },
+      scheme: SCHEME,
+    };
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "header-only",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          datasetId: "SHEADERONLY0000000000001",
+          label: "bare-set-header-only",
+          extension: "tsv",
+        },
+        bareSet,
+      }),
+    });
+
+    type Report = { key: string; rowCount: number; missingSequence: number; missingId: number };
+    const state = (await awaitStableState(project.getBlockState(blockId), 200000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const wrapped = state.outputs?.rowReport as { value?: Report } | Report | undefined;
+    const report = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Report | undefined;
+    expect(report?.key).toBe(rowReportKey(bareSet));
+    expect(report?.rowCount).toBe(0);
+    expect(report?.missingSequence).toBe(0);
+    expect(report?.missingId).toBe(0);
+  },
+);
+
+// Ids holding a tab, a newline or a quote come back intact through the report TSVs.
+blockTest(
+  "names ids with a tab, newline or quote correctly",
+  { timeout: 300000 },
+  async ({ rawPrj: project, helpers, expect }) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const handle = await helpers.getLocalFileHandle("./assets/bare-set-quoted-ids.csv");
+    const bareSet = {
+      identity: "mAb ID",
+      chainSelection: "IG" as const,
+      sequences: { IGHeavy: "VH", IGLight: "VL" },
+      scheme: SCHEME,
+    };
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        defaultBlockLabel: "quoted-ids",
+        customBlockLabel: "",
+        format: "custom",
+        chains: ["IGHeavy", "IGLight"],
+        fileSource: {
+          handle,
+          datasetId: "SQUOTEDIDS00000000000001",
+          label: "bare-set-quoted-ids",
+          extension: "csv",
+        },
+        bareSet,
+      }),
+    });
+
+    type Report = {
+      key: string;
+      missingIds: string[];
+      collapsed: { id: string; rows: number }[];
+    };
+    const state = (await awaitStableState(project.getBlockState(blockId), 200000)) as {
+      outputs?: Record<string, unknown>;
+    };
+    const wrapped = state.outputs?.rowReport as { value?: Report } | Report | undefined;
+    const report = (wrapped && "key" in wrapped ? wrapped : wrapped?.value) as Report | undefined;
+    expect(report?.key).toBe(rowReportKey(bareSet));
+    expect(report?.missingIds).toEqual(["AB\n2"]);
+    expect(report?.collapsed).toEqual([{ id: 'AB "1"\tX', rows: 2 }]);
   },
 );

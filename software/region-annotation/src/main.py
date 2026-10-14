@@ -6,9 +6,11 @@ Input:
   --csv_<bucket>    ANARCI's `<out>_<BUCKET>.csv`, one flag per bucket. Any may be absent.
   --scheme      imgt | kabat | chothia — the convention the scientist chose.
 
-Output: one row per record, and for each mapped chain seven `<chain>_<region>_aa` columns
-plus one `<chain>_regionAnnotationStatus`. Status is never empty; regions are empty for
-any chain whose status is not `Annotated`.
+Output: for each mapped chain seven `<chain>_<region>_aa` columns plus one
+`<chain>_regionAnnotationStatus`, one row per kept record.
+
+A record is kept only when every mapped chain is `Annotated`. `--out_records_tsv` writes the
+kept input rows. `--out_stats` counts every record, kept or not.
 
 Why the lookup keys on `key|chain` rather than on the record key
 ---------------------------------------------------------------
@@ -97,13 +99,13 @@ def load_anarci_csv(path: Optional[str], bucket: str, into: Numbering, positions
         into[entry] = (bucket, [(row.get(p) or "").strip() for p in pos_labels])
 
 
-def write_stats(path: str, chains: List[str], tally: Dict[str, Dict[str, int]]) -> None:
-    """One row per declared chain, counting outcomes and chain disagreements.
+def write_stats(path: str, chains: List[str], disagreed: Dict[str, int]) -> None:
+    """One row per declared chain: how many kept records ANARCI numbered as the other chain.
 
-    `chainDisagreed` is the number of *annotated* records whose sequence ANARCI bucketed as
-    the other chain — a light chain in the slot declared heavy, or the reverse. It is a
-    subset of `annotated`: those records are annotated correctly, under their declared chain,
-    using the ranges of the bucket ANARCI chose.
+    `chainDisagreed` counts kept records — annotated on every chain — whose sequence for this
+    chain ANARCI bucketed as the other chain: a light chain in the slot declared heavy, or the
+    reverse. Those records are annotated correctly, under their declared chain, using the ranges
+    of the bucket ANARCI chose. What was left out is counted per record, not here.
 
     It is counted and reported, and nothing acts on it. Reconciling a declared chain against
     an inferred one is out of scope for this spec, and the threshold at which disagreement
@@ -115,22 +117,24 @@ def write_stats(path: str, chains: List[str], tally: Dict[str, Dict[str, int]]) 
     every record is annotated consistently and labelled wrongly, and no other signal in the
     output would show it.
 
-    One row per declared chain, keyed on the chain. A scientist reading a paired set wants the
-    two chains side by side to compare them, which is a row each; folding them into one wide row
-    puts the same four numbers twice across the header instead.
+    One row per declared chain, keyed on the chain, so a paired set's two chains read side by
+    side.
     """
-    header = ["chain", "annotated", "notApplicable", "failed", "chainDisagreed"]
-    rows = [
-        [
-            chain,
-            str(tally[chain][STATUS_ANNOTATED]),
-            str(tally[chain][STATUS_NOT_APPLICABLE]),
-            str(tally[chain][STATUS_FAILED]),
-            str(tally[chain]["chainDisagreed"]),
-        ]
-        for chain in chains
-    ]
+    header = ["chain", "chainDisagreed"]
+    rows = [[chain, str(disagreed[chain])] for chain in chains]
     pl.DataFrame(rows, schema=header, orient="row").write_csv(path, separator="\t")
+
+
+def write_record_stats(path: str, failed_to_annotate: int) -> None:
+    """One row: records left out because a sequence could not be numbered.
+
+    Per record rather than per chain: a record failing on both chains counts once. It continues
+    the import pass's discard counters, which is what makes rows read minus every discard the
+    number imported.
+    """
+    header = ["recordsFailedToAnnotate"]
+    row = [str(failed_to_annotate)]
+    pl.DataFrame([row], schema=header, orient="row").write_csv(path, separator="\t")
 
 
 def main() -> None:
@@ -148,6 +152,16 @@ def main() -> None:
         )
     p.add_argument("--out_tsv", required=True, help="Output TSV path")
     p.add_argument("--out_stats", required=False, help="Optional per-chain outcome counts TSV")
+    p.add_argument(
+        "--out_record_stats",
+        required=False,
+        help="Optional one-row TSV: records left out, by reason",
+    )
+    p.add_argument(
+        "--out_records_tsv",
+        required=False,
+        help="Optional copy of the input rows, restricted to the records kept in --out_tsv",
+    )
     args = p.parse_args()
 
     df = pl.read_csv(args.input_tsv, separator="\t", infer_schema_length=0)
@@ -172,19 +186,28 @@ def main() -> None:
         columns.append(status_column(chain))
 
     rows: List[List[str]] = []
-    # Per declared chain: the three statuses, plus how many of the annotated ones ANARCI
-    # bucketed as the *other* chain. See `write_stats` for what that number is for.
+    kept_keys: List[str] = []
+    seen = 0
+    # The workflow drops a record missing a sequence before this step; counted here only so a
+    # standalone run does not report it as failed.
+    without_sequence = 0
+    failed_to_annotate = 0
+    # Per declared chain, for the log: the three statuses over every record read.
     tally: Dict[str, Dict[str, int]] = {
-        c: {STATUS_ANNOTATED: 0, STATUS_NOT_APPLICABLE: 0, STATUS_FAILED: 0, "chainDisagreed": 0}
-        for c in chains
+        c: {STATUS_ANNOTATED: 0, STATUS_NOT_APPLICABLE: 0, STATUS_FAILED: 0} for c in chains
     }
+    # Per declared chain, kept records only: see `write_stats` for what that number is for.
+    disagreed: Dict[str, int] = {c: 0 for c in chains}
 
     for row in df.iter_rows(named=True):
         key = (row.get(args.key_column) or "").strip()
         if not key:
             continue
 
+        seen += 1
         out_row: List[str] = [key]
+        statuses: List[str] = []
+        disagreed_chains: List[str] = []
         for chain in chains:
             sequence = (row.get(sequence_column(chain)) or "").strip()
 
@@ -199,26 +222,46 @@ def main() -> None:
                     REGION_RANGES[args.scheme][bucket],
                 )
                 if status == STATUS_ANNOTATED and bucket != EXPECTED_BUCKET[chain]:
-                    tally[chain]["chainDisagreed"] += 1
+                    disagreed_chains.append(chain)
 
             out_row.extend(located[region] for region in REGIONS)
             out_row.append(status)
             tally[chain][status] += 1
+            statuses.append(status)
 
-        rows.append(out_row)
+        if STATUS_NOT_APPLICABLE in statuses:
+            without_sequence += 1
+        elif STATUS_FAILED in statuses:
+            failed_to_annotate += 1
+        else:
+            rows.append(out_row)
+            kept_keys.append(key)
+            for chain in disagreed_chains:
+                disagreed[chain] += 1
 
     pl.DataFrame(rows, schema=columns, orient="row").write_csv(args.out_tsv, separator="\t")
+    if args.out_records_tsv:
+        # Input columns unchanged; only rows are filtered.
+        kept = set(kept_keys)
+        df.filter(
+            pl.col(args.key_column).str.strip_chars().is_in(list(kept))
+        ).write_csv(args.out_records_tsv, separator="\t")
     if args.out_stats:
-        write_stats(args.out_stats, chains, tally)
+        write_stats(args.out_stats, chains, disagreed)
+    if args.out_record_stats:
+        write_record_stats(args.out_record_stats, failed_to_annotate)
 
     for chain in chains:
         t = tally[chain]
         print(
             f"chain {chain}: {t[STATUS_ANNOTATED]} annotated, "
             f"{t[STATUS_NOT_APPLICABLE]} not applicable, {t[STATUS_FAILED]} failed, "
-            f"{t['chainDisagreed']} numbered as the other chain"
+            f"{disagreed[chain]} kept and numbered as the other chain"
         )
-    print(f"Wrote {len(rows)} records to {args.out_tsv}")
+    print(
+        f"Read {seen} records; wrote {len(rows)} to {args.out_tsv}; left out {without_sequence} "
+        f"missing a sequence on a chain and {failed_to_annotate} with a sequence that was not numbered"
+    )
 
 
 if __name__ == "__main__":

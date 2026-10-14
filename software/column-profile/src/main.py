@@ -4,6 +4,8 @@ Two questions, one pass over the file:
 
   types       — the value type each column can hold, for the record-property columns.
   aminoAcid   — which columns hold amino-acid variable domains, for the chain slots.
+  nucleotide  — which columns could be nucleotide sequences by their alphabet, so a chain slot
+                mapped to one can be warned about.
 
 Both are answered from ALL rows, not a sample. That is the whole point: a column that looks
 numeric for twenty rows and holds "N/A" on row five hundred must come out String, and a sampled
@@ -34,6 +36,11 @@ INT_RE = re.compile(r"^[+-]?\d+$")
 # excludes B, J, O, U and Z, which is what keeps antibody INNs — trastuzumab, adalimumab — from
 # reading as sequences.
 AA_RE = re.compile(r"^[ACDEFGHIKLMNPQRSTVWYXacdefghiklmnpqrstvwyx*]+$")
+
+# A, C, G, T and N are amino-acid letters too, so a DNA column passes AA_RE and is offered as a
+# chain. A variable domain of MIN_DOMAIN_LENGTH residues never uses only these letters, so a
+# match here means nucleotides. U and the lower case are kept for RNA and soft-masked exports.
+NT_RE = re.compile(r"^[ACGTUNacgtun]+$")
 
 # Shorter than this is not a variable domain. An scFv runs ~110-130 residues and a single domain
 # ~110; the threshold sits far enough below to tolerate a truncated entry and far enough above an
@@ -78,11 +85,12 @@ def profile(path: str, separator: str) -> dict:
         try:
             headers = [h.strip() for h in next(reader)]
         except StopIteration:
-            return {"headers": [], "types": {}, "aminoAcid": []}
+            return {"headers": [], "types": {}, "aminoAcid": [], "nucleotide": []}
 
         types = [T_NONE] * len(headers)
         seen = [0] * len(headers)
         domain_like = [0] * len(headers)
+        nucleotide_like = [0] * len(headers)
 
         for row in reader:
             for i, raw in enumerate(row):
@@ -95,22 +103,30 @@ def profile(path: str, separator: str) -> dict:
 
                 types[i] = max(types[i], value_type(v))
                 seen[i] += 1
-                if len(v) >= MIN_DOMAIN_LENGTH and AA_RE.match(v):
-                    domain_like[i] += 1
+                if len(v) >= MIN_DOMAIN_LENGTH:
+                    if AA_RE.match(v):
+                        domain_like[i] += 1
+                    if NT_RE.match(v):
+                        nucleotide_like[i] += 1
 
     out_types = {}
     amino_acid = []
+    nucleotide = []
     for i, name in enumerate(headers):
         if not name:
             continue
         out_types[name] = TYPE_NAMES[types[i]]
         if seen[i] and domain_like[i] / seen[i] >= MIN_DOMAIN_SHARE:
             amino_acid.append(name)
+        # Same share rule as aminoAcid. The column stays in aminoAcid: it is warned about, not hidden.
+        if seen[i] and nucleotide_like[i] / seen[i] >= MIN_DOMAIN_SHARE:
+            nucleotide.append(name)
 
     return {
         "headers": [h for h in headers if h],
         "types": out_types,
         "aminoAcid": amino_acid,
+        "nucleotide": nucleotide,
     }
 
 
@@ -132,7 +148,8 @@ def main() -> None:
     print(
         f"Profiled {len(result['headers'])} columns:"
         f" {sum(1 for t in result['types'].values() if t != 'String')} numeric,"
-        f" {len(result['aminoAcid'])} amino-acid"
+        f" {len(result['aminoAcid'])} amino-acid,"
+        f" {len(result['nucleotide'])} nucleotide"
     )
 
 
