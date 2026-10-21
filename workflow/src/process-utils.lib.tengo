@@ -155,8 +155,10 @@ buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode, productivityMo
 			"Rows discarded because they do not span " + feature + ", among those that had V and J genes and a CDR3.",
 			"default", "96000")]
 	}
-	if productivityMode == "from_cdr3_aa" || productivityMode == "from_column_true" {
-		why := productivityMode == "from_cdr3_aa" ? "their CDR3 has a stop codon or a frameshift" : "the file marks them not productive"
+	if productivityMode == "from_cdr3_aa" || productivityMode == "from_column_true" || productivityMode == "from_column_or_cdr3_aa" {
+		why := productivityMode == "from_cdr3_aa" ? "their CDR3 has a stop codon or a frameshift" :
+			productivityMode == "from_column_true" ? "the file marks them not productive" :
+			"the file marks them not productive or, where it does not say, their CDR3 has a stop codon or a frameshift"
 		cols += [col("records-not-productive", "recordsNotProductive", "Discarded: Not Productive",
 			"Rows discarded because " + why + ", among those kept so far.", "optional", "95000")]
 	}

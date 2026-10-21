@@ -13,7 +13,7 @@ self.defineOutputs("tsv", "stats", "recordStats", "tsvForSingleCell", "tsvForClu
 // Intended modes (subset used initially for MiXCR + CellRanger):
 // - xsvType: "tsv" | "csv"
 // - alleleMode: "mixcr" | "none"
-// - productivityMode: "from_cdr3_aa" | "from_column_true" | "none"
+// - productivityMode: "from_cdr3_aa" | "from_column_true" | "from_column_or_cdr3_aa" | "none"
 // - byCell:
 //    - enabled: bool
 //    - cellKeyMode: "hash_join" | "strip_suffix" | "direct"
@@ -381,12 +381,28 @@ self.body(func(inputs) {
 	keepsProductive := undefined
 	productivityMode := "none"
 	if !is_undefined(config) && !is_undefined(config.productivityMode) { productivityMode = config.productivityMode }
-	if productivityMode == "from_cdr3_aa" {
+	byCdr3Aa := undefined
+	if columnsInfo.columnMapping["cdr3-aa"] != undefined {
 		aa := pt.col("cdr3-aa").fillNull("")
-		keepsProductive = aa.neq("").and(aa.strContains("*", { literal: true }).not()).and(aa.strContains("_", { literal: true }).not())
+		byCdr3Aa = aa.neq("").and(aa.strContains("*", { literal: true }).not()).and(aa.strContains("_", { literal: true }).not())
+	}
+	if productivityMode == "from_cdr3_aa" {
+		keepsProductive = is_undefined(byCdr3Aa) ? pt.lit(true) : byCdr3Aa
 	} else if productivityMode == "from_column_true" {
 		p := pt.col("is-productive").fillNull("").strToUpper()
 		keepsProductive = p.eq("TRUE").or(p.eq("T"))
+	} else if productivityMode == "from_column_or_cdr3_aa" {
+		// The file's call where it makes one; an empty or absent one falls back to the CDR3 aa,
+		// and with neither the row is kept, as nothing says it is not productive
+		unknown := is_undefined(byCdr3Aa) ? pt.lit(true) : byCdr3Aa
+		if columnsInfo.columnMapping["is-productive"] != undefined {
+			p := pt.col("is-productive").fillNull("").strToUpper()
+			keepsProductive = pt.when(p.eq("TRUE").or(p.eq("T"))).then(pt.lit(true)).
+				when(p.eq("FALSE").or(p.eq("F"))).then(pt.lit(false)).
+				otherwise(unknown)
+		} else {
+			keepsProductive = unknown
+		}
 	}
 
 	// Counted once for the whole dataset, and each is that filter's own cost -- rows it drops
@@ -579,7 +595,7 @@ self.body(func(inputs) {
 
 
 		// Derive productivity / filter
-		if productivityMode == "from_cdr3_aa" {
+		if productivityMode == "from_cdr3_aa" || productivityMode == "from_column_or_cdr3_aa" {
 			chainDf = chainDf.filter(keepsProductive).withColumns(pt.lit("true").alias("is-productive"))
 		} else if productivityMode == "from_column_true" {
 			// Expect is-productive is already a string "true"/"false"

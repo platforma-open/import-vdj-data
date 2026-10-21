@@ -120,7 +120,7 @@ specs := {
 		importCfg: {
 			xsvType: "tsv",
 			alleleMode: "none",
-			productivityMode: "none",
+			productivityMode: "from_column_or_cdr3_aa",
 			primaryAbundancePolicy: "args",
 			byCell: { enabled: false },
 			geneNormalization: "stripAllele",
@@ -140,7 +140,7 @@ specs := {
 		importCfg: {
 			xsvType: "tsv",
 			alleleMode: "none",
-			productivityMode: "none",
+			productivityMode: "from_column_or_cdr3_aa",
 			primaryAbundancePolicy: "args",
 			byCell: {
 				enabled: true,

@@ -8,6 +8,7 @@ Import rework across input types.
 
 AIRR:
 - `Discarded: Not Covering` names the assembling feature the way the settings panel does (`FR1 - CDR3`), not as `{FR1Begin:CDR3End}`.
+- Non-productive rearrangements are discarded and counted under `Discarded: Not Productive`, as in every other format; AIRR alone imported them. The `productive` column decides; where it is empty or absent, a stop codon or frameshift in `junction_aa` does.
 
 Cell Ranger VDJ:
 - Files from Cell Ranger before 6.0 import. They write `productive` as `True`/`False`, which was read as not productive, so every row was dropped.
