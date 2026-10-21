@@ -476,16 +476,32 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
       if (format === "immunoSeq") {
         const missingColumns: string[] = [];
-        if (!hasAny(["rearrangement", "nucleotide"])) missingColumns.push("sequence");
+        if (!hasAny(["rearrangement", "nucleotide"])) missingColumns.push("rearrangement");
         if (!hasAny(["amino_acid_sequence", "amino_acid", "aminoAcid"]))
-          missingColumns.push("cdr3-aa");
-        if (!hasAny(["v_gene", "v-gene", "vGene", "vGeneName"])) missingColumns.push("v-gene");
-        if (!hasAny(["d_gene", "d-gene", "dGene", "dGeneName"])) missingColumns.push("d-gene");
-        if (!hasAny(["j_gene", "j-gene", "jGene", "jGeneName"])) missingColumns.push("j-gene");
-        if (!hasAny(["v-index", "v_index", "vIndex"])) missingColumns.push("v-begin");
-        if (!hasAny(["count (templates/reads)", "count (reads)", "seq_reads", "reads", "count"])) {
-          missingColumns.push("read-count");
-        }
+          missingColumns.push("amino_acid");
+        // Aliases as in infer-columns-immunoSeq.lib.tengo; a D gene is optional, as light chains have none
+        const gene = (g: string) => [
+          `${g}_gene`,
+          `${g}-gene`,
+          `${g}Gene`,
+          `${g}GeneName`,
+          `${g}_resolved`,
+          `${g}Resolved`,
+          `${g}MaxResolved`,
+        ];
+        if (!hasAny(gene("v"))) missingColumns.push("v_gene");
+        if (!hasAny(gene("j"))) missingColumns.push("j_gene");
+        if (!hasAny(["v-index", "v_index", "vIndex"])) missingColumns.push("v_index");
+        const counts = [
+          "count (templates/reads)",
+          "count (templates)",
+          "count (reads)",
+          "seq_reads",
+          "count",
+          "templates",
+          "reads",
+        ];
+        if (!hasAny(counts)) missingColumns.push("templates");
 
         return {
           isValid: missingColumns.length === 0,

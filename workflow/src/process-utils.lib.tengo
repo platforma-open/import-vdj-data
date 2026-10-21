@@ -29,7 +29,9 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 			}
 		}
 	]
-	hasReads := columnsInfo.columnMapping["read-count"] != undefined
+	// From what is emitted, not the header: an import may build its read count from other columns
+	hasReads := false
+	for col in columnsInfo.abundanceColumns { if col.column == "read-count" { hasReads = true } }
 	if hasReads {
 		statsColumns += [
 			{

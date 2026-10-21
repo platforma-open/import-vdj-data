@@ -18,6 +18,8 @@ specs := {
 		label: "ImmunoSeq",
 		isSingleCell: false,
 		importTplId: ":import-immunoSeq",
+		// Read by the record counters; the template itself always derives productivity this way
+		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			return immunoSeq.getColumns(header)
 		}

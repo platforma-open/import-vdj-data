@@ -77,6 +77,30 @@ async function recordStats(
   return result;
 }
 
+/** Every stat of a one-sample, one-chain run by its short name, e.g. `clonotypeCount`. */
+async function statCounts(
+  project: StatsProject,
+  blockId: string,
+  ml: { driverKit: { pFrameDriver: StatsDriver } },
+): Promise<Record<string, number>> {
+  const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+    outputs?: Record<string, unknown>;
+  };
+  const handle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })?.value
+    ?.fullTableHandle;
+  if (handle === undefined) throw new Error("no stats table");
+  const driver = ml.driverKit.pFrameDriver;
+  const found: Record<string, number> = {};
+  for (const [i, s] of (await driver.getSpec(handle)).entries()) {
+    if (s.type !== "column" || !s.spec.name.startsWith("pl7.app/vdj/stat/")) continue;
+    const [vector] = await driver.getData(handle, [i]);
+    found[s.spec.name.slice("pl7.app/vdj/stat/".length)] = Number(
+      (vector.data as ArrayLike<unknown>)[0],
+    );
+  }
+  return found;
+}
+
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
   const bareSet = fields.bareSet as { identity: string } | undefined;
   return {
@@ -1367,20 +1391,7 @@ blockTest(
       await project.runBlock(blockId);
       await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
 
-      const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
-        outputs?: Record<string, unknown>;
-      };
-      const handle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
-        ?.value?.fullTableHandle;
-      expect(handle, "statistics table handle").toBeDefined();
-      const specs = await ml.driverKit.pFrameDriver.getSpec(handle!);
-      const found: Record<string, number> = {};
-      for (const [i, s] of specs.entries()) {
-        if (s.type !== "column" || !s.spec.name.startsWith("pl7.app/vdj/stat/")) continue;
-        const [vector] = await ml.driverKit.pFrameDriver.getData(handle!, [i]);
-        found[s.spec.name.slice("pl7.app/vdj/stat/".length)] = Number(vector.data[0]);
-      }
-      return found;
+      return statCounts(project, blockId, ml);
     };
 
     // The empty CDR1 is a region of zero length: both clones stay, rather than meeting on a blank key
@@ -1395,5 +1406,71 @@ blockTest(
     const byCdr3 = await counts("CDR3");
     expect(byCdr3).toMatchObject({ recordCount: 6, recordsWithoutCdr3: 1, clonotypeCount: 2 });
     expect(byCdr3.recordsNotCoveringAssemblingFeature).toBeUndefined();
+  },
+);
+
+// Adaptive v2: templates filled and reads written as null; a V gene unresolved among ties keeps its
+// family; an out-of-frame rearrangement has no amino acids; one row resolves no V at all.
+blockTest(
+  "imports an immunoSEQ export, unresolved genes by their family",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+    const sampleId = uniquePlId();
+    await project.mutateBlockStorage(sndBlockId, {
+      operation: "update-block-data",
+      value: {
+        suggestedImport: false,
+        h5adFilesToPreprocess: [],
+        seuratFilesToPreprocess: [],
+        metadata: [],
+        sampleIds: [sampleId],
+        sampleLabelColumnLabel: "Sample Name",
+        sampleLabels: { [sampleId]: "immunoseq" },
+        datasets: [
+          {
+            id: uniquePlId(),
+            label: "immunoSEQ",
+            content: {
+              type: "Xsv",
+              xsvType: "tsv",
+              data: { [sampleId]: await helpers.getLocalFileHandle("./assets/immunoseq-v2.tsv") },
+            },
+          },
+        ],
+      },
+    });
+    await project.runBlock(sndBlockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
+    };
+    const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
+    const datasetRef = option.ref as PlRef;
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        datasetRef,
+        format: "immunoSeq",
+        chains: ["TCRBeta"],
+        prerunCheck: {
+          check: "dataset",
+          subject: datasetCheckKey({ datasetRef, format: "immunoSeq" }),
+          columnsPresent: true,
+        },
+      }),
+    });
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    expect(await statCounts(project, blockId, ml)).toMatchObject({
+      recordCount: 4,
+      recordsWithoutVGene: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 2,
+      readCount: 15,
+    });
   },
 );

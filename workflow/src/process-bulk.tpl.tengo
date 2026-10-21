@@ -110,10 +110,11 @@ self.body(func(inputs) {
     result := pframes.pFrameBuilder()
     stats := pframes.pFrameBuilder()
 
-    // Only the shared import template counts what it discarded; the immunoSeq, qiagen and custom
-    // templates return tsv and stats alone, and a path nothing fills never becomes ready.
+    // Only these templates count what they discarded; the qiagen and custom ones return tsv and
+    // stats alone, and a path nothing fills never becomes ready.
+    countsRecords := formatSpec.importTplId == ":import-common" || formatSpec.importTplId == ":import-immunoSeq"
     importOutputs := []
-    if formatSpec.importTplId == ":import-common" {
+    if countsRecords {
         importOutputs += [{
             type: "TsvContent",
             settings: { axes: [], columns: processUtils.buildRecordStatsColumns(blockId, columnsInfo, importCfg.alleleMode, importCfg.productivityMode) },
@@ -239,7 +240,7 @@ self.body(func(inputs) {
 		}
 	)
 
-    if formatSpec.importTplId == ":import-common" {
+    if countsRecords {
         importResults.addXsvOutputToBuilder(stats, "recordStats", "recordStats")
     }
 

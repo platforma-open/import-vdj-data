@@ -446,8 +446,7 @@ blockTest(
       expect(has(columns, "pl7.app/vdj/geneHitWithAllele")).toBe(true);
 
       // The counters follow the import template, not the format: MiXCR goes through
-      // `import-common`, so it gets them. immunoSeq, qiagen and custom do not and must not --
-      // their templates return tsv and stats alone, and a path nothing fills never resolves.
+      // `import-common`, so it gets them.
       expect(has(stats, "pl7.app/vdj/stat/recordCount")).toBe(true);
     }
   },
