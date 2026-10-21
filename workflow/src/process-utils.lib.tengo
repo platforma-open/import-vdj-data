@@ -80,7 +80,7 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 					annotations: {
 						"pl7.app/label": "Number of Reads",
 						"pl7.app/description": "The number of reads in the dataset.",
-						"pl7.app/table/visibility": "default"
+						"pl7.app/table/visibility": "optional"
 					}
 				}
 			}
@@ -101,7 +101,7 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 					annotations: {
 						"pl7.app/label": "Number of UMIs",
 						"pl7.app/description": "The number of UMIs in the dataset.",
-						"pl7.app/table/visibility": "default"
+						"pl7.app/table/visibility": "optional"
 					}
 				}
 			}
@@ -166,19 +166,19 @@ buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode, productivityMo
 	cols := [rowsReadColumn(blockId, "record-count")]
 	if columnsInfo.columnMapping["is-cell"] != undefined || columnsInfo.columnMapping["high-confidence"] != undefined {
 		cols += [col("records-not-cell", "recordsNotCell", "Discarded: Not a Cell",
-			"Rows discarded because their barcode was not called a cell or the contig was not high-confidence.", "optional", "99500")]
+			"Rows discarded because their barcode was not called a cell or the contig was not high-confidence.", "default", "99500")]
 	}
 	if hasGene(columnsInfo, alleleMode, "v") {
 		cols += [col("records-no-v", "recordsWithoutVGene", "Discarded: No V Gene",
-			"Rows discarded because no V gene was called.", "optional", "99000")]
+			"Rows discarded because no V gene was called.", "default", "99000")]
 	}
 	if hasGene(columnsInfo, alleleMode, "j") {
 		cols += [col("records-no-j", "recordsWithoutJGene", "Discarded: No J Gene",
-			"Rows discarded because no J gene was called, among those that had a V gene.", "optional", "98000")]
+			"Rows discarded because no J gene was called, among those that had a V gene.", "default", "98000")]
 	}
 	if columnsInfo.columnMapping["cdr3-nt"] != undefined {
 		cols += [col("records-no-cdr3", "recordsWithoutCdr3", "Discarded: No CDR3",
-			"Rows discarded because no CDR3 could be read, among those that had V and J genes.", "optional", "97000")]
+			"Rows discarded because no CDR3 could be read, among those that had V and J genes.", "default", "97000")]
 	}
 	// Emitted only when a feature was assembled: with a CDR3 key nothing can fail to cover it
 	if !is_undefined(columnsInfo.spanNt) {
@@ -193,7 +193,7 @@ buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode, productivityMo
 			productivityMode == "from_column_true" ? "the file marks them not productive" :
 			"the file marks them not productive or, where it does not say, their CDR3 aa is missing or has a stop codon or a frameshift"
 		cols += [col("records-not-productive", "recordsNotProductive", "Discarded: Not Productive",
-			"Rows discarded because " + why + ", among those that passed the other filters.", "optional", "95000")]
+			"Rows discarded because " + why + ", among those that passed the other filters.", "default", "95000")]
 	}
 	return cols
 }

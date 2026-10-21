@@ -29,6 +29,7 @@ MiXCR:
 
 Every format:
 - New stat column `Discarded: Not Productive`, so the discards and the imported rows add up to `Rows Read`.
+- The statistics table shows `Rows Read`, every `Discarded:` column and `Number of Clonotypes` by default. Read and UMI totals are hidden and can be turned on under Columns.
 
 ImmunoSeq:
 - A V, D or J gene immunoSEQ could not pick among equally good matches (`unresolved`) keeps its family, e.g. `TCRBV06`. Such rearrangements, 19 to 25 percent of the productive ones in the test sets, matched no chain and were dropped.
