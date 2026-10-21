@@ -46,3 +46,10 @@ QIAseq:
 - Rows with no CDR3 nt are discarded and counted rather than keyed together.
 - `Read Set` and `Rank` are no longer imported: once rows are merged into clonotypes they describe one arbitrary row.
 - The statistics table reports `Rows Read` and the discards, as the other formats do.
+
+Custom:
+- Mapping the framework regions with a CDR3 aa and no CDR3 nt no longer fails the run.
+- A region read as empty is one of zero length, and `region_not_covered` marks one not reached: rows not reaching the assembled VDJRegion (or FR1 - CDR3 without FR4, or a mapped VDJ column) are discarded and counted under `Discarded: Not Covering`. They used to share one blank key per V and J gene, merging distinct clonotypes. A row is no longer dropped for `region_not_covered` in a column outside the key.
+- The statistics table reports `Rows Read` and the discards, as the other formats do.
+- `Auto-map columns` fills the unmapped columns whose names MiXCR, AIRR, Cell Ranger, immunoSEQ or QIAseq would write.
+- CDR3 aa and CDR3 nt are no longer both marked required; either one is enough.

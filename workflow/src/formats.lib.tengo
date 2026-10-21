@@ -102,6 +102,8 @@ specs := {
 		label: "Custom",
 		isSingleCell: false,
 		importTplId: ":import-custom",
+		// Read by the record counters: a mapped CDR3 aa decides productivity
+		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			// opts.customMapping and opts.primaryCountType are required once mapping is complete;
 			// infer-columns.tpl already gates incomplete mapping by returning headerColumns.

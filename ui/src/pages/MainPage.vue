@@ -32,6 +32,7 @@ import {
   chainsOptions,
   countTypeOptions,
   formatOptions,
+  headerAliases,
   LOAD_FROM_FILE,
   optionalCanonical,
   optionalMutations,
@@ -310,6 +311,26 @@ function setMapping(key: string, value: string | undefined) {
   else a.customMapping[key] = value;
 }
 
+/**
+ * Fill every unmapped column whose header another tool's name gives away. Run on the button only:
+ * filling from the header output by itself would write data back from an output.
+ */
+function autoMap() {
+  const headers = headerOptions.value.map((o) => o.value);
+  const byLower = new Map(headers.map((h) => [h.toLowerCase(), h]));
+  for (const [key, aliases] of Object.entries(headerAliases)) {
+    if (getMapping(key)) continue;
+    const found = aliases.map((a) => byLower.get(a.toLowerCase())).find((h) => h !== undefined);
+    if (found !== undefined) setMapping(key, found);
+  }
+  // Both counts found: the one not primary has to be the secondary, or its dropdown stays hidden
+  const a = app.model.data;
+  if (!getMapping("read-count") && getMapping("umi-count")) a.primaryCountType = "umi";
+  if (getMapping("read-count") && getMapping("umi-count")) {
+    a.secondaryCountType = a.primaryCountType === "umi" ? "read" : "umi";
+  }
+}
+
 const validationResult = computed(() => app.model.outputs.validationResult);
 
 const validationMessage = computed(() => missingColumnsMessage(validationResult.value));
@@ -451,6 +472,13 @@ watch(
         </PlAlert>
 
         <template v-if="app.model.data.format === 'custom' && !datasetScanning">
+          <PlBtnGhost v-if="headerOptions.length > 0" @click="autoMap">
+            Auto-map columns
+            <template #tooltip>
+              Fill the unmapped columns whose names MiXCR, AIRR, Cell Ranger, immunoSEQ or QIAseq
+              would write. Check the result before running.
+            </template>
+          </PlBtnGhost>
           <PlSectionSeparator>Required columns</PlSectionSeparator>
           <div class="field-col">
             <PlDropdown
@@ -460,7 +488,7 @@ watch(
               :options="headerOptions"
               :label="f.label"
               clearable
-              required
+              :required="f.required"
               @update:model-value="
                 (v: string | undefined) => setMapping(f.key, v as string | undefined)
               "

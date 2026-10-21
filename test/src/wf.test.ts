@@ -1542,3 +1542,85 @@ blockTest(
     });
   },
 );
+
+// A custom mapping of a MiXCR-style file whose regions are separate columns. Two IGHV1-69 rows have
+// an empty (zero-length) CDR1, one of them FR1 not covered; one row has a stop codon, one no V call.
+blockTest(
+  "imports a custom mapping keyed on assembled regions, or on regions and CDR3 aa",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+    const sampleId = uniquePlId();
+    await project.mutateBlockStorage(sndBlockId, {
+      operation: "update-block-data",
+      value: {
+        suggestedImport: false,
+        h5adFilesToPreprocess: [],
+        seuratFilesToPreprocess: [],
+        metadata: [],
+        sampleIds: [sampleId],
+        sampleLabelColumnLabel: "Sample Name",
+        sampleLabels: { [sampleId]: "custom" },
+        datasets: [
+          {
+            id: uniquePlId(),
+            label: "Custom",
+            content: {
+              type: "Xsv",
+              xsvType: "tsv",
+              data: { [sampleId]: await helpers.getLocalFileHandle("./assets/custom-regions.tsv") },
+            },
+          },
+        ],
+      },
+    });
+    await project.runBlock(sndBlockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+    const counts = async (customMapping: Record<string, string>) => {
+      const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+      const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+        outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
+      };
+      const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
+      const datasetRef = option.ref as PlRef;
+      await project.mutateBlockStorage(blockId, {
+        operation: "update-block-data",
+        value: blockData({
+          datasetRef,
+          format: "custom",
+          chains: ["IGHeavy"],
+          customMapping: { "v-gene": "v", "j-gene": "j", "read-count": "count", ...customMapping },
+          primaryCountType: "read",
+        }),
+      });
+      await project.runBlock(blockId);
+      await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+      return statCounts(project, blockId, ml);
+    };
+
+    const regions = {
+      "fr1-nt": "fr1",
+      "cdr1-nt": "cdr1",
+      "fr2-nt": "fr2",
+      "cdr2-nt": "cdr2",
+      "fr3-nt": "fr3",
+    };
+    // The empty CDR1 is zero length and keyed; the uncovered FR1 is counted, not keyed on a blank
+    expect(await counts({ ...regions, "cdr3-nt": "cdr3", "cdr3-aa": "cdr3_aa" })).toMatchObject({
+      recordCount: 5,
+      recordsWithoutVGene: 1,
+      recordsNotCoveringAssemblingFeature: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 2,
+    });
+    // Without CDR3 nt the regions and CDR3 aa are keyed as they are; this mapping used to fail the run
+    expect(await counts({ ...regions, "cdr3-aa": "cdr3_aa" })).toMatchObject({
+      recordCount: 5,
+      recordsWithoutVGene: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 3,
+    });
+  },
+);
