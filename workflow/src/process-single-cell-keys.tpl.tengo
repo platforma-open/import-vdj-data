@@ -152,14 +152,18 @@ self.body(func(inputs) {
 	)
 	allChainsFilteredDf := allChainsMergedWithScKeyDf.filter(filterCondition)
 
-	// Per sample: paired clonotypes imported, and cells left out for lacking one of the two chains
+	// Per sample: paired clonotypes and cells imported, and cells left out for lacking one of the two chains
 	unpairedDf := allChainsMergedDf.filter(pt.or(pt.col("clonotypeKeyA1").isNull(), pt.col("clonotypeKeyB1").isNull())).
 		groupBy("sampleId").agg(pt.col("cellKey").count().alias("cells-unpaired"))
-	importedDf := allChainsFilteredDf.groupBy("sampleId").agg(pt.col("scClonotypeKey").nUnique().alias("clonotypes-imported"))
+	importedDf := allChainsFilteredDf.groupBy("sampleId").agg(
+		pt.col("scClonotypeKey").nUnique().alias("clonotypes-imported"),
+		pt.col("cellKey").count().alias("cells-imported")
+	)
 	samplesDf := allChainsMergedDf.select(pt.col("sampleId")).unique()
 	samplesDf.join(importedDf, { how: "left", on: ["sampleId"] }).
 		join(unpairedDf, { how: "left", on: ["sampleId"] }).
-		withColumns(pt.col("clonotypes-imported").fillNull(0).alias("clonotypes-imported"), pt.col("cells-unpaired").fillNull(0).alias("cells-unpaired")).
+		withColumns(pt.col("clonotypes-imported").fillNull(0).alias("clonotypes-imported"), pt.col("cells-imported").fillNull(0).alias("cells-imported"),
+			pt.col("cells-unpaired").fillNull(0).alias("cells-unpaired")).
 		saveContent("pairing.tsv")
 
 	allChainsFilteredDf.

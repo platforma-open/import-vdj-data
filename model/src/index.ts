@@ -128,7 +128,8 @@ export function projectArgs(data: BlockData): BlockArgs {
     // already on disk, to buy the rare re-pick of the same chains in a different order.
     chains: Array.isArray(chains) ? importedChains(format, chains) : chains,
     customMapping,
-    primaryCountType,
+    // Only the custom format asks for it; left over from it, it would silently pick another format's count
+    primaryCountType: format === "custom" ? primaryCountType : undefined,
     assemblingFeature,
     bareSet: data.bareSet,
   };

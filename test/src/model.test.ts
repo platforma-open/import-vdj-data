@@ -131,6 +131,22 @@ describe("projectArgs", () => {
     expect(args.chains).toEqual(["IGLight", "IGHeavy"]);
   });
 
+  test("a count type left over from the custom format is not sent for another format", () => {
+    const data: BlockData = {
+      ...base,
+      datasetRef: ref,
+      format: "mixcr",
+      chains: ["IGHeavy"],
+      primaryCountType: "read",
+    };
+    const subject = datasetCheckKey(data)!;
+    const args = projectArgs({
+      ...data,
+      prerunCheck: { check: "dataset", subject, columnsPresent: true },
+    });
+    expect(args.primaryCountType).toBeUndefined();
+  });
+
   test("a dataset-door bare set does not need the chain picker it never shows", () => {
     const bareSet: BareSetMapping = {
       identity: "id",

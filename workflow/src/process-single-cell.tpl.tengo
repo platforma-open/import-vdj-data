@@ -411,6 +411,9 @@ self.body(func(inputs) {
 					{ id: "clonotypes-imported", column: "clonotypes-imported", spec: { name: "pl7.app/vdj/stat/clonotypesImported", valueType: "Long", domain: statDomain,
 						annotations: { "pl7.app/label": "Clonotypes" + suffix, "pl7.app/table/visibility": "default", "pl7.app/table/orderPriority": "99900",
 							"pl7.app/description": "Paired clonotypes: distinct combinations of a cell's chains." } } },
+					{ id: "cells-imported", column: "cells-imported", spec: { name: "pl7.app/vdj/stat/cellsImported", valueType: "Long", domain: statDomain,
+						annotations: { "pl7.app/label": "Cells Imported" + suffix, "pl7.app/table/visibility": "optional", "pl7.app/table/orderPriority": "99850",
+							"pl7.app/description": "Cells with both of the receptor's chains, the cells the paired clonotypes are built from." } } },
 					{ id: "cells-unpaired", column: "cells-unpaired", spec: { name: "pl7.app/vdj/stat/cellsUnpaired", valueType: "Long", domain: statDomain,
 						annotations: { "pl7.app/label": "Discarded: Unpaired Cells" + suffix, "pl7.app/table/visibility": "default", "pl7.app/table/orderPriority": "94500",
 							"pl7.app/description": "Cells left out of the paired clonotypes because they carry only one of the receptor's two chains. Counted in cells, not rows." } } }
