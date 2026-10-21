@@ -7,7 +7,6 @@ import type {
 } from "@platforma-sdk/model";
 import {
   BlockModelV3,
-  blockDependencies,
   DataColumn,
   createPlDataTableV3,
   TreeNodeAccessor,
@@ -676,8 +675,6 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
   })
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])
-
-  .plugin(blockDependencies)
 
   .title(() => "Import V(D)J Data")
 

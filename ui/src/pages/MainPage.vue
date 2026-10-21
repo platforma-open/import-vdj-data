@@ -351,7 +351,7 @@ watch(
 
 <template>
   <PlBlockPage title="Import V(D)J Data">
-    <PlBlockDependencies :handle="app.plugins.dependencies.handle" />
+    <PlBlockDependencies />
     <template #append>
       <PlBtnGhost @click.stop="() => (app.model.data.settingsOpen = true)">
         Settings
