@@ -42,7 +42,16 @@ columnsToSchema := func(columns) {
 	return schema
 }
 
+// How each chain is named in the stats table, in display order; matches the settings panel
+CHAIN_LABELS := [["IGHeavy", "IG Heavy"], ["IGLight", "IG Light"], ["TCRAlpha", "TCR-α"],
+	["TCRBeta", "TCR-β"], ["TCRDelta", "TCR-δ"], ["TCRGamma", "TCR-ɣ"]]
+
+// Per-chain stats, labelled with the chain and ordered by it after the dataset-level counters
 buildStatsColumns := func(chain, blockId, columnsInfo) {
+	name := chain
+	rank := 0
+	for i, c in CHAIN_LABELS { if c[0] == chain { name = c[1]; rank = i } }
+	order := func(offset) { return string(94000 - rank * 10 - offset) }
 	statsColumns := [
 		{
 			id: "clonotype-count",
@@ -55,8 +64,9 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 					"pl7.app/vdj/clonotypingRunId": blockId
 				},
 				annotations: {
-					"pl7.app/label": "Number of Clonotypes",
-					"pl7.app/description": "The number of clonotypes in the dataset.",
+					"pl7.app/label": name + " Clonotypes",
+					"pl7.app/table/orderPriority": order(0),
+					"pl7.app/description": "The number of distinct clonotypes of this chain in the sample.",
 					"pl7.app/table/visibility": "default"
 				}
 			}
@@ -78,8 +88,9 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 					"pl7.app/vdj/clonotypingRunId": blockId
 					},
 					annotations: {
-						"pl7.app/label": "Number of Reads",
-						"pl7.app/description": "The number of reads in the dataset.",
+						"pl7.app/label": name + " Reads",
+					"pl7.app/table/orderPriority": order(1),
+						"pl7.app/description": "The reads of this chain's imported clonotypes in the sample.",
 						"pl7.app/table/visibility": "optional"
 					}
 				}
@@ -99,8 +110,9 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 						"pl7.app/vdj/clonotypingRunId": blockId
 					},
 					annotations: {
-						"pl7.app/label": "Number of UMIs",
-						"pl7.app/description": "The number of UMIs in the dataset.",
+						"pl7.app/label": name + " UMIs",
+					"pl7.app/table/orderPriority": order(2),
+						"pl7.app/description": "The UMIs of this chain's imported clonotypes in the sample.",
 						"pl7.app/table/visibility": "optional"
 					}
 				}
