@@ -70,14 +70,14 @@ self.body(func(inputs) {
 		df = df.withColumns(renameExpressions...)
 	}
 
-	// Words a format writes for a missing value become empty
+	// Words a format writes for a missing value become empty, in any case
 	if !is_undefined(config) && !is_undefined(config.naLiterals) && len(config.naLiterals) > 0 {
 		naExpressions := []
 		for canonical in maps.getKeys(columnsInfo.columnMapping) {
 			if columnsInfo.columnMapping[canonical] == undefined { continue }
 			isNa := undefined
 			for na in config.naLiterals {
-				cond := pt.col(canonical).eq(na)
+				cond := pt.col(canonical).strToUpper().eq(text.to_upper(na))
 				isNa = is_undefined(isNa) ? cond : isNa.or(cond)
 			}
 			naExpressions = append(naExpressions, pt.when(isNa).then(pt.lit("")).otherwise(pt.col(canonical)).alias(canonical))
