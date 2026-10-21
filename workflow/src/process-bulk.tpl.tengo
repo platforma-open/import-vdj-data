@@ -110,9 +110,9 @@ self.body(func(inputs) {
     result := pframes.pFrameBuilder()
     stats := pframes.pFrameBuilder()
 
-    // Only these templates count what they discarded; the qiagen and custom ones return tsv and
-    // stats alone, and a path nothing fills never becomes ready.
-    countsRecords := formatSpec.importTplId == ":import-common" || formatSpec.importTplId == ":import-immunoSeq"
+    // Only these templates count what they discarded; the custom one returns tsv and stats alone,
+    // and a path nothing fills never becomes ready.
+    countsRecords := formatSpec.importTplId != ":import-custom"
     importOutputs := []
     if countsRecords {
         importOutputs += [{

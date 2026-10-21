@@ -451,27 +451,23 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     const hasAny = (aliases: string[]) => aliases.some((alias) => headers.includes(alias));
     const verdict = ((): { isValid: boolean; missingColumns: string[]; format: string } => {
       if (format === "qiagen") {
-        const qiagenColumns = [
-          "read set",
-          "chain",
-          "V-region",
-          "J-region",
-          "CDR3 nucleotide seq",
-          "CDR3 amino acid seq",
-          "frequency",
-          "rank",
-          "UMIs with analytical threshold",
-          "nucleotide length",
-          "amino acid length",
+        // Aliases as in infer-columns-qiagen.lib.tengo: QIAseq's clonotypes table, then CLC's
+        const required: string[][] = [
+          ["chain", "Chain"],
+          ["V-region", "V"],
+          ["J-region", "J"],
+          ["CDR3 nucleotide seq", "CDR3 nucleotide sequence"],
+          ["CDR3 amino acid seq", "CDR3 amino acid sequence"],
         ];
-
-        const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
-
-        return {
-          isValid: missingColumns.length === 0,
-          missingColumns,
-          format: "qiagen",
-        };
+        const missingColumns = required.filter((a) => !hasAny(a)).map((a) => a[0]);
+        const hasCount = headers.some(
+          (h) =>
+            h === "UMIs with analytical threshold" ||
+            h === "Count" ||
+            /^UMIs with >= \d+ reads$/.test(h),
+        );
+        if (!hasCount) missingColumns.push("UMIs with analytical threshold");
+        return { isValid: missingColumns.length === 0, missingColumns, format };
       }
 
       if (format === "immunoSeq") {

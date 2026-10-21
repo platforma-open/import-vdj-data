@@ -37,7 +37,10 @@ MIN_SHARE := 0.8
 
 splitLine := func(line, separator) {
 	// Trailing CR survives text.split on a CRLF file and would land inside the last value.
-	return text.split(text.trim_right(line, "\r"), separator)
+	// A quoted field reads without its quotes, as the import reads it.
+	fields := []
+	for f in text.split(text.trim_right(line, "\r"), separator) { fields = append(fields, text.trim(f, "\"")) }
+	return fields
 }
 
 self.body(func(inputs) {

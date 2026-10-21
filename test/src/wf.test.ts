@@ -1474,3 +1474,71 @@ blockTest(
     });
   },
 );
+
+// QIAseq's clonotypes table without its analytical-threshold column: the least strict UMI threshold
+// is the count. One beta row, one alpha row with a stop codon and one with no V call.
+blockTest(
+  "imports a QIAseq clonotypes table, counting UMIs at the least strict threshold",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+    const sampleId = uniquePlId();
+    await project.mutateBlockStorage(sndBlockId, {
+      operation: "update-block-data",
+      value: {
+        suggestedImport: false,
+        h5adFilesToPreprocess: [],
+        seuratFilesToPreprocess: [],
+        metadata: [],
+        sampleIds: [sampleId],
+        sampleLabelColumnLabel: "Sample Name",
+        sampleLabels: { [sampleId]: "qiaseq" },
+        datasets: [
+          {
+            id: uniquePlId(),
+            label: "QIAseq",
+            content: {
+              type: "Xsv",
+              xsvType: "tsv",
+              data: {
+                [sampleId]: await helpers.getLocalFileHandle("./assets/qiaseq-clonotypes.tsv"),
+              },
+            },
+          },
+        ],
+      },
+    });
+    await project.runBlock(sndBlockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
+    };
+    const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
+    const datasetRef = option.ref as PlRef;
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        datasetRef,
+        format: "qiagen",
+        chains: ["TCRAlpha"],
+        prerunCheck: {
+          check: "dataset",
+          subject: datasetCheckKey({ datasetRef, format: "qiagen" }),
+          columnsPresent: true,
+        },
+      }),
+    });
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+    expect(await statCounts(project, blockId, ml)).toMatchObject({
+      recordCount: 5,
+      recordsWithoutVGene: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 2,
+      umiCount: 15,
+    });
+  },
+);

@@ -29,6 +29,8 @@ specs := {
 		label: "QIAseq Immune Repertoire Analysis",
 		isSingleCell: false,
 		importTplId: ":import-qiagen",
+		// Read by the record counters; the template itself always derives productivity this way
+		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			return qiagen.getColumns(header)
 		}

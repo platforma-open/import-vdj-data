@@ -36,3 +36,13 @@ ImmunoSeq:
 - The chain comes from `locus` when the file has it, and from the genes otherwise.
 - Reduced exports (`v_resolved`, `j_resolved`, `templates`) import. A D gene is no longer required, so files without one pass validation, and validation names the columns as the file would.
 - The statistics table reports `Rows Read` and the rows discarded for no V gene, no J gene and not productive, as the other formats do.
+
+QIAseq:
+- QIAseq clonotype tables without `UMIs with analytical threshold` import, counted at the least strict `UMIs with >= N reads` threshold. The length, rank and frequency columns are no longer required. Every such table on GEO was rejected.
+- CLC Genomics Workbench `Clonotypes` exports (`Chain`, `V`, `J`, `C`, `Count`) import when comma-separated.
+- A CSV whose header names are quoted (as CLC writes them) is matched by its names, in every format; the quotes were read as part of each name, so no column was found.
+- A chain written as the locus (`TRA`) matches. Only the constant-region form (`TRAC`) did; the locus form was cut to `TR` and matched nothing.
+- Genes named by segment alone (`V5-1`, `J27`, `V-14N-3*01`) get their locus (`TRAV5-1`, `TRAJ27`, `TRAV14N-3`), the allele is split into the allele column, and of several calls the first is kept.
+- Rows with no CDR3 nt are discarded and counted rather than keyed together.
+- `Read Set` and `Rank` are no longer imported: once rows are merged into clonotypes they describe one arbitrary row.
+- The statistics table reports `Rows Read` and the discards, as the other formats do.

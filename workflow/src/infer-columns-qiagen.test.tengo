@@ -1,0 +1,21 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+qiagen := import(":infer-columns-qiagen")
+
+BASE := ["read set", "chain", "V-region", "J-region", "CDR3 nucleotide seq", "CDR3 amino acid seq"]
+
+Test_analyticalThreshold_isTheCount := func() {
+	info := qiagen.getColumns(BASE + ["UMIs with >= 3 reads", "UMIs with analytical threshold"])
+	test.isEqual("UMIs with analytical threshold", info.columnMapping["umi-count"], "count")
+}
+
+Test_withoutIt_theLeastStrictThresholdIs := func() {
+	info := qiagen.getColumns(BASE + ["UMIs with >= 5 reads", "UMIs with >= 3 reads", "UMIs with >= 10 reads"])
+	test.isEqual("UMIs with >= 3 reads", info.columnMapping["umi-count"], "count")
+}
+
+Test_clcClonotypes_areMapped := func() {
+	info := qiagen.getColumns(["Chain", "V", "D", "J", "C", "CDR3 nucleotide sequence", "CDR3 amino acid sequence", "Count"])
+	test.isEqual("Count", info.columnMapping["umi-count"], "count")
+	test.isEqual("V", info.columnMapping["v-allele"], "allele")
+	test.isEqual("C", info.columnMapping["c-gene"], "c gene")
+}
