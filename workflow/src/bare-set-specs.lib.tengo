@@ -619,7 +619,7 @@ statsColumns := func(blockId) {
 				domain: {
 					"pl7.app/vdj/clonotypingRunId": blockId
 				},
-				annotations: a(e.order, "default", {
+				annotations: a(e.order, "optional", {
 					"pl7.app/label": e.label,
 					"pl7.app/description": e.description
 				})

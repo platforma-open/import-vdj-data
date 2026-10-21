@@ -10,7 +10,15 @@
   scientist "lost" when they reopen an old project.
 */
 
-import { importedChains, upgradeLegacyData } from "@platforma-open/milaboratories.import-vdj.model";
+import {
+  collisionCheckKey,
+  datasetCheckKey,
+  declaredSlotsOnly,
+  importedChains,
+  projectArgs,
+  upgradeLegacyData,
+} from "@platforma-open/milaboratories.import-vdj.model";
+import type { BareSetMapping, BlockData } from "@platforma-open/milaboratories.import-vdj.model";
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, test } from "vitest";
 
@@ -94,5 +102,54 @@ describe("importedChains", () => {
   });
   test("a bulk import keeps the chains as chosen", () => {
     expect(importedChains("mixcr", ["IGLight"])).toEqual(["IGLight"]);
+  });
+});
+
+describe("declaredSlotsOnly", () => {
+  test("drops columns mapped to a chain the selection does not declare", () => {
+    const bare: BareSetMapping = {
+      identity: "id",
+      chainSelection: "IGHeavy",
+      sequences: { IGHeavy: "VH", IGLight: "VL" },
+      genes: { IGLight: { v: "VL gene" } },
+      scheme: "imgt",
+    };
+    expect(declaredSlotsOnly(bare)).toEqual({ ...bare, sequences: { IGHeavy: "VH" }, genes: {} });
+  });
+});
+
+describe("projectArgs", () => {
+  const base = upgradeLegacyData({});
+
+  test("a single-cell import sends whole receptors", () => {
+    const data: BlockData = { ...base, datasetRef: ref, format: "mixcr-sc", chains: ["IGLight"] };
+    const subject = datasetCheckKey(data)!;
+    const args = projectArgs({
+      ...data,
+      prerunCheck: { check: "dataset", subject, columnsPresent: true },
+    });
+    expect(args.chains).toEqual(["IGLight", "IGHeavy"]);
+  });
+
+  test("a dataset-door bare set does not need the chain picker it never shows", () => {
+    const bareSet: BareSetMapping = {
+      identity: "id",
+      chainSelection: "IGHeavy",
+      sequences: { IGHeavy: "VH" },
+      scheme: "imgt",
+    };
+    const data: BlockData = { ...base, datasetRef: ref, format: "custom", chains: [], bareSet };
+    const subject = collisionCheckKey(bareSet)!;
+    const args = projectArgs({
+      ...data,
+      prerunCheck: { check: "columns", subject, identityCollides: false },
+    });
+    expect(args.bareSet).toEqual(bareSet);
+  });
+
+  test("a chain-filtered import still needs a chain", () => {
+    expect(() => projectArgs({ ...base, datasetRef: ref, format: "mixcr", chains: [] })).toThrow(
+      "Choose at least one chain",
+    );
   });
 });

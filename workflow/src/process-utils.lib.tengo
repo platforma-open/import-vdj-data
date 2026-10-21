@@ -46,8 +46,9 @@ columnsToSchema := func(columns) {
 CHAIN_LABELS := [["IGHeavy", "IG Heavy"], ["IGLight", "IG Light"], ["TCRAlpha", "TCR-α"],
 	["TCRBeta", "TCR-β"], ["TCRDelta", "TCR-δ"], ["TCRGamma", "TCR-ɣ"]]
 
-// Per-chain stats, labelled with the chain and ordered by it after the dataset-level counters
-buildStatsColumns := func(chain, blockId, columnsInfo) {
+// Per-chain stats, labelled with the chain. Bulk shows each chain's clonotypes right after Rows Read;
+// single cell hides them, as its paired clonotypes are the count that matters.
+buildStatsColumns := func(chain, blockId, columnsInfo, singleCell) {
 	name := chain
 	rank := 0
 	for i, c in CHAIN_LABELS { if c[0] == chain { name = c[1]; rank = i } }
@@ -65,9 +66,9 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 				},
 				annotations: {
 					"pl7.app/label": name + " Clonotypes",
-					"pl7.app/table/orderPriority": order(0),
+					"pl7.app/table/orderPriority": singleCell ? order(0) : string(99900 - rank * 10),
 					"pl7.app/description": "The number of distinct clonotypes of this chain in the sample.",
-					"pl7.app/table/visibility": "default"
+					"pl7.app/table/visibility": singleCell ? "optional" : "default"
 				}
 			}
 		}

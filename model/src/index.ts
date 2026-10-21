@@ -110,7 +110,7 @@ function requireCheckedDataset(data: BlockData): void {
   }
 }
 
-function projectArgs(data: BlockData): BlockArgs {
+export function projectArgs(data: BlockData): BlockArgs {
   const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
   const assemblingFeature = data.assemblingFeature;
 
@@ -144,19 +144,21 @@ function projectArgs(data: BlockData): BlockArgs {
   }
 
   if (format === undefined) throw new Error("Choose a data format");
-  if (!Array.isArray(chains) || chains.length === 0) throw new Error("Choose at least one chain");
 
-  if (format === "custom") {
+  if (format === "custom" && data.bareSet !== undefined) {
     // A bare set drops the V gene, the J gene and the abundance — it supplies none of them,
     // and the rule that demanded all three could not tell a bare set from a malformed
     // repertoire export. What it requires instead is a sequence mapped to a chain and an
     // identity column, because the key is the identity's hash and the label is its value.
-    if (data.bareSet !== undefined) {
-      if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
-      requireCheckedColumns(data);
-      return withoutDatasetDoorMapping(args);
-    }
+    if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
+    requireCheckedColumns(data);
+    return withoutDatasetDoorMapping(args);
+  }
 
+  // After the bare set returns: it imports the chains its columns are mapped to, not these.
+  if (!Array.isArray(chains) || chains.length === 0) throw new Error("Choose at least one chain");
+
+  if (format === "custom") {
     const m = customMapping ?? {};
     const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
     const hasV = !!m["v-gene"];

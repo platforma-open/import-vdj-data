@@ -142,7 +142,7 @@ self.body(func(inputs) {
             }
         ]
 
-        statsColumns := processUtils.buildStatsColumns(chain, blockId, columnsInfo)
+        statsColumns := processUtils.buildStatsColumns(chain, blockId, columnsInfo, false)
 
 		traceSteps := [{
 			type: "milaboratories.importVDJ",

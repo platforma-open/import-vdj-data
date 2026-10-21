@@ -1326,9 +1326,14 @@ for (const [label, asset] of [
           counts[s.spec.domain?.["pl7.app/vdj/chain"] ?? ""] = Number(vector.data[0]);
         } else if (s.spec.name === "pl7.app/vdj/stat/recordsNotCell") {
           counts.notCell = Number(vector.data[0]);
+        } else if (s.spec.name === "pl7.app/vdj/stat/clonotypesImported") {
+          counts.imported = Number(vector.data[0]);
+        } else if (s.spec.name === "pl7.app/vdj/stat/cellsUnpaired") {
+          counts.unpaired = Number(vector.data[0]);
         }
       }
-      expect(counts).toEqual({ IGHeavy: 1, IGLight: 1, notCell: 1 });
+      // One cell with a heavy and a light chain: one paired clonotype, no unpaired cell
+      expect(counts).toEqual({ IGHeavy: 1, IGLight: 1, notCell: 1, imported: 1, unpaired: 0 });
     },
   );
 }
@@ -1423,7 +1428,11 @@ blockTest(
     });
     // Keyed on CDR3 the FR1-less clone is kept and joins its CDR3, as do the two FR1 variants
     const byCdr3 = await importWith({ ...mixcr, assemblingFeature: "CDR3" });
-    expect(byCdr3).toMatchObject({ recordCount: 6, recordsWithoutCdr3: 1, clonotypeCount: 2 });
+    expect(byCdr3).toMatchObject({
+      recordCount: 6,
+      recordsWithoutCdr3: 1,
+      clonotypeCount: 2,
+    });
     expect(byCdr3.recordsNotCoveringAssemblingFeature).toBeUndefined();
   },
 );

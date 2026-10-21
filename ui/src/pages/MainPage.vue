@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { BareSetScheme } from "@platforma-open/milaboratories.import-vdj.model";
 import {
+  CHAIN_SLOT_LABELS,
+  CHAIN_SLOTS,
   forgetMappedColumns,
+  importedChains,
   SCHEME_LABELS,
 } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
@@ -82,9 +85,9 @@ watchEffect(() => {
       parts.push(datasetOption.label);
     }
   }
-  // Add chains if available
+  // The chains the run imports, so a single-cell label names both chains of each receptor.
   if (args.chains && args.chains.length > 0) {
-    parts.push(args.chains.join(", "));
+    parts.push(importedChains(args.format, args.chains).join(", "));
   }
   args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
 });
@@ -111,7 +114,26 @@ const isSingleCell = computed(
     app.model.data.format === "airr-sc",
 );
 
+/**
+ * A bare set on the dataset door, which only init params can set up. It imports the chains its
+ * columns are mapped to, so the chain picker and the custom mapping do not apply.
+ */
+const datasetBareChains = computed(() => {
+  const bare = app.model.data.bareSet;
+  if (loadFromFile.value || app.model.data.format !== "custom" || bare === undefined) return "";
+  return (CHAIN_SLOTS[bare.chainSelection] ?? []).map((c) => CHAIN_SLOT_LABELS[c]).join(", ");
+});
+
+// Keyed on the set of stat columns: a saved layout fixes column order and visibility, so a run
+// with different columns starts from their defaults instead of appending them unordered.
+const statsSourceId = computed(() => {
+  const columns = app.model.outputs.statColumns;
+  if (columns === undefined) return undefined;
+  return columns.map((c) => c.name + JSON.stringify(c.domain)).sort();
+});
+
 const tableSettings = usePlDataTableSettingsV2({
+  sourceId: () => statsSourceId.value,
   model: () => app.model.outputs.stats,
 });
 
@@ -440,20 +462,26 @@ watch(
           </template>
         </PlDropdown>
 
-        <PlDropdownMulti
-          v-if="!isSingleCell"
-          v-model="app.model.data.chains"
-          :options="chainsOptions"
-          label="Chains to import"
-          required
-        />
-        <PlDropdownMulti
-          v-else
-          v-model="selectedReceptors"
-          :options="receptorOptions"
-          label="Immune receptors"
-          required
-        />
+        <PlAlert v-if="datasetBareChains" type="info" :style="{ width: '100%' }">
+          This block imports a sequence set mapped to {{ datasetBareChains }}. Its chains and
+          columns were set when the block was created.
+        </PlAlert>
+        <template v-else>
+          <PlDropdownMulti
+            v-if="!isSingleCell"
+            v-model="app.model.data.chains"
+            :options="chainsOptions"
+            label="Chains to import"
+            required
+          />
+          <PlDropdownMulti
+            v-else
+            v-model="selectedReceptors"
+            :options="receptorOptions"
+            label="Immune receptors"
+            required
+          />
+        </template>
 
         <PlAlert v-if="datasetScanning" type="info" :style="{ width: '100%' }">
           Validating the selected columns. This can take a moment, please wait...
@@ -468,7 +496,9 @@ watch(
           {{ validationMessage }}
         </PlAlert>
 
-        <template v-if="app.model.data.format === 'custom' && !datasetScanning">
+        <template
+          v-if="app.model.data.format === 'custom' && !datasetScanning && !datasetBareChains"
+        >
           <PlBtnGhost v-if="headerOptions.length > 0" @click="autoMap">
             Auto-map columns
             <template #tooltip>

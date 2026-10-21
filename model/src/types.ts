@@ -330,3 +330,17 @@ export function importedChains(format: ImportFormat | undefined, chains: string[
   }
   return out;
 }
+
+/**
+ * The mapping with sequence and gene columns kept only for the chains its selection declares.
+ * The panel shows only those slots, while the workflow imports every mapped one.
+ */
+export function declaredSlotsOnly(bare: BareSetMapping | undefined): BareSetMapping | undefined {
+  if (bare === undefined) return undefined;
+  const slots: string[] = CHAIN_SLOTS[bare.chainSelection] ?? [];
+  const keep = <T>(m: Partial<Record<BareSetChain, T>> | undefined) =>
+    Object.fromEntries(Object.entries(m ?? {}).filter(([slot]) => slots.includes(slot)));
+  const out = { ...bare, sequences: keep(bare.sequences) };
+  if (bare.genes !== undefined) out.genes = keep(bare.genes);
+  return out;
+}
