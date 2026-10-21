@@ -32,7 +32,7 @@ All formats read by the shared template (MiXCR, Cell Ranger, AIRR):
 ImmunoSeq:
 - A V, D or J gene immunoSEQ could not resolve among its ties (`unresolved`) keeps its family, e.g. `TCRBV06`. Such rearrangements, 19 to 25 percent of the productive ones in the test sets, matched no chain and were dropped.
 - v2 exports fill `templates` or `reads` and write `null` in the other. The count is taken from whichever is filled; files with templates imported every count as 0. The column is labelled `Number of Templates/Reads`.
-- `null`, `NA` and `no data` are read as empty, and gene names as upper case.
+- `null`, `NA`, `no data` and `unresolved` are recognised in any case. Gene names are matched in any case and stored in upper case, so lowercase files import the same as uppercase ones.
 - The chain comes from `locus` when the file has it, and from the genes otherwise.
 - Reduced exports (`v_resolved`, `j_resolved`, `templates`) import. A D gene is no longer required, so files without one pass validation, and validation names the columns as the file would.
 - The statistics table reports `Rows Read` and the rows discarded for no V gene, no J gene and not productive, as the other formats do.

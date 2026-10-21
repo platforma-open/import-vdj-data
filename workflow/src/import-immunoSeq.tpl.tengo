@@ -48,10 +48,11 @@ self.body(func(inputs) {
 	df = df.withColumns(renameExpressions...)
 
 	m := columnsInfo.columnMapping
-	// Adaptive writes these for a missing value, and "unresolved" for a gene it could not tell from its ties
+	// Adaptive writes these for a missing value, and "unresolved" for a gene it could not tell from its ties; in any case
 	value := func(col) {
 		v := pt.col(col).fillNull("")
-		return pt.when(v.eq("null").or(v.eq("NA")).or(v.eq("no data")).or(v.eq("unresolved"))).then(pt.lit("")).otherwise(v)
+		u := v.strToUpper()
+		return pt.when(u.eq("NULL").or(u.eq("NA")).or(u.eq("NO DATA")).or(u.eq("UNRESOLVED"))).then(pt.lit("")).otherwise(v)
 	}
 	// The first non-empty of the mapped columns, or empty
 	firstOf := func(cols) {
