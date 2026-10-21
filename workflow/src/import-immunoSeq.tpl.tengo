@@ -4,6 +4,7 @@ pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
+processUtils := import(":process-utils")
 strings := import("@platforma-sdk/workflow-tengo:strings")
 
 self.defineOutputs("tsv", "stats", "recordStats")
@@ -48,7 +49,7 @@ self.body(func(inputs) {
 	df = df.withColumns(renameExpressions...)
 
 	m := columnsInfo.columnMapping
-	// Adaptive writes these for a missing value, and "unresolved" for a gene it could not tell from its ties; in any case
+	// Missing-value words, matched case-insensitively; "unresolved" means no single best gene
 	value := func(col) {
 		v := pt.col(col).fillNull("")
 		u := v.strToUpper()
@@ -66,7 +67,7 @@ self.body(func(inputs) {
 	}
 	geneExprs := []
 	for g in ["v", "d", "j"] {
-		// An unresolved gene keeps its family, which still names the locus and the V or J in the key
+		// An unresolved gene falls back to its family (TCRBV06), which still names the locus
 		gene := firstOf([g + "-gene", g + "-family"]).strReplace("\\*.*$", "", { replaceAll: true }).strToUpper()
 		allele := m[g + "-allele"] == undefined ? gene : pt.when(value(g + "-allele").neq("")).then(value(g + "-allele").strToUpper()).otherwise(gene)
 		geneExprs = append(geneExprs, gene.alias(g + "-gene"), allele.alias(g + "-allele"))
@@ -90,26 +91,10 @@ self.body(func(inputs) {
 		pt.concatStr([value("locus"), pt.col("v-gene"), pt.col("j-gene")], {delimiter: " "}) :
 		pt.concatStr([pt.col("v-gene"), pt.col("j-gene")], {delimiter: " "})).strToUpper().alias("chain-source"))
 
-	keepsV := pt.col("v-gene").neq("")
-	keepsJ := pt.col("j-gene").neq("")
-	aa := pt.col("cdr3-aa").fillNull("")
-	keepsProductive := aa.neq("").and(aa.strContains("*", {literal: true}).not()).and(aa.strContains("_", {literal: true}).not())
-	df.select(
-		pt.col("v-gene").count().alias("record-count"),
-		keepsV.not().cast("Int64").sum().alias("records-no-v"),
-		keepsV.and(keepsJ.not()).cast("Int64").sum().alias("records-no-j"),
-		keepsV.and(keepsJ).and(keepsProductive.not()).cast("Int64").sum().alias("records-not-productive")
-	).saveContent("records.tsv")
-	df = df.filter(keepsV.and(keepsJ).and(keepsProductive)).withColumns(pt.lit("true").alias("is-productive"))
-
-	chainToLoci := {
-		"IGHeavy": ["IGH"],
-		"IGLight": ["IGK", "IGL"],
-		"TCRAlpha": ["TCRA", "TRA"],
-		"TCRBeta": ["TCRB", "TRB"],
-		"TCRGamma": ["TCRG", "TRG"],
-		"TCRDelta": ["TCRD", "TRD"]
-	}
+	records := processUtils.recordCounts("v-gene", [["records-no-v", pt.col("v-gene").neq("")],
+		["records-no-j", pt.col("j-gene").neq("")], ["records-not-productive", processUtils.productiveCdr3Aa()]])
+	df.select(records.exprs...).saveContent("records.tsv")
+	df = df.filter(records.kept).withColumns(pt.lit("true").alias("is-productive"))
 
 	keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
 
@@ -120,7 +105,7 @@ self.body(func(inputs) {
 
 	for chain in chains {
 		chainDf := undefined
-		for locus in chainToLoci[chain] {
+		for locus in processUtils.chainLoci[chain] {
 			has := pt.col("chain-source").strContains(locus, { literal: true })
 			chainDf = is_undefined(chainDf) ? has : chainDf.or(has)
 		}

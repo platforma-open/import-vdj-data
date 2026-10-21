@@ -4,6 +4,7 @@ pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
+processUtils := import(":process-utils")
 text := import("text")
 
 self.defineOutputs("tsv", "stats", "recordStats")
@@ -46,8 +47,7 @@ self.body(func(inputs) {
 	// QIAseq writes the constant region (TRAC), CLC the locus (TRA); either way the first three letters
 	df = df.withColumns(pt.col("chain").fillNull("").strToUpper().strSlice(0, 3).alias("chain"))
 
-	// Genes: the first of several calls, allele split off, and the locus added when only the
-	// segment is named (V5-1, V-14N-3*01) as QIAseq does for mouse. A slash is kept: TRAV29/DV5 is one gene.
+	// First call only, allele split off, locus added to segment-only names (V5-1). TRAV29/DV5 is one gene.
 	m := columnsInfo.columnMapping
 	geneExprs := []
 	for g in ["v", "d", "j", "c"] {
@@ -64,28 +64,11 @@ self.body(func(inputs) {
 
 	df = df.withColumns(pt.col("umi-count").strReplace(",", "", { replaceAll: true }).cast("Float64").fillNull(0).cast("Int64").alias("umi-count"))
 
-	keepsV := pt.col("v-gene").neq("")
-	keepsJ := pt.col("j-gene").neq("")
-	aa := pt.col("cdr3-aa").fillNull("")
-	keepsCdr3 := pt.col("cdr3-nt").fillNull("").neq("")
-	keepsProductive := aa.neq("").and(aa.strContains("*", {literal: true}).not()).and(aa.strContains("_", {literal: true}).not())
-	df.select(
-		pt.col("v-gene").count().alias("record-count"),
-		keepsV.not().cast("Int64").sum().alias("records-no-v"),
-		keepsV.and(keepsJ.not()).cast("Int64").sum().alias("records-no-j"),
-		keepsV.and(keepsJ).and(keepsCdr3.not()).cast("Int64").sum().alias("records-no-cdr3"),
-		keepsV.and(keepsJ).and(keepsCdr3).and(keepsProductive.not()).cast("Int64").sum().alias("records-not-productive")
-	).saveContent("records.tsv")
-	df = df.filter(keepsV.and(keepsJ).and(keepsCdr3).and(keepsProductive)).withColumns(pt.lit("true").alias("is-productive"))
-
-	chainToLoci := {
-		"IGHeavy": ["IGH"],
-		"IGLight": ["IGK", "IGL"],
-		"TCRAlpha": ["TRA"],
-		"TCRBeta": ["TRB"],
-		"TCRGamma": ["TRG"],
-		"TCRDelta": ["TRD"]
-	}
+	records := processUtils.recordCounts("v-gene", [["records-no-v", pt.col("v-gene").neq("")],
+		["records-no-j", pt.col("j-gene").neq("")], ["records-no-cdr3", pt.col("cdr3-nt").fillNull("").neq("")],
+		["records-not-productive", processUtils.productiveCdr3Aa()]])
+	df.select(records.exprs...).saveContent("records.tsv")
+	df = df.filter(records.kept).withColumns(pt.lit("true").alias("is-productive"))
 
 	keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
 	
@@ -96,7 +79,7 @@ self.body(func(inputs) {
 
 	for chain in chains {
 		inChain := undefined
-		for locus in chainToLoci[chain] {
+		for locus in processUtils.chainLoci[chain] {
 			has := pt.col("chain").eq(locus)
 			inChain = is_undefined(inChain) ? has : inChain.or(has)
 		}

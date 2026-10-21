@@ -18,7 +18,7 @@ specs := {
 		label: "ImmunoSeq",
 		isSingleCell: false,
 		importTplId: ":import-immunoSeq",
-		// Read by the record counters; the template itself always derives productivity this way
+		// Only picks the Not Productive stat's wording; the template filters on CDR3 aa itself
 		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			return immunoSeq.getColumns(header)
@@ -29,7 +29,7 @@ specs := {
 		label: "QIAseq Immune Repertoire Analysis",
 		isSingleCell: false,
 		importTplId: ":import-qiagen",
-		// Read by the record counters; the template itself always derives productivity this way
+		// Only picks the Not Productive stat's wording; the template filters on CDR3 aa itself
 		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			return qiagen.getColumns(header)
@@ -102,7 +102,7 @@ specs := {
 		label: "Custom",
 		isSingleCell: false,
 		importTplId: ":import-custom",
-		// Read by the record counters: a mapped CDR3 aa decides productivity
+		// Only picks the Not Productive stat's wording; the template filters on CDR3 aa itself
 		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			// opts.customMapping and opts.primaryCountType are required once mapping is complete;

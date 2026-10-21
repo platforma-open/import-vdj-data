@@ -79,12 +79,7 @@ export const requiredCanonicalBase: MappableColumn[] = [
   { key: "j-gene", label: "J gene", required: true },
 ];
 
-/**
- * Header names other tools write for each mappable column, matched without regard to case. Only
- * names that mean one thing everywhere: AIRR's `cdr3` is nucleotides and Cell Ranger's amino
- * acids, so neither is here. The C gene is left to the scientist: mapping it adds it to the
- * clonotype key, and the productive flag is not what the import filters on.
- */
+/** Header names tools write for each mappable column, matched case-insensitively. Ambiguous names (AIRR vs Cell Ranger cdr3) and the C gene, which joins the clonotype key, are left out. */
 export const headerAliases: Record<string, string[]> = {
   "cdr3-aa": [
     "aaSeqCDR3",
@@ -98,8 +93,8 @@ export const headerAliases: Record<string, string[]> = {
   "v-gene": ["bestVGene", "v_call", "v_gene", "vGeneName", "V-region"],
   "d-gene": ["bestDGene", "d_call", "d_gene", "dGeneName"],
   "j-gene": ["bestJGene", "j_call", "j_gene", "jGeneName", "J-region"],
-  "read-count": ["readCount", "reads", "read_count", "consensus_count", "seq_reads"],
-  "umi-count": ["uniqueMoleculeCount", "umis", "umi_count", "duplicate_count", "templates"],
+  "read-count": ["readCount", "reads", "read_count", "consensus_count", "seq_reads", "templates"],
+  "umi-count": ["uniqueMoleculeCount", "umis", "umi_count", "duplicate_count"],
   isotype: ["isotype"],
   "fr1-nt": ["nSeqFR1", "fwr1_nt"],
   "cdr1-nt": ["nSeqCDR1", "cdr1_nt"],

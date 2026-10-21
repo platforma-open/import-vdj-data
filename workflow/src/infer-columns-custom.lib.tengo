@@ -855,7 +855,7 @@ getColumns := func(header, customMapping, primaryCountType) {
         propertyColumns = append(propertyColumns, propertyColumnSpecs["vdj-aa"])
     }
 
-    // An assembled VDJRegion needs every region; the import template drops and counts rows missing one
+    // Regions the key spans; rows where one is region_not_covered are dropped and counted
     spanNt := undefined
     if hasVdjNt {
         spanNt = ["vdj-nt"]
@@ -867,7 +867,7 @@ getColumns := func(header, customMapping, primaryCountType) {
     return {
         hasUMIs: hasUMIs,
         spanNt: spanNt,
-        assemblingFeatureLabel: hasVdjNt || hasFr4Nt ? "VDJRegion" : common.assemblingFeatureLabels["{FR1Begin:CDR3End}"],
+        assemblingFeatureLabel: common.assemblingFeatureLabels[hasVdjNt || hasFr4Nt ? "VDJRegion" : "{FR1Begin:CDR3End}"],
         abundanceColumns: maps.getValues(abundanceColumns),
         propertyColumns: propertyColumns,
         columnMapping: columnMapping,

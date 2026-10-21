@@ -13,6 +13,7 @@
   the identity's hash: a sequence-derived key would merge antibodies that share a sequence.
 */
 
+import type { ImportFormat } from "@platforma-open/milaboratories.import-vdj.model";
 import {
   collisionCheckKey,
   datasetCheckKey,
@@ -1332,70 +1333,88 @@ for (const [label, asset] of [
   );
 }
 
-// MiXCR marks a region its clone does not reach as region_not_covered and leaves a zero-length one
-// empty. Two IGHV1-69 clones with an empty CDR1 differ only in FR1, one clone misses FR1, one
-// misses CDR3 and one has a stop codon in it.
+type BlockTestCtx = Parameters<NonNullable<Parameters<typeof blockTest>[2]>>[0];
+
+/**
+ * Loads one asset as a one-sample dataset and returns a function that imports it with the given
+ * block data and hands back the run's stats by short name.
+ */
+async function loadAsset(
+  project: BlockTestCtx["rawPrj"],
+  helpers: BlockTestCtx["helpers"],
+  ml: { driverKit: { pFrameDriver: StatsDriver } },
+  asset: string,
+) {
+  const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+  const sampleId = uniquePlId();
+  await project.mutateBlockStorage(sndBlockId, {
+    operation: "update-block-data",
+    value: {
+      suggestedImport: false,
+      h5adFilesToPreprocess: [],
+      seuratFilesToPreprocess: [],
+      metadata: [],
+      sampleIds: [sampleId],
+      sampleLabelColumnLabel: "Sample Name",
+      sampleLabels: { [sampleId]: asset },
+      datasets: [
+        {
+          id: uniquePlId(),
+          label: asset,
+          content: {
+            type: "Xsv",
+            xsvType: "tsv",
+            data: { [sampleId]: await helpers.getLocalFileHandle(`./assets/${asset}`) },
+          },
+        },
+      ],
+    },
+  });
+  await project.runBlock(sndBlockId);
+  await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+  return async (fields: Record<string, unknown>) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
+    };
+    const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
+    const datasetRef = option.ref as PlRef;
+    const format = fields.format as ImportFormat;
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        datasetRef,
+        // The custom format has no dataset verdict to wait for
+        ...(format === "custom"
+          ? {}
+          : {
+              prerunCheck: {
+                check: "dataset",
+                subject: datasetCheckKey({ datasetRef, format }),
+                columnsPresent: true,
+              },
+            }),
+        ...fields,
+      }),
+    });
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+    return statCounts(project, blockId, ml);
+  };
+}
+
+// Rows: two IGHV1-69 clones differing only in FR1 (CDR1 empty), one missing FR1, one missing CDR3,
+// one with a stop codon.
 blockTest(
   "imports a MiXCR export by its widest region, or by CDR3 when asked",
   { timeout: 600000 },
   async ({ rawPrj: project, helpers, expect, ml }) => {
-    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
-    const sampleId = uniquePlId();
-    await project.mutateBlockStorage(sndBlockId, {
-      operation: "update-block-data",
-      value: {
-        suggestedImport: false,
-        h5adFilesToPreprocess: [],
-        seuratFilesToPreprocess: [],
-        metadata: [],
-        sampleIds: [sampleId],
-        sampleLabelColumnLabel: "Sample Name",
-        sampleLabels: { [sampleId]: "mixcr" },
-        datasets: [
-          {
-            id: uniquePlId(),
-            label: "MiXCR",
-            content: {
-              type: "Xsv",
-              xsvType: "tsv",
-              data: { [sampleId]: await helpers.getLocalFileHandle("./assets/mixcr-regions.tsv") },
-            },
-          },
-        ],
-      },
-    });
-    await project.runBlock(sndBlockId);
-    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
-
-    const counts = async (assemblingFeature?: string) => {
-      const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
-      const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
-        outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
-      };
-      const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
-      const datasetRef = option.ref as PlRef;
-      await project.mutateBlockStorage(blockId, {
-        operation: "update-block-data",
-        value: blockData({
-          datasetRef,
-          format: "mixcr",
-          chains: ["IGHeavy"],
-          assemblingFeature,
-          prerunCheck: {
-            check: "dataset",
-            subject: datasetCheckKey({ datasetRef, format: "mixcr" }),
-            columnsPresent: true,
-          },
-        }),
-      });
-      await project.runBlock(blockId);
-      await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
-
-      return statCounts(project, blockId, ml);
-    };
+    const importWith = await loadAsset(project, helpers, ml, "mixcr-regions.tsv");
+    const mixcr = { format: "mixcr", chains: ["IGHeavy"] };
 
     // The empty CDR1 is a region of zero length: both clones stay, rather than meeting on a blank key
-    expect(await counts()).toMatchObject({
+    expect(await importWith(mixcr)).toMatchObject({
       recordCount: 6,
       recordsWithoutCdr3: 1,
       recordsNotCoveringAssemblingFeature: 1,
@@ -1403,69 +1422,20 @@ blockTest(
       clonotypeCount: 3,
     });
     // Keyed on CDR3 the FR1-less clone is kept and joins its CDR3, as do the two FR1 variants
-    const byCdr3 = await counts("CDR3");
+    const byCdr3 = await importWith({ ...mixcr, assemblingFeature: "CDR3" });
     expect(byCdr3).toMatchObject({ recordCount: 6, recordsWithoutCdr3: 1, clonotypeCount: 2 });
     expect(byCdr3.recordsNotCoveringAssemblingFeature).toBeUndefined();
   },
 );
 
-// Adaptive v2: templates filled and reads written as null; a V gene unresolved among ties keeps its
-// family; an out-of-frame rearrangement has no amino acids; one row resolves no V at all.
+// Adaptive v2: templates filled and reads written as null; a V gene with no single best match keeps
+// its family; an out-of-frame rearrangement has no amino acids; one row resolves no V at all.
 blockTest(
   "imports an immunoSEQ export, unresolved genes by their family",
   { timeout: 600000 },
   async ({ rawPrj: project, helpers, expect, ml }) => {
-    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
-    const sampleId = uniquePlId();
-    await project.mutateBlockStorage(sndBlockId, {
-      operation: "update-block-data",
-      value: {
-        suggestedImport: false,
-        h5adFilesToPreprocess: [],
-        seuratFilesToPreprocess: [],
-        metadata: [],
-        sampleIds: [sampleId],
-        sampleLabelColumnLabel: "Sample Name",
-        sampleLabels: { [sampleId]: "immunoseq" },
-        datasets: [
-          {
-            id: uniquePlId(),
-            label: "immunoSEQ",
-            content: {
-              type: "Xsv",
-              xsvType: "tsv",
-              data: { [sampleId]: await helpers.getLocalFileHandle("./assets/immunoseq-v2.tsv") },
-            },
-          },
-        ],
-      },
-    });
-    await project.runBlock(sndBlockId);
-    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
-
-    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
-    const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
-      outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
-    };
-    const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
-    const datasetRef = option.ref as PlRef;
-    await project.mutateBlockStorage(blockId, {
-      operation: "update-block-data",
-      value: blockData({
-        datasetRef,
-        format: "immunoSeq",
-        chains: ["TCRBeta"],
-        prerunCheck: {
-          check: "dataset",
-          subject: datasetCheckKey({ datasetRef, format: "immunoSeq" }),
-          columnsPresent: true,
-        },
-      }),
-    });
-    await project.runBlock(blockId);
-    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
-
-    expect(await statCounts(project, blockId, ml)).toMatchObject({
+    const importWith = await loadAsset(project, helpers, ml, "immunoseq-v2.tsv");
+    expect(await importWith({ format: "immunoSeq", chains: ["TCRBeta"] })).toMatchObject({
       recordCount: 4,
       recordsWithoutVGene: 1,
       recordsNotProductive: 1,
@@ -1476,64 +1446,13 @@ blockTest(
 );
 
 // QIAseq's clonotypes table without its analytical-threshold column: the least strict UMI threshold
-// is the count. One beta row, one alpha row with a stop codon and one with no V call.
+// is the count. Two good alpha rows, one beta row, one alpha row with a stop codon and one with no V call.
 blockTest(
   "imports a QIAseq clonotypes table, counting UMIs at the least strict threshold",
   { timeout: 600000 },
   async ({ rawPrj: project, helpers, expect, ml }) => {
-    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
-    const sampleId = uniquePlId();
-    await project.mutateBlockStorage(sndBlockId, {
-      operation: "update-block-data",
-      value: {
-        suggestedImport: false,
-        h5adFilesToPreprocess: [],
-        seuratFilesToPreprocess: [],
-        metadata: [],
-        sampleIds: [sampleId],
-        sampleLabelColumnLabel: "Sample Name",
-        sampleLabels: { [sampleId]: "qiaseq" },
-        datasets: [
-          {
-            id: uniquePlId(),
-            label: "QIAseq",
-            content: {
-              type: "Xsv",
-              xsvType: "tsv",
-              data: {
-                [sampleId]: await helpers.getLocalFileHandle("./assets/qiaseq-clonotypes.tsv"),
-              },
-            },
-          },
-        ],
-      },
-    });
-    await project.runBlock(sndBlockId);
-    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
-
-    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
-    const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
-      outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
-    };
-    const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
-    const datasetRef = option.ref as PlRef;
-    await project.mutateBlockStorage(blockId, {
-      operation: "update-block-data",
-      value: blockData({
-        datasetRef,
-        format: "qiagen",
-        chains: ["TCRAlpha"],
-        prerunCheck: {
-          check: "dataset",
-          subject: datasetCheckKey({ datasetRef, format: "qiagen" }),
-          columnsPresent: true,
-        },
-      }),
-    });
-    await project.runBlock(blockId);
-    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
-
-    expect(await statCounts(project, blockId, ml)).toMatchObject({
+    const importWith = await loadAsset(project, helpers, ml, "qiaseq-clonotypes.tsv");
+    expect(await importWith({ format: "qiagen", chains: ["TCRAlpha"] })).toMatchObject({
       recordCount: 5,
       recordsWithoutVGene: 1,
       recordsNotProductive: 1,
@@ -1549,57 +1468,14 @@ blockTest(
   "imports a custom mapping keyed on assembled regions, or on regions and CDR3 aa",
   { timeout: 600000 },
   async ({ rawPrj: project, helpers, expect, ml }) => {
-    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
-    const sampleId = uniquePlId();
-    await project.mutateBlockStorage(sndBlockId, {
-      operation: "update-block-data",
-      value: {
-        suggestedImport: false,
-        h5adFilesToPreprocess: [],
-        seuratFilesToPreprocess: [],
-        metadata: [],
-        sampleIds: [sampleId],
-        sampleLabelColumnLabel: "Sample Name",
-        sampleLabels: { [sampleId]: "custom" },
-        datasets: [
-          {
-            id: uniquePlId(),
-            label: "Custom",
-            content: {
-              type: "Xsv",
-              xsvType: "tsv",
-              data: { [sampleId]: await helpers.getLocalFileHandle("./assets/custom-regions.tsv") },
-            },
-          },
-        ],
-      },
-    });
-    await project.runBlock(sndBlockId);
-    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
-
-    const counts = async (customMapping: Record<string, string>) => {
-      const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
-      const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
-        outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
-      };
-      const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
-      const datasetRef = option.ref as PlRef;
-      await project.mutateBlockStorage(blockId, {
-        operation: "update-block-data",
-        value: blockData({
-          datasetRef,
-          format: "custom",
-          chains: ["IGHeavy"],
-          customMapping: { "v-gene": "v", "j-gene": "j", "read-count": "count", ...customMapping },
-          primaryCountType: "read",
-        }),
+    const importWith = await loadAsset(project, helpers, ml, "custom-regions.tsv");
+    const custom = (customMapping: Record<string, string>) =>
+      importWith({
+        format: "custom",
+        chains: ["IGHeavy"],
+        customMapping: { "v-gene": "v", "j-gene": "j", "read-count": "count", ...customMapping },
+        primaryCountType: "read",
       });
-      await project.runBlock(blockId);
-      await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
-
-      return statCounts(project, blockId, ml);
-    };
-
     const regions = {
       "fr1-nt": "fr1",
       "cdr1-nt": "cdr1",
@@ -1607,8 +1483,9 @@ blockTest(
       "cdr2-nt": "cdr2",
       "fr3-nt": "fr3",
     };
+
     // The empty CDR1 is zero length and keyed; the uncovered FR1 is counted, not keyed on a blank
-    expect(await counts({ ...regions, "cdr3-nt": "cdr3", "cdr3-aa": "cdr3_aa" })).toMatchObject({
+    expect(await custom({ ...regions, "cdr3-nt": "cdr3", "cdr3-aa": "cdr3_aa" })).toMatchObject({
       recordCount: 5,
       recordsWithoutVGene: 1,
       recordsNotCoveringAssemblingFeature: 1,
@@ -1616,7 +1493,7 @@ blockTest(
       clonotypeCount: 2,
     });
     // Without CDR3 nt the regions and CDR3 aa are keyed as they are; this mapping used to fail the run
-    expect(await counts({ ...regions, "cdr3-aa": "cdr3_aa" })).toMatchObject({
+    expect(await custom({ ...regions, "cdr3-aa": "cdr3_aa" })).toMatchObject({
       recordCount: 5,
       recordsWithoutVGene: 1,
       recordsNotProductive: 1,

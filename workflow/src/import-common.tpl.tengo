@@ -70,7 +70,7 @@ self.body(func(inputs) {
 		df = df.withColumns(renameExpressions...)
 	}
 
-	// Words a format writes for a missing value become empty, in any case
+	// Words a format writes for a missing value become empty, matched case-insensitively
 	if !is_undefined(config) && !is_undefined(config.naLiterals) && len(config.naLiterals) > 0 {
 		naExpressions := []
 		for canonical in maps.getKeys(columnsInfo.columnMapping) {
@@ -215,12 +215,12 @@ self.body(func(inputs) {
 		}
 	}
 
-	// Allele/best-gene helpers (MiXCR mode)
+	// MiXCR mode: best-gene alleles and the region_not_covered marker
 	alleleMode := "none"
 	if !is_undefined(config) && !is_undefined(config.alleleMode) { alleleMode = config.alleleMode }
 
-	// MiXCR writes region_not_covered for a region its clone does not reach, and an empty value
-	// for one of zero length. So coverage is read off the marker, and the marker itself is no sequence.
+	// MiXCR writes region_not_covered for an unreached region and empty for a zero-length one.
+	// Coverage comes from the marker, which is then blanked.
 	if alleleMode == "mixcr" {
 		notCovered := func(col) { return pt.col(col).fillNull("").eq("region_not_covered") }
 		if !is_undefined(columnsInfo.spanNt) {
@@ -254,20 +254,18 @@ self.body(func(inputs) {
 		}
 	}
 
-	// Remove rows where any sequence column contains "region_not_covered"
-	seqCols := nt_cols + aa_cols + ["vdj-nt", "vdj-aa"]
-	invalidExpr := undefined
-	for col in seqCols {
-		if columnsInfo.columnMapping[col] != undefined {
-			cond := pt.col(col).strContains("region_not_covered", { literal: true })
-			// AIRR rows often lack a region; a null there must not drop the row
-			if !is_undefined(config) && config.keepRowsWithEmptySequences == true { cond = pt.col(col).fillNull("").strContains("region_not_covered", { literal: true }) }
-			if invalidExpr == undefined { invalidExpr = cond } else { invalidExpr = invalidExpr.or(cond) }
+	// Other formats: drop rows where any sequence column contains "region_not_covered"
+	if alleleMode != "mixcr" {
+		invalidExpr := undefined
+		for col in nt_cols + aa_cols + ["vdj-nt", "vdj-aa"] {
+			if columnsInfo.columnMapping[col] != undefined {
+				cond := pt.col(col).strContains("region_not_covered", { literal: true })
+				// AIRR rows often lack a region; a null there must not drop the row
+				if !is_undefined(config) && config.keepRowsWithEmptySequences == true { cond = pt.col(col).fillNull("").strContains("region_not_covered", { literal: true }) }
+				if invalidExpr == undefined { invalidExpr = cond } else { invalidExpr = invalidExpr.or(cond) }
+			}
 		}
-	}
-	// MiXCR's marker was blanked above
-	if invalidExpr != undefined && alleleMode != "mixcr" {
-		df = df.filter(invalidExpr.not())
+		if invalidExpr != undefined { df = df.filter(invalidExpr.not()) }
 	}
 
 	if alleleMode == "mixcr" {
@@ -381,19 +379,15 @@ self.body(func(inputs) {
 	keepsProductive := undefined
 	productivityMode := "none"
 	if !is_undefined(config) && !is_undefined(config.productivityMode) { productivityMode = config.productivityMode }
-	byCdr3Aa := undefined
-	if columnsInfo.columnMapping["cdr3-aa"] != undefined {
-		aa := pt.col("cdr3-aa").fillNull("")
-		byCdr3Aa = aa.neq("").and(aa.strContains("*", { literal: true }).not()).and(aa.strContains("_", { literal: true }).not())
-	}
+	byCdr3Aa := columnsInfo.columnMapping["cdr3-aa"] == undefined ? undefined : processUtils.productiveCdr3Aa()
 	if productivityMode == "from_cdr3_aa" {
 		keepsProductive = is_undefined(byCdr3Aa) ? pt.lit(true) : byCdr3Aa
 	} else if productivityMode == "from_column_true" {
 		p := pt.col("is-productive").fillNull("").strToUpper()
 		keepsProductive = p.eq("TRUE").or(p.eq("T"))
 	} else if productivityMode == "from_column_or_cdr3_aa" {
-		// The file's call where it makes one; an empty or absent one falls back to the CDR3 aa,
-		// and with neither the row is kept, as nothing says it is not productive
+		// The file's productive flag decides; where it is empty or absent, the CDR3 aa does.
+		// With no CDR3 aa column the row is kept.
 		unknown := is_undefined(byCdr3Aa) ? pt.lit(true) : byCdr3Aa
 		if columnsInfo.columnMapping["is-productive"] != undefined {
 			p := pt.col("is-productive").fillNull("").strToUpper()
@@ -405,25 +399,13 @@ self.body(func(inputs) {
 		}
 	}
 
-	// Counted once for the whole dataset, and each is that filter's own cost -- rows it drops
-	// which everything before it kept -- so the discards and the survivors partition the file.
-	discardExprs := []
-	passed := undefined
-	for step in [["records-not-cell", keepsCell], ["records-no-v", keepsV], ["records-no-j", keepsJ],
-		["records-no-cdr3", keepsCdr3], ["records-not-covering", coversFeature], ["records-not-productive", keepsProductive]] {
-		keeps := step[1]
-		if is_undefined(keeps) { continue }
-		dropped := is_undefined(passed) ? keeps.not() : keeps.not().and(passed)
-		discardExprs = append(discardExprs, dropped.cast("Int64").sum().alias(step[0]))
-		passed = is_undefined(passed) ? keeps : passed.and(keeps)
-	}
-	// Any column certain to exist, since count() after fillNull is just the row count
+	// Counted once for the whole dataset; any column certain to exist gives the row count
 	recordCountColumn := columnsInfo.columnMapping["v-gene"] != undefined ? "v-gene" :
 		columnsInfo.columnMapping["cdr3-nt"] != undefined ? "cdr3-nt" : "cdr3-aa"
-	// Appended one by one: tengo's `append` rejects a spread that turns out to be empty
-	recordExprs := [pt.col(recordCountColumn).fillNull("").count().alias("record-count")]
-	for e in discardExprs { recordExprs = append(recordExprs, e) }
-	df.select(recordExprs...).saveContent("records.tsv")
+	records := processUtils.recordCounts(recordCountColumn, [["records-not-cell", keepsCell], ["records-no-v", keepsV],
+		["records-no-j", keepsJ], ["records-no-cdr3", keepsCdr3], ["records-not-covering", coversFeature],
+		["records-not-productive", keepsProductive]])
+	df.select(records.exprs...).saveContent("records.tsv")
 
 	for keeps in [keepsCell, keepsV, keepsJ, keepsCdr3, coversFeature] {
 		if !is_undefined(keeps) { df = df.filter(keeps) }
@@ -471,14 +453,7 @@ self.body(func(inputs) {
 		df = df.withColumns(pt.when(isLocus).then(locus).otherwise(pt.col(chainColumn)).alias("chain-source"))
 		chainColumn = "chain-source"
 	}
-	chainToPrefixes := {
-		"IGHeavy": ["IGH"],
-		"IGLight": ["IGK", "IGL"],
-		"TCRAlpha": ["TRA", "TRAC", "TCRA"],
-		"TCRBeta": ["TRB", "TRBC", "TCRB"],
-		"TCRGamma": ["TRG", "TRGC", "TCRG"],
-		"TCRDelta": ["TRD", "TRDC", "TCRD"]
-	}
+	chainToPrefixes := processUtils.chainLoci
 
 	// Abundance availability
 	hasUmiCount := columnsInfo.hasUMIs && !is_undefined(columnsInfo.columnMapping["umi-count"])

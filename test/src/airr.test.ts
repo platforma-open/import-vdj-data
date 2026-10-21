@@ -314,7 +314,7 @@ blockTest(
       expect(has(stats, "pl7.app/vdj/stat/recordCount")).toBe(true);
       expect(has(stats, "pl7.app/vdj/stat/recordsWithoutCdr3")).toBe(true);
       expect(has(stats, "pl7.app/vdj/stat/recordsNotCoveringAssemblingFeature")).toBe(true);
-      // AIRR drops non-productive rows like every other format, by its productive call
+      // AIRR drops non-productive rows like every other format
       expect(has(stats, "pl7.app/vdj/stat/recordsNotProductive")).toBe(true);
 
       // No chain in the domain: the standards do not differ by chain, and a row with no V call
@@ -344,13 +344,12 @@ blockTest(
     {
       // The IMGT sample outnumbers the other 4 rows to 2. Pooled, its fwr4 would carry the vote,
       // trim the second sample's single-codon fwr4 to nothing and leave it with no clonotype.
-      // Its rows would be discarded as not covering. Counted rather than checked by clonotypes:
-      // both of its rows are non-productive, so it is left empty either way.
+      // Counted, not checked by clonotypes: both of its rows are non-productive anyway.
       const { notCovering } = await importFrom(ctx, {
         label: "twoconv",
         assemblingFeature: "VDJRegion",
       });
-      expect(notCovering, "each sample votes on its own rows").toEqual([0, 0]);
+      expect(notCovering, "each sample's FR4 is trimmed from its own rows").toEqual([0, 0]);
     }
 
     // --- no junction column, in both boundary conventions ------------------------------
@@ -464,8 +463,7 @@ blockTest(
       expect(has(columns, "pl7.app/vdj/geneHit")).toBe(true);
       expect(has(columns, "pl7.app/vdj/geneHitWithAllele")).toBe(true);
 
-      // The counters follow the import template, not the format: MiXCR goes through
-      // `import-common`, so it gets them.
+      // MiXCR reports the record counters too.
       expect(has(stats, "pl7.app/vdj/stat/recordCount")).toBe(true);
     }
   },

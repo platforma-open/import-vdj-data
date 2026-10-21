@@ -1,5 +1,38 @@
 maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
 json := import("json")
+
+// The loci a chain's genes or chain column name; matched by substring, so TRA also covers TRAC and TRAV
+chainLoci := {
+	"IGHeavy": ["IGH"],
+	"IGLight": ["IGK", "IGL"],
+	"TCRAlpha": ["TRA", "TCRA"],
+	"TCRBeta": ["TRB", "TCRB"],
+	"TCRGamma": ["TRG", "TCRG"],
+	"TCRDelta": ["TRD", "TCRD"]
+}
+
+// A CDR3 aa that is present and has no stop codon (*) or frameshift (_)
+productiveCdr3Aa := func() {
+	aa := pt.col("cdr3-aa").fillNull("")
+	return aa.neq("").and(aa.strContains("*", { literal: true }).not()).and(aa.strContains("_", { literal: true }).not())
+}
+
+// Row counts for records.tsv: the rows read, then what each filter drops among the rows every
+// earlier one kept, so the discards and the survivors add up. Steps are [id, keeps] in filter
+// order; an undefined keeps is skipped. Returns the expressions and the combined filter.
+recordCounts := func(countColumn, steps) {
+	exprs := [pt.col(countColumn).fillNull("").count().alias("record-count")]
+	kept := undefined
+	for step in steps {
+		keeps := step[1]
+		if is_undefined(keeps) { continue }
+		dropped := is_undefined(kept) ? keeps.not() : keeps.not().and(kept)
+		exprs = append(exprs, dropped.cast("Int64").sum().alias(step[0]))
+		kept = is_undefined(kept) ? keeps : kept.and(keeps)
+	}
+	return { exprs: exprs, kept: kept }
+}
 
 columnsToSchema := func(columns) {
 	schema := []
@@ -156,11 +189,11 @@ buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode, productivityMo
 			"default", "96000")]
 	}
 	if productivityMode == "from_cdr3_aa" || productivityMode == "from_column_true" || productivityMode == "from_column_or_cdr3_aa" {
-		why := productivityMode == "from_cdr3_aa" ? "their CDR3 has a stop codon or a frameshift" :
+		why := productivityMode == "from_cdr3_aa" ? "their CDR3 aa is missing or has a stop codon or a frameshift" :
 			productivityMode == "from_column_true" ? "the file marks them not productive" :
-			"the file marks them not productive or, where it does not say, their CDR3 has a stop codon or a frameshift"
+			"the file marks them not productive or, where it does not say, their CDR3 aa is missing or has a stop codon or a frameshift"
 		cols += [col("records-not-productive", "recordsNotProductive", "Discarded: Not Productive",
-			"Rows discarded because " + why + ", among those kept so far.", "optional", "95000")]
+			"Rows discarded because " + why + ", among those that passed the other filters.", "optional", "95000")]
 	}
 	return cols
 }
@@ -204,6 +237,9 @@ applyXsvType := func(importCfg, datasetSpec) {
 }
 
 export {
+	chainLoci: chainLoci,
+	productiveCdr3Aa: productiveCdr3Aa,
+	recordCounts: recordCounts,
 	columnsToSchema: columnsToSchema,
 	buildStatsColumns: buildStatsColumns,
 	buildRecordStatsColumns: buildRecordStatsColumns,

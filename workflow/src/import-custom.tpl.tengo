@@ -4,6 +4,7 @@ pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
+processUtils := import(":process-utils")
 
 self.defineOutputs("tsv", "stats", "recordStats")
 
@@ -88,8 +89,8 @@ self.body(func(inputs) {
     aa_cols := ["fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "cdr3-aa"]
     if hasFr4Aa { aa_cols = append(aa_cols, "fr4-aa") }
 
-    // MiXCR marks a region its clone does not reach with region_not_covered and leaves one of zero
-    // length empty, so coverage is read off the marker, and the marker itself is no sequence
+    // MiXCR writes region_not_covered for an unreached region and empty for a zero-length one.
+    // Coverage comes from the marker, which is then blanked.
     mapped := func(cols) { return slices.filter(cols, func(c) { return columnsInfo.columnMapping[c] != undefined }) }
     notCovered := func(cols) {
         expr := pt.lit(false)
@@ -124,32 +125,14 @@ self.body(func(inputs) {
         }
     }
 
-    // Counted once for the dataset, each filter on what the ones before it kept, as in import-common
+    // Counted once for the dataset. Without CDR3 nt an empty CDR3 aa counts as not productive.
     filled := func(col) { return pt.col(col).fillNull("").neq("") }
-    keepsV := filled("v-gene")
-    keepsJ := filled("j-gene")
-    // Without CDR3 nt an empty CDR3 aa is counted as not productive
-    keepsCdr3 := hasNT ? filled("cdr3-nt") : pt.lit(true)
-    keepsCovered := pt.col("covers-feature")
-    aa := pt.col("cdr3-aa").fillNull("")
-    keepsProductive := hasAA ? aa.neq("").and(aa.strContains("*", { literal: true }).not()).and(aa.strContains("_", { literal: true }).not()) : pt.lit(true)
-    kept := keepsV.and(keepsJ)
-    recordExprs := [
-        pt.col("v-gene").fillNull("").count().alias("record-count"),
-        keepsV.not().cast("Int64").sum().alias("records-no-v"),
-        keepsV.and(keepsJ.not()).cast("Int64").sum().alias("records-no-j")
-    ]
-    if hasNT {
-        recordExprs = append(recordExprs, kept.and(keepsCdr3.not()).cast("Int64").sum().alias("records-no-cdr3"))
-    }
-    kept = kept.and(keepsCdr3)
-    if columnsInfo.spanNt != undefined {
-        recordExprs = append(recordExprs, kept.and(keepsCovered.not()).cast("Int64").sum().alias("records-not-covering"))
-    }
-    kept = kept.and(keepsCovered)
-    recordExprs = append(recordExprs, kept.and(keepsProductive.not()).cast("Int64").sum().alias("records-not-productive"))
-    df.select(recordExprs...).saveContent("records.tsv")
-    df = df.filter(kept.and(keepsProductive))
+    records := processUtils.recordCounts("v-gene", [["records-no-v", filled("v-gene")], ["records-no-j", filled("j-gene")],
+        ["records-no-cdr3", hasNT ? filled("cdr3-nt") : undefined],
+        ["records-not-covering", columnsInfo.spanNt != undefined ? pt.col("covers-feature") : undefined],
+        ["records-not-productive", hasAA ? processUtils.productiveCdr3Aa() : pt.lit(true)]])
+    df.select(records.exprs...).saveContent("records.tsv")
+    df = df.filter(records.kept)
 
     // Convert numeric columns to Int64 (remove floating points and thousand separators if present)
     if hasReads {
@@ -229,7 +212,7 @@ self.body(func(inputs) {
 
         chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
-        // Abundance columns are already cast to Int64 earlier (lines 108-132)
+        // Counts were cast to Int64 above
         // No need to cast again here
 
         // Aggregate by clonotypeKey using whichever abundance exists

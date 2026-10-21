@@ -96,7 +96,7 @@ const secondaryTypeOptions = computed(() => {
   return countTypeOptions;
 });
 
-// The formats that carry region sequences to assemble from
+// AIRR, bulk or single-cell
 const isAirr = computed(
   () => app.model.data.format === "airr" || app.model.data.format === "airr-sc",
 );
@@ -311,10 +311,7 @@ function setMapping(key: string, value: string | undefined) {
   else a.customMapping[key] = value;
 }
 
-/**
- * Fill every unmapped column whose header another tool's name gives away. Run on the button only:
- * filling from the header output by itself would write data back from an output.
- */
+/** Map each unmapped column whose header matches a known tool's name. Runs on click only, so block data is never written from an output. */
 function autoMap() {
   const headers = headerOptions.value.map((o) => o.value);
   const byLower = new Map(headers.map((h) => [h.toLowerCase(), h]));
@@ -323,7 +320,7 @@ function autoMap() {
     const found = aliases.map((a) => byLower.get(a.toLowerCase())).find((h) => h !== undefined);
     if (found !== undefined) setMapping(key, found);
   }
-  // Both counts found: the one not primary has to be the secondary, or its dropdown stays hidden
+  // UMIs only: make them primary. Both: the other one is secondary, or its dropdown stays hidden
   const a = app.model.data;
   if (!getMapping("read-count") && getMapping("umi-count")) a.primaryCountType = "umi";
   if (getMapping("read-count") && getMapping("umi-count")) {
@@ -475,8 +472,8 @@ watch(
           <PlBtnGhost v-if="headerOptions.length > 0" @click="autoMap">
             Auto-map columns
             <template #tooltip>
-              Fill the unmapped columns whose names MiXCR, AIRR, Cell Ranger, immunoSEQ or QIAseq
-              would write. Check the result before running.
+              Fill unmapped columns from common header names written by MiXCR, AIRR, Cell Ranger,
+              immunoSEQ and QIAseq. Check the result before running.
             </template>
           </PlBtnGhost>
           <PlSectionSeparator>Required columns</PlSectionSeparator>
