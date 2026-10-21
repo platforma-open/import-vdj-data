@@ -10,7 +10,7 @@
   scientist "lost" when they reopen an old project.
 */
 
-import { upgradeLegacyData } from "@platforma-open/milaboratories.import-vdj.model";
+import { importedChains, upgradeLegacyData } from "@platforma-open/milaboratories.import-vdj.model";
 import type { PlRef } from "@platforma-sdk/model";
 import { describe, expect, test } from "vitest";
 
@@ -84,5 +84,15 @@ describe("upgradeLegacyData", () => {
     expect(data.chains.length).toBe(6);
     expect(data.customBlockLabel).toBe("");
     expect(data.datasetRef).toBeUndefined();
+  });
+});
+
+describe("importedChains", () => {
+  test("a single-cell import takes both chains of a receptor", () => {
+    expect(importedChains("mixcr-sc", ["IGLight"])).toEqual(["IGLight", "IGHeavy"]);
+    expect(importedChains("cellranger", ["TCRBeta", "TCRAlpha"])).toEqual(["TCRBeta", "TCRAlpha"]);
+  });
+  test("a bulk import keeps the chains as chosen", () => {
+    expect(importedChains("mixcr", ["IGLight"])).toEqual(["IGLight"]);
   });
 });

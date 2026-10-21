@@ -30,6 +30,7 @@ MiXCR:
 Every format:
 - New stat column `Discarded: Not Productive`, so the discards and the imported rows add up to `Rows Read`.
 - The statistics table shows `Rows Read`, every `Discarded:` column and `Number of Clonotypes` by default. Read and UMI totals are hidden and can be turned on under Columns.
+- Single-cell imports (MiXCR single cell, Cell Ranger, AIRR single cell) always take both chains of a selected receptor. A chain left over from a bulk selection (for example IG Light alone) used to be imported without its partner, so no cell was paired and the paired output was empty.
 - Per-chain statistics name their chain (`TCR-β Clonotypes`, `IG Heavy Reads`) and sit in chain order. With several chains selected, the columns all read `Number of Clonotypes` and could not be told apart.
 
 ImmunoSeq:

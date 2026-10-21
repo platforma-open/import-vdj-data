@@ -308,3 +308,25 @@ export function bareSetValid(bare: BareSetMapping | undefined): boolean {
   // generated suffix would leave names matching nothing in their file.
   return Object.keys(propertyCollisions(bare.properties ?? [])).length === 0;
 }
+
+const PARTNER: Record<string, string> = {
+  IGHeavy: "IGLight",
+  IGLight: "IGHeavy",
+  TCRAlpha: "TCRBeta",
+  TCRBeta: "TCRAlpha",
+  TCRDelta: "TCRGamma",
+  TCRGamma: "TCRDelta",
+};
+
+/**
+ * Single-cell imports pair a cell's chains, so they take whole receptors: a chain left over from
+ * a bulk selection brings its partner. Bulk chains are returned as they are.
+ */
+export function importedChains(format: ImportFormat | undefined, chains: string[]): string[] {
+  if (format !== "mixcr-sc" && format !== "cellranger" && format !== "airr-sc") return chains;
+  const out: string[] = [];
+  for (const c of chains) {
+    for (const x of [c, PARTNER[c]]) if (x !== undefined && !out.includes(x)) out.push(x);
+  }
+  return out;
+}

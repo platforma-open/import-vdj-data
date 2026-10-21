@@ -23,7 +23,13 @@ import type {
   ImportFormat,
 } from "./types";
 import { parseTsvRows } from "./tsv";
-import { bareSetValid, collisionCheckKey, datasetCheckKey, rowReportKey } from "./types";
+import {
+  bareSetValid,
+  collisionCheckKey,
+  datasetCheckKey,
+  importedChains,
+  rowReportKey,
+} from "./types";
 
 export * from "./types";
 export { parseTsvRows } from "./tsv";
@@ -120,7 +126,7 @@ function projectArgs(data: BlockData): BlockArgs {
     format,
     // Not sorted: canonicalising an order the user chose would change the args of every project
     // already on disk, to buy the rare re-pick of the same chains in a different order.
-    chains,
+    chains: Array.isArray(chains) ? importedChains(format, chains) : chains,
     customMapping,
     primaryCountType,
     assemblingFeature,
