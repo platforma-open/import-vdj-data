@@ -95,9 +95,12 @@ const secondaryTypeOptions = computed(() => {
   return countTypeOptions;
 });
 
-// The AIRR formats alone: every other format's producer states its own assembling feature
+// The formats that carry region sequences to assemble from
 const isAirr = computed(
   () => app.model.data.format === "airr" || app.model.data.format === "airr-sc",
+);
+const isMixcr = computed(
+  () => app.model.data.format === "mixcr" || app.model.data.format === "mixcr-sc",
 );
 
 const isSingleCell = computed(
@@ -402,15 +405,20 @@ watch(
         />
 
         <PlDropdown
-          v-if="isAirr"
+          v-if="isAirr || isMixcr"
           v-model="app.model.data.assemblingFeature"
           :options="assemblingFeatureOptions"
           label="Assemble clonotypes by"
-          placeholder="CDR3"
+          :placeholder="isMixcr ? 'Widest region exported' : 'CDR3'"
+          clearable
         >
           <template #tooltip>
             Which regions of the receptor the sequencing covers. Rearrangements not covering it are
             discarded and counted.
+            <template v-if="isMixcr">
+              Left empty, MiXCR clones are keyed on the widest of VDJRegion and FR1 - CDR3 the file
+              exports, or CDR3.
+            </template>
           </template>
         </PlDropdown>
 

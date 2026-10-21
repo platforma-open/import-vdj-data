@@ -116,7 +116,7 @@ self.body(func(inputs) {
     if formatSpec.importTplId == ":import-common" {
         importOutputs += [{
             type: "TsvContent",
-            settings: { axes: [], columns: processUtils.buildRecordStatsColumns(blockId, columnsInfo, importCfg.alleleMode) },
+            settings: { axes: [], columns: processUtils.buildRecordStatsColumns(blockId, columnsInfo, importCfg.alleleMode, importCfg.productivityMode) },
             traceSteps: processUtils.recordStatsTrace(blockId, formatSpec),
             name: "recordStats",
             path: ["recordStats"]
@@ -147,26 +147,6 @@ self.body(func(inputs) {
         ]
 
         statsColumns := processUtils.buildStatsColumns(chain, blockId, columnsInfo)
-
-        if columnsInfo.hasUMIs {
-            statsColumns += [{
-                id: "umi-count",
-                column: "umi-count",
-                spec: {
-                    name: "pl7.app/vdj/stat/umiCount",
-                    valueType: "Long",
-                    domain: {
-                        "pl7.app/vdj/chain": chain,
-                        "pl7.app/vdj/clonotypingRunId": blockId
-                    },
-                    annotations: {
-                        "pl7.app/label": "Number of UMIs",
-                        "pl7.app/description": "The number of UMIs in the dataset.",
-                        "pl7.app/table/visibility": "default"
-                    }
-                }
-            }]
-        }
 
 		traceSteps := [{
 			type: "milaboratories.importVDJ",

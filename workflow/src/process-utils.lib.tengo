@@ -51,6 +51,27 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 			}
 		]
 	}
+	if columnsInfo.hasUMIs {
+		statsColumns += [
+			{
+				id: "umi-count",
+				column: "umi-count",
+				spec: {
+					name: "pl7.app/vdj/stat/umiCount",
+					valueType: "Long",
+					domain: {
+						"pl7.app/vdj/chain": chain,
+						"pl7.app/vdj/clonotypingRunId": blockId
+					},
+					annotations: {
+						"pl7.app/label": "Number of UMIs",
+						"pl7.app/description": "The number of UMIs in the dataset.",
+						"pl7.app/table/visibility": "default"
+					}
+				}
+			}
+		]
+	}
 	return statsColumns
 }
 
@@ -101,7 +122,7 @@ rowsReadColumn := func(blockId, id) {
 
 // What the row filters discarded, per sample and across every chain -- a row with no V call
 // belongs to no chain, and each count is its own filter's cost, not an overlapping total.
-buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
+buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode, productivityMode) {
 	// Descending, so the table reads left to right in the order the filters actually run
 	col := func(id, name, label, description, visibility, order) {
 		return recordStatColumn(blockId, id, name, label, description, visibility, order)
@@ -131,6 +152,11 @@ buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
 			"Discarded: Not Covering " + feature,
 			"Rows discarded because they do not span " + feature + ", among those that had V and J genes and a CDR3.",
 			"default", "96000")]
+	}
+	if productivityMode == "from_cdr3_aa" || productivityMode == "from_column_true" {
+		why := productivityMode == "from_cdr3_aa" ? "their CDR3 has a stop codon or a frameshift" : "the file marks them not productive"
+		cols += [col("records-not-productive", "recordsNotProductive", "Discarded: Not Productive",
+			"Rows discarded because " + why + ", among those kept so far.", "optional", "95000")]
 	}
 	return cols
 }

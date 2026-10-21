@@ -215,22 +215,44 @@ self.body(func(inputs) {
 		}
 	}
 
-	// The span the inference named, or every region for the formats that name none
-	ntSpan := is_undefined(columnsInfo.spanNt) ? nt_cols : columnsInfo.spanNt
-	aaSpan := is_undefined(columnsInfo.spanAa) ? aa_cols : columnsInfo.spanAa
-	for prop in columnsInfo.propertyColumns {
-		if prop.column == "vdj-nt" && !hasVdjNt {
-			df = df.withColumns(pt.concatStr(slices.map(ntSpan, func(c) { return pt.col(c) }), { delimiter: "" }).alias("vdj-nt"))
-		}
-		if prop.column == "vdj-aa" && !hasVdjAa {
-			df = df.withColumns(pt.concatStr(slices.map(aaSpan, func(c) { return pt.col(c) }), { delimiter: "" }).alias("vdj-aa"))
-		}
-	}
-
-
 	// Allele/best-gene helpers (MiXCR mode)
 	alleleMode := "none"
 	if !is_undefined(config) && !is_undefined(config.alleleMode) { alleleMode = config.alleleMode }
+
+	// MiXCR writes region_not_covered for a region its clone does not reach, and an empty value
+	// for one of zero length. So coverage is read off the marker, and the marker itself is no sequence.
+	if alleleMode == "mixcr" {
+		notCovered := func(col) { return pt.col(col).fillNull("").eq("region_not_covered") }
+		if !is_undefined(columnsInfo.spanNt) {
+			covers := undefined
+			for region in columnsInfo.spanNt {
+				c := notCovered(region).not()
+				covers = is_undefined(covers) ? c : covers.and(c)
+			}
+			df = df.withColumns(covers.alias("covers-feature"))
+		}
+		blanked := []
+		for col in nt_cols + aa_cols + ["vdj-nt", "vdj-aa"] {
+			if columnsInfo.columnMapping[col] != undefined {
+				blanked = append(blanked, pt.when(notCovered(col)).then(pt.lit("")).otherwise(pt.col(col)).alias(col))
+			}
+		}
+		if len(blanked) > 0 { df = df.withColumns(blanked...) }
+	}
+
+	// The span the inference named, or every region for the formats that name none
+	ntSpan := is_undefined(columnsInfo.spanNt) ? nt_cols : columnsInfo.spanNt
+	aaSpan := is_undefined(columnsInfo.spanAa) ? aa_cols : columnsInfo.spanAa
+	// A zero-length MiXCR region reads as null, which would null the whole concatenation
+	part := func(c) { return alleleMode == "mixcr" ? pt.col(c).fillNull("") : pt.col(c) }
+	for prop in columnsInfo.propertyColumns {
+		if prop.column == "vdj-nt" && !hasVdjNt {
+			df = df.withColumns(pt.concatStr(slices.map(ntSpan, part), { delimiter: "" }).alias("vdj-nt"))
+		}
+		if prop.column == "vdj-aa" && !hasVdjAa {
+			df = df.withColumns(pt.concatStr(slices.map(aaSpan, part), { delimiter: "" }).alias("vdj-aa"))
+		}
+	}
 
 	// Remove rows where any sequence column contains "region_not_covered"
 	seqCols := nt_cols + aa_cols + ["vdj-nt", "vdj-aa"]
@@ -243,7 +265,7 @@ self.body(func(inputs) {
 			if invalidExpr == undefined { invalidExpr = cond } else { invalidExpr = invalidExpr.or(cond) }
 		}
 	}
-	// MiXCR uses region_not_covered as NA marker; keep rows in that mode.
+	// MiXCR's marker was blanked above
 	if invalidExpr != undefined && alleleMode != "mixcr" {
 		df = df.filter(invalidExpr.not())
 	}
@@ -346,11 +368,25 @@ self.body(func(inputs) {
 	// Every region tested, not the concatenation: a gaps-only region degaps to "" and would
 	// concatenate without trace, keying a shorter sequence as if it were the whole feature.
 	coversFeature := undefined
-	if !is_undefined(columnsInfo.spanNt) {
+	if !is_undefined(columnsInfo.spanNt) && alleleMode == "mixcr" {
+		coversFeature = pt.col("covers-feature")
+	} else if !is_undefined(columnsInfo.spanNt) {
 		for region in columnsInfo.spanNt {
 			filled := pt.col(region).fillNull("").neq("")
 			coversFeature = is_undefined(coversFeature) ? filled : coversFeature.and(filled)
 		}
+	}
+
+	// Counted here, but applied per chain below: Cell Ranger exports its cells before the filter
+	keepsProductive := undefined
+	productivityMode := "none"
+	if !is_undefined(config) && !is_undefined(config.productivityMode) { productivityMode = config.productivityMode }
+	if productivityMode == "from_cdr3_aa" {
+		aa := pt.col("cdr3-aa").fillNull("")
+		keepsProductive = aa.neq("").and(aa.strContains("*", { literal: true }).not()).and(aa.strContains("_", { literal: true }).not())
+	} else if productivityMode == "from_column_true" {
+		p := pt.col("is-productive").fillNull("").strToUpper()
+		keepsProductive = p.eq("TRUE").or(p.eq("T"))
 	}
 
 	// Counted once for the whole dataset, and each is that filter's own cost -- rows it drops
@@ -358,7 +394,7 @@ self.body(func(inputs) {
 	discardExprs := []
 	passed := undefined
 	for step in [["records-not-cell", keepsCell], ["records-no-v", keepsV], ["records-no-j", keepsJ],
-		["records-no-cdr3", keepsCdr3], ["records-not-covering", coversFeature]] {
+		["records-no-cdr3", keepsCdr3], ["records-not-covering", coversFeature], ["records-not-productive", keepsProductive]] {
 		keeps := step[1]
 		if is_undefined(keeps) { continue }
 		dropped := is_undefined(passed) ? keeps.not() : keeps.not().and(passed)
@@ -454,8 +490,9 @@ self.body(func(inputs) {
 	if !is_undefined(config) && !is_undefined(config.primaryAbundancePolicy) { primaryPolicy = config.primaryAbundancePolicy }
 	primaryAbundanceCol := hasUmiCount ? "umi-count" : "read-count"
 	if primaryPolicy == "force_umi" { primaryAbundanceCol = "umi-count" }
+	// A count type left over from another format may name a column this file lacks
 	if primaryPolicy == "args" && primaryCountType != undefined {
-		primaryAbundanceCol = primaryCountType == "umi" ? "umi-count" : "read-count"
+		primaryAbundanceCol = primaryCountType == "umi" && hasUmiCount ? "umi-count" : hasReadCount ? "read-count" : "umi-count"
 	}
 
 	// By-cell export config
@@ -472,10 +509,6 @@ self.body(func(inputs) {
 
 	hasCellTags := columnsInfo.cellTagColumns != undefined && len(columnsInfo.cellTagColumns) > 0
 	hasCloneId := columnsInfo.columnMapping["clone-id"] != undefined
-
-	// Productivity config
-	productivityMode := "none"
-	if !is_undefined(config) && !is_undefined(config.productivityMode) { productivityMode = config.productivityMode }
 
 	// AIRR productive is T/F or true/false, Cell Ranger before 6.0 writes True/False; anything else is unknown and stays NA
 	if columnsInfo.columnMapping["is-productive"] != undefined && productivityMode != "from_cdr3_aa" {
@@ -547,17 +580,7 @@ self.body(func(inputs) {
 
 		// Derive productivity / filter
 		if productivityMode == "from_cdr3_aa" {
-			chainDf = chainDf.withColumns(
-				pt.col("cdr3-aa").isNotNull().
-					and(pt.col("cdr3-aa").neq("")).
-					and(pt.col("cdr3-aa").strContains("*", { literal: true }).not()).
-					and(pt.col("cdr3-aa").strContains("_", { literal: true }).not()).
-					alias("is-productive")
-			)
-			chainDf = chainDf.filter(pt.col("is-productive"))
-			chainDf = chainDf.withColumns(
-				pt.when(pt.col("is-productive")).then(pt.lit("true")).otherwise(pt.lit("false")).alias("is-productive")
-			)
+			chainDf = chainDf.filter(keepsProductive).withColumns(pt.lit("true").alias("is-productive"))
 		} else if productivityMode == "from_column_true" {
 			// Expect is-productive is already a string "true"/"false"
 			// Export by-cell BEFORE filtering if configured (Cell Ranger behavior)

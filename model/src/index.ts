@@ -448,6 +448,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     // The verdict carries what it is about, so the UI mirrors it in without matching anything.
     const dataset = datasetCheckKey({ datasetRef: stamp.datasetRef, format });
 
+    const hasAny = (aliases: string[]) => aliases.some((alias) => headers.includes(alias));
     const verdict = ((): { isValid: boolean; missingColumns: string[]; format: string } => {
       if (format === "qiagen") {
         const qiagenColumns = [
@@ -474,7 +475,6 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
       }
 
       if (format === "immunoSeq") {
-        const hasAny = (aliases: string[]) => aliases.some((alias) => headers.includes(alias));
         const missingColumns: string[] = [];
         if (!hasAny(["rearrangement", "nucleotide"])) missingColumns.push("sequence");
         if (!hasAny(["amino_acid_sequence", "amino_acid", "aminoAcid"]))
@@ -494,33 +494,18 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
         };
       }
 
-      if (format === "mixcr") {
-        // MiXCR minimal requirements aligned with infer-columns-mixcr.lib.tengo
-        const mixcrRequiredHeaders = ["readCount", "nSeqCDR3", "aaSeqCDR3"];
-
-        const missingColumns = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
-
-        return {
-          isValid: missingColumns.length === 0,
-          missingColumns,
-          format: "mixcr",
-        };
-      }
-
-      if (format === "mixcr-sc") {
-        // Same as MiXCR plus at least one tagValueCELL* column
-        const mixcrRequiredHeaders = ["readCount", "nSeqCDR3", "aaSeqCDR3"];
-        const missingBase = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
-        const hasTagValueCell = headers.some((h) => h.startsWith("tagValueCELL"));
-        const missingColumns = [
-          ...missingBase,
-          ...(hasTagValueCell ? ([] as string[]) : ["tagValueCELL*"]),
+      if (format === "mixcr" || format === "mixcr-sc") {
+        // Aliases as in infer-columns-mixcr.lib.tengo, MiXCR 4 name first
+        const required: string[][] = [
+          ["readCount", "uniqueMoleculeCount", "umiCount", "cloneCount", "Clone count"],
+          ["nSeqCDR3", "nSeqImputedCDR3", "N. Seq. CDR3"],
+          ["aaSeqCDR3", "aaSeqImputedCDR3", "AA. Seq. CDR3", "AA. seq. CDR3"],
         ];
-        return {
-          isValid: missingColumns.length === 0,
-          missingColumns,
-          format: "mixcr-sc",
-        };
+        const missingColumns = required.filter((a) => !hasAny(a)).map((a) => a[0]);
+        if (format === "mixcr-sc" && !headers.some((h) => /^tagValueCell/i.test(h))) {
+          missingColumns.push("tagValueCELL");
+        }
+        return { isValid: missingColumns.length === 0, missingColumns, format };
       }
 
       if (format === "cellranger") {

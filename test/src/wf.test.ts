@@ -1307,3 +1307,93 @@ for (const [label, asset] of [
     },
   );
 }
+
+// MiXCR marks a region its clone does not reach as region_not_covered and leaves a zero-length one
+// empty. Two IGHV1-69 clones with an empty CDR1 differ only in FR1, one clone misses FR1, one
+// misses CDR3 and one has a stop codon in it.
+blockTest(
+  "imports a MiXCR export by its widest region, or by CDR3 when asked",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+    const sampleId = uniquePlId();
+    await project.mutateBlockStorage(sndBlockId, {
+      operation: "update-block-data",
+      value: {
+        suggestedImport: false,
+        h5adFilesToPreprocess: [],
+        seuratFilesToPreprocess: [],
+        metadata: [],
+        sampleIds: [sampleId],
+        sampleLabelColumnLabel: "Sample Name",
+        sampleLabels: { [sampleId]: "mixcr" },
+        datasets: [
+          {
+            id: uniquePlId(),
+            label: "MiXCR",
+            content: {
+              type: "Xsv",
+              xsvType: "tsv",
+              data: { [sampleId]: await helpers.getLocalFileHandle("./assets/mixcr-regions.tsv") },
+            },
+          },
+        ],
+      },
+    });
+    await project.runBlock(sndBlockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+    const counts = async (assemblingFeature?: string) => {
+      const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+      const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+        outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
+      };
+      const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
+      const datasetRef = option.ref as PlRef;
+      await project.mutateBlockStorage(blockId, {
+        operation: "update-block-data",
+        value: blockData({
+          datasetRef,
+          format: "mixcr",
+          chains: ["IGHeavy"],
+          assemblingFeature,
+          prerunCheck: {
+            check: "dataset",
+            subject: datasetCheckKey({ datasetRef, format: "mixcr" }),
+            columnsPresent: true,
+          },
+        }),
+      });
+      await project.runBlock(blockId);
+      await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+      const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+        outputs?: Record<string, unknown>;
+      };
+      const handle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
+        ?.value?.fullTableHandle;
+      expect(handle, "statistics table handle").toBeDefined();
+      const specs = await ml.driverKit.pFrameDriver.getSpec(handle!);
+      const found: Record<string, number> = {};
+      for (const [i, s] of specs.entries()) {
+        if (s.type !== "column" || !s.spec.name.startsWith("pl7.app/vdj/stat/")) continue;
+        const [vector] = await ml.driverKit.pFrameDriver.getData(handle!, [i]);
+        found[s.spec.name.slice("pl7.app/vdj/stat/".length)] = Number(vector.data[0]);
+      }
+      return found;
+    };
+
+    // The empty CDR1 is a region of zero length: both clones stay, rather than meeting on a blank key
+    expect(await counts()).toMatchObject({
+      recordCount: 6,
+      recordsWithoutCdr3: 1,
+      recordsNotCoveringAssemblingFeature: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 3,
+    });
+    // Keyed on CDR3 the FR1-less clone is kept and joins its CDR3, as do the two FR1 variants
+    const byCdr3 = await counts("CDR3");
+    expect(byCdr3).toMatchObject({ recordCount: 6, recordsWithoutCdr3: 1, clonotypeCount: 2 });
+    expect(byCdr3.recordsNotCoveringAssemblingFeature).toBeUndefined();
+  },
+);
