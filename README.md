@@ -12,7 +12,7 @@ Point it at your files and it detects the separator, reads the header, and infer
 
 You choose which chains to import. Recognized formats pick their count column themselves and use UMIs when the file has them; in Custom mode you say whether counts are reads or UMIs and which columns hold them, and a dataset with both keeps both. Sequence, mutation, and canonical-form columns are picked up when present.
 
-Only productive rearrangements with a V gene, a J gene and the keyed region are imported. A statistics table shows, per sample, the rows read, the clonotypes imported (per chain for bulk, paired for single cell) and every reason rows were discarded, so the numbers add up. Read and UMI totals are available under Columns.
+Only productive rearrangements with a V gene, a J gene and the keyed region are imported. A statistics table shows, per sample, the rows read, the clonotypes imported (per chain for bulk, paired for single cell) and every reason rows were discarded.
 
 The result is a standard Platforma clonotype dataset: the same shape whether it came from Cell Ranger or a hand-rolled TSV, so downstream blocks work identically across sources.
 
