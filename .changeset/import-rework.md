@@ -2,6 +2,7 @@
 '@platforma-open/milaboratories.import-vdj.workflow': minor
 '@platforma-open/milaboratories.import-vdj.model': minor
 '@platforma-open/milaboratories.import-vdj': minor
+'@platforma-open/milaboratories.import-vdj.region-annotation': minor
 ---
 
 Import rework across input types.
@@ -63,3 +64,6 @@ Custom:
 - The statistics table reports `Rows Read` and the discards.
 - `Auto-map columns` fills unmapped columns from common header names written by MiXCR, AIRR, Cell Ranger, immunoSEQ and QIAseq.
 - CDR3 aa and CDR3 nt are no longer both marked required; either one is enough.
+
+Bare set:
+- New stat column `Records`, second after `Rows Read`: the records imported, one per id with every mapped chain annotated.

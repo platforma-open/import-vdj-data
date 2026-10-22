@@ -65,6 +65,7 @@ async function recordStats(
     "recordsWithRepeatedId",
     "recordsWithoutSequence",
     "recordsFailedToAnnotate",
+    "recordsImported",
   ];
   const indices = names.map((n) =>
     specs.findIndex((s) => s.type === "column" && s.spec.name === `pl7.app/vdj/stat/${n}`),
@@ -896,6 +897,7 @@ blockTest(
       recordsWithRepeatedId: 0,
       recordsWithoutSequence: 0,
       recordsFailedToAnnotate: 0,
+      recordsImported: 4,
     });
     const statsHandle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
       ?.value?.fullTableHandle;
@@ -1105,6 +1107,7 @@ blockTest(
       recordsWithRepeatedId: 3,
       recordsWithoutSequence: 2,
       recordsFailedToAnnotate: 0,
+      recordsImported: 3,
     });
   },
 );
@@ -1161,6 +1164,7 @@ blockTest(
       recordsWithRepeatedId: 1,
       recordsWithoutSequence: 0,
       recordsFailedToAnnotate: 0,
+      recordsImported: 2,
     });
   },
 );

@@ -659,6 +659,8 @@ importStatsColumns := func(blockId) {
 
 annotationStatsColumns := func(blockId) {
 	return [
+		processUtils.recordStatColumn(blockId, "records", "recordsImported", "Records",
+			"Records imported: one per id, with every mapped chain annotated.", "default", "99900"),
 		processUtils.recordStatColumn(blockId, "recordsFailedToAnnotate", "recordsFailedToAnnotate",
 			"Discarded: Failed to Annotate",
 			"Rows whose supplied sequence could not be numbered, among those with a sequence on " +

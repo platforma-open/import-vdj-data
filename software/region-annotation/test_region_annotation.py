@@ -165,8 +165,8 @@ def main():
         "--scheme", "kabat", "--csv_h", h_csv, "--csv_kl", kl_csv,
         "--out_tsv", os.path.join(work, "counts_out.tsv"), "--out_record_stats", record_stats_tsv)
     record_stats = list(csv.DictReader(open(record_stats_tsv), delimiter="\t"))
-    assert record_stats == [{"recordsFailedToAnnotate": "1"}], record_stats
-    print("  record stats: one row, a record failing on both chains counted once")
+    assert record_stats == [{"recordsFailedToAnnotate": "1", "records": "1"}], record_stats
+    print("  record stats: one row, a record failing on both chains counted once, K1 kept")
 
     # Chain disagreement alone does not drop a record.
     heavy_tsv = os.path.join(work, "heavy.tsv")
