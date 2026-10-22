@@ -10,7 +10,9 @@ Immune repertoire data arrives in whatever shape the upstream tool emitted: diff
 
 Point it at your files and it detects the separator, reads the header, and infers which columns hold what. For recognized formats the mapping is automatic; for anything else, Custom mode lets you map columns yourself. Gzipped files work throughout.
 
-You declare what the data contains — which chains to import, whether counts are reads or UMIs, and which columns hold them. Both a primary and an optional secondary count type can be carried, so a dataset with both read and UMI counts keeps both. Sequence, mutation, and canonical-form columns are picked up when present.
+You choose which chains to import. Recognized formats pick their count column themselves and use UMIs when the file has them; in Custom mode you say whether counts are reads or UMIs and which columns hold them, and a dataset with both keeps both. Sequence, mutation, and canonical-form columns are picked up when present.
+
+Only productive rearrangements with a V gene, a J gene and the keyed region are imported. A statistics table shows, per sample, the rows read, the clonotypes imported (per chain for bulk, paired for single cell) and every reason rows were discarded, so the numbers add up. Read and UMI totals are available under Columns.
 
 The result is a standard Platforma clonotype dataset: the same shape whether it came from Cell Ranger or a hand-rolled TSV, so downstream blocks work identically across sources.
 
@@ -27,7 +29,7 @@ The result is a standard Platforma clonotype dataset: the same shape whether it 
 | Formats | MiXCR bulk, MiXCR single cell, ImmunoSeq, QIAseq Immune Repertoire Analysis, Cell Ranger VDJ, AIRR bulk, AIRR single cell, Custom CSV/TSV — gzipped supported |
 | Data types | Bulk and single-cell |
 | Chains | IG Heavy, IG Light, TRA, TRB, TRG, TRD; receptor groups IG, TCR-αβ, TCR-ɣδ |
-| Count types | Reads or UMIs, with an optional secondary count column |
+| Count types | Reads or UMIs; chosen by the format, or set in Custom mode with an optional secondary count column |
 | Optional columns | Sequence, mutations, canonical form |
 | Detection | Separator auto-detected, columns inferred from the header |
 
@@ -52,7 +54,7 @@ Use Custom mode and map the columns yourself. As long as the file is delimited t
 
 ### What is the secondary count type for?
 
-Some pipelines report both read counts and UMI counts. Configure the primary count type you want abundances based on, and carry the other as a secondary count so both remain available downstream.
+Some pipelines report both read counts and UMI counts. In Custom mode, set the primary count type you want abundances based on, and carry the other as a secondary count so both remain available downstream. Recognized formats carry every count they have and base abundances on UMIs when present.
 
 ### Can I use imported data with MiXCR SHM Trees?
 
@@ -60,7 +62,7 @@ No. SHM tree building needs MiXCR's own alignment files, which a clonotype table
 
 ### Does it handle single-cell data?
 
-Yes. MiXCR single cell, AIRR single cell, and Cell Ranger VDJ are all single-cell formats, and produce single-cell clonotype datasets with paired-chain structure preserved.
+Yes. MiXCR single cell, AIRR single cell, and Cell Ranger VDJ are all single-cell formats, and produce single-cell clonotype datasets with paired-chain structure preserved. Both chains of a selected receptor are always imported. Cells carrying only one of them are left out of the paired clonotypes and counted as unpaired.
 
 ## Documentation
 
