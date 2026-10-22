@@ -10,7 +10,7 @@ Immune repertoire data arrives in whatever shape the upstream tool emitted: diff
 
 Point it at your files and it detects the separator, reads the header, and infers which columns hold what. For recognized formats the mapping is automatic; for anything else, Custom mode lets you map columns yourself. Gzipped files work throughout.
 
-You choose which chains to import. Recognized formats pick their count column themselves and use UMIs when the file has them; in Custom mode you say whether counts are reads or UMIs and which columns hold them, and a dataset with both keeps both. Sequence, mutation, and canonical-form columns are picked up when present.
+You declare what the data contains — which chains to import, whether counts are reads or UMIs, and which columns hold them. Both a primary and an optional secondary count type can be carried, so a dataset with both read and UMI counts keeps both. Sequence, mutation, and canonical-form columns are picked up when present.
 
 Only productive rearrangements with a V gene, a J gene and the keyed region are imported. A statistics table shows, per sample, the rows read, the clonotypes imported (per chain for bulk, paired for single cell) and every reason rows were discarded.
 
@@ -54,7 +54,7 @@ Use Custom mode and map the columns yourself. As long as the file is delimited t
 
 ### What is the secondary count type for?
 
-Some pipelines report both read counts and UMI counts. In Custom mode, set the primary count type you want abundances based on, and carry the other as a secondary count so both remain available downstream. Recognized formats carry every count they have and base abundances on UMIs when present.
+Some pipelines report both read counts and UMI counts. Configure the primary count type you want abundances based on, and carry the other as a secondary count so both remain available downstream.
 
 ### Can I use imported data with MiXCR SHM Trees?
 
