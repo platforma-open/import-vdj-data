@@ -45,7 +45,7 @@ ImmunoSeq:
 - v2 exports fill `templates` or `reads` and write `null` in the other. The count is taken from whichever is filled; files with templates imported every count as 0. The column is labelled `Number of Templates/Reads`.
 - `null`, `NA`, `no data` and `unresolved` are matched case-insensitively. Gene names are matched case-insensitively and stored in upper case, so lowercase files import the same as uppercase ones.
 - The chain comes from `locus` when the file has it, and from the genes otherwise.
-- Reduced exports (`v_resolved`, `j_resolved`, `templates`) import. A D gene is no longer required, so files without one pass validation, and validation names the columns as the file would.
+- Reduced exports (`v_resolved`, `j_resolved`, `templates`) import. A D gene is no longer required, and a file without one imports with the D gene empty, and validation names the columns as the file would.
 - The statistics table reports `Rows Read` and the rows discarded for no V gene, no J gene and not productive.
 
 QIAseq:

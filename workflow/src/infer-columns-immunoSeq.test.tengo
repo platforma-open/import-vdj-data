@@ -1,0 +1,14 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+immunoSeq := import(":infer-columns-immunoSeq")
+
+Test_noDColumn_mapsNoDGene := func() {
+	info := immunoSeq.getColumns(["rearrangement", "amino_acid", "v_gene", "j_gene", "v_index", "templates"])
+	test.isEqual(undefined, info.columnMapping["d-gene"], "no D source")
+	test.isEqual("v_gene", info.columnMapping["v-gene"], "V gene")
+}
+
+Test_resolvedAllele_standsInForAMissingGene := func() {
+	info := immunoSeq.getColumns(["rearrangement", "amino_acid", "v_resolved", "j_resolved", "v_index", "templates"])
+	test.isEqual("v_resolved", info.columnMapping["v-gene"], "V from allele")
+	test.isEqual(undefined, info.columnMapping["d-gene"], "no D source")
+}

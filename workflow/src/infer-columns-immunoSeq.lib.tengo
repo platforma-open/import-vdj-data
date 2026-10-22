@@ -86,7 +86,9 @@ getColumns := func(header) {
 
 	// A reduced export names genes by their allele alone; the import template strips it
 	for g in ["v", "d", "j"] {
-		if columnMapping[g + "-gene"] == undefined { columnMapping[g + "-gene"] = columnMapping[g + "-allele"] }
+		if columnMapping[g + "-gene"] == undefined && columnMapping[g + "-allele"] != undefined {
+			columnMapping[g + "-gene"] = columnMapping[g + "-allele"]
+		}
 	}
 
     // One count, templates where the export has them and reads otherwise; built in the import template

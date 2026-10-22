@@ -44,6 +44,7 @@ self.body(func(inputs) {
 	renameExpressions := []
 	for canonical in maps.getKeys(columnsInfo.columnMapping) {
 		original := columnsInfo.columnMapping[canonical]
+		if original == undefined { continue }
 		renameExpressions = append(renameExpressions, pt.col(original).alias(canonical))
 	}
 	df = df.withColumns(renameExpressions...)
