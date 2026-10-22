@@ -69,8 +69,9 @@ self.body(func(inputs) {
 	geneExprs := []
 	for g in ["v", "d", "j"] {
 		// An unresolved gene falls back to its family (TCRBV06), which still names the locus
-		gene := firstOf([g + "-gene", g + "-family"]).strReplace("\\*.*$", "", { replaceAll: true }).strToUpper()
-		allele := m[g + "-allele"] == undefined ? gene : pt.when(value(g + "-allele").neq("")).then(value(g + "-allele").strToUpper()).otherwise(gene)
+		call := firstOf([g + "-gene", g + "-family"]).strToUpper()
+		gene := call.strReplace("\\*.*$", "", { replaceAll: true })
+		allele := m[g + "-allele"] == undefined ? call : pt.when(value(g + "-allele").neq("")).then(value(g + "-allele").strToUpper()).otherwise(call)
 		geneExprs = append(geneExprs, gene.alias(g + "-gene"), allele.alias(g + "-allele"))
 	}
 	df = df.withColumns(geneExprs...)

@@ -42,6 +42,7 @@ Every format:
 
 ImmunoSeq:
 - A V, D or J gene immunoSEQ could not pick among equally good matches (`unresolved`) keeps its family, e.g. `TCRBV06`. Such rearrangements, 19 to 25 percent of the productive ones in the test sets, matched no chain and were dropped.
+- An allele given in the gene column (`TCRBV05-01*01`) is kept as the allele; the gene drops the suffix.
 - v2 exports fill `templates` or `reads` and write `null` in the other. The count is taken from whichever is filled; files with templates imported every count as 0. The column is labelled `Number of Templates/Reads`.
 - `null`, `NA`, `no data` and `unresolved` are matched case-insensitively. Gene names are matched case-insensitively and stored in upper case, so lowercase files import the same as uppercase ones.
 - The chain comes from `locus` when the file has it, and from the genes otherwise.
