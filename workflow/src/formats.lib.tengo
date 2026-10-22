@@ -18,6 +18,8 @@ specs := {
 		label: "ImmunoSeq",
 		isSingleCell: false,
 		importTplId: ":import-immunoSeq",
+		// Only picks the Not Productive stat's wording; the template filters on CDR3 aa itself
+		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			return immunoSeq.getColumns(header)
 		}
@@ -27,6 +29,8 @@ specs := {
 		label: "QIAseq Immune Repertoire Analysis",
 		isSingleCell: false,
 		importTplId: ":import-qiagen",
+		// Only picks the Not Productive stat's wording; the template filters on CDR3 aa itself
+		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			return qiagen.getColumns(header)
 		}
@@ -80,6 +84,7 @@ specs := {
 			xsvType: "csv",
 			alleleMode: "none",
 			productivityMode: "from_column_true",
+			naLiterals: ["None"],
 			primaryAbundancePolicy: "force_umi",
 			byCell: {
 				enabled: true,
@@ -97,6 +102,8 @@ specs := {
 		label: "Custom",
 		isSingleCell: false,
 		importTplId: ":import-custom",
+		// Only picks the Not Productive stat's wording; the template filters on CDR3 aa itself
+		importCfg: { productivityMode: "from_cdr3_aa" },
 		infer: func(header, opts) {
 			// opts.customMapping and opts.primaryCountType are required once mapping is complete;
 			// infer-columns.tpl already gates incomplete mapping by returning headerColumns.
@@ -113,7 +120,7 @@ specs := {
 		importCfg: {
 			xsvType: "tsv",
 			alleleMode: "none",
-			productivityMode: "none",
+			productivityMode: "from_column_or_cdr3_aa",
 			primaryAbundancePolicy: "args",
 			byCell: { enabled: false },
 			geneNormalization: "stripAllele",
@@ -133,7 +140,7 @@ specs := {
 		importCfg: {
 			xsvType: "tsv",
 			alleleMode: "none",
-			productivityMode: "none",
+			productivityMode: "from_column_or_cdr3_aa",
 			primaryAbundancePolicy: "args",
 			byCell: {
 				enabled: true,

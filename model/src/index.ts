@@ -23,7 +23,13 @@ import type {
   ImportFormat,
 } from "./types";
 import { parseTsvRows } from "./tsv";
-import { bareSetValid, collisionCheckKey, datasetCheckKey, rowReportKey } from "./types";
+import {
+  bareSetValid,
+  collisionCheckKey,
+  datasetCheckKey,
+  importedChains,
+  rowReportKey,
+} from "./types";
 
 export * from "./types";
 export { parseTsvRows } from "./tsv";
@@ -104,7 +110,7 @@ function requireCheckedDataset(data: BlockData): void {
   }
 }
 
-function projectArgs(data: BlockData): BlockArgs {
+export function projectArgs(data: BlockData): BlockArgs {
   const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
   const assemblingFeature = data.assemblingFeature;
 
@@ -120,9 +126,10 @@ function projectArgs(data: BlockData): BlockArgs {
     format,
     // Not sorted: canonicalising an order the user chose would change the args of every project
     // already on disk, to buy the rare re-pick of the same chains in a different order.
-    chains,
+    chains: Array.isArray(chains) ? importedChains(format, chains) : chains,
     customMapping,
-    primaryCountType,
+    // Only the custom format asks for it; left over from it, it would silently pick another format's count
+    primaryCountType: format === "custom" ? primaryCountType : undefined,
     assemblingFeature,
     bareSet: data.bareSet,
   };
@@ -138,19 +145,21 @@ function projectArgs(data: BlockData): BlockArgs {
   }
 
   if (format === undefined) throw new Error("Choose a data format");
-  if (!Array.isArray(chains) || chains.length === 0) throw new Error("Choose at least one chain");
 
-  if (format === "custom") {
+  if (format === "custom" && data.bareSet !== undefined) {
     // A bare set drops the V gene, the J gene and the abundance — it supplies none of them,
     // and the rule that demanded all three could not tell a bare set from a malformed
     // repertoire export. What it requires instead is a sequence mapped to a chain and an
     // identity column, because the key is the identity's hash and the label is its value.
-    if (data.bareSet !== undefined) {
-      if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
-      requireCheckedColumns(data);
-      return withoutDatasetDoorMapping(args);
-    }
+    if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
+    requireCheckedColumns(data);
+    return withoutDatasetDoorMapping(args);
+  }
 
+  // After the bare set returns: it imports the chains its columns are mapped to, not these.
+  if (!Array.isArray(chains) || chains.length === 0) throw new Error("Choose at least one chain");
+
+  if (format === "custom") {
     const m = customMapping ?? {};
     const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
     const hasV = !!m["v-gene"];
@@ -448,44 +457,56 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     // The verdict carries what it is about, so the UI mirrors it in without matching anything.
     const dataset = datasetCheckKey({ datasetRef: stamp.datasetRef, format });
 
+    const hasAny = (aliases: string[]) => aliases.some((alias) => headers.includes(alias));
     const verdict = ((): { isValid: boolean; missingColumns: string[]; format: string } => {
       if (format === "qiagen") {
-        const qiagenColumns = [
-          "read set",
-          "chain",
-          "V-region",
-          "J-region",
-          "CDR3 nucleotide seq",
-          "CDR3 amino acid seq",
-          "frequency",
-          "rank",
-          "UMIs with analytical threshold",
-          "nucleotide length",
-          "amino acid length",
+        // Aliases as in infer-columns-qiagen.lib.tengo: QIAseq's clonotypes table, then CLC's
+        const required: string[][] = [
+          ["chain", "Chain"],
+          ["V-region", "V"],
+          ["J-region", "J"],
+          ["CDR3 nucleotide seq", "CDR3 nucleotide sequence"],
+          ["CDR3 amino acid seq", "CDR3 amino acid sequence"],
         ];
-
-        const missingColumns = qiagenColumns.filter((col) => !headers.includes(col));
-
-        return {
-          isValid: missingColumns.length === 0,
-          missingColumns,
-          format: "qiagen",
-        };
+        const missingColumns = required.filter((a) => !hasAny(a)).map((a) => a[0]);
+        const hasCount = headers.some(
+          (h) =>
+            h === "UMIs with analytical threshold" ||
+            h === "Count" ||
+            /^UMIs with >= \d+ reads$/.test(h),
+        );
+        if (!hasCount) missingColumns.push("UMIs with analytical threshold");
+        return { isValid: missingColumns.length === 0, missingColumns, format };
       }
 
       if (format === "immunoSeq") {
-        const hasAny = (aliases: string[]) => aliases.some((alias) => headers.includes(alias));
         const missingColumns: string[] = [];
-        if (!hasAny(["rearrangement", "nucleotide"])) missingColumns.push("sequence");
+        if (!hasAny(["rearrangement", "nucleotide"])) missingColumns.push("rearrangement");
         if (!hasAny(["amino_acid_sequence", "amino_acid", "aminoAcid"]))
-          missingColumns.push("cdr3-aa");
-        if (!hasAny(["v_gene", "v-gene", "vGene", "vGeneName"])) missingColumns.push("v-gene");
-        if (!hasAny(["d_gene", "d-gene", "dGene", "dGeneName"])) missingColumns.push("d-gene");
-        if (!hasAny(["j_gene", "j-gene", "jGene", "jGeneName"])) missingColumns.push("j-gene");
-        if (!hasAny(["v-index", "v_index", "vIndex"])) missingColumns.push("v-begin");
-        if (!hasAny(["count (templates/reads)", "count (reads)", "seq_reads", "reads", "count"])) {
-          missingColumns.push("read-count");
-        }
+          missingColumns.push("amino_acid");
+        // Aliases as in infer-columns-immunoSeq.lib.tengo; a D gene is optional, as light chains have none
+        const gene = (g: string) => [
+          `${g}_gene`,
+          `${g}-gene`,
+          `${g}Gene`,
+          `${g}GeneName`,
+          `${g}_resolved`,
+          `${g}Resolved`,
+          `${g}MaxResolved`,
+        ];
+        if (!hasAny(gene("v"))) missingColumns.push("v_gene");
+        if (!hasAny(gene("j"))) missingColumns.push("j_gene");
+        if (!hasAny(["v-index", "v_index", "vIndex"])) missingColumns.push("v_index");
+        const counts = [
+          "count (templates/reads)",
+          "count (templates)",
+          "count (reads)",
+          "seq_reads",
+          "count",
+          "templates",
+          "reads",
+        ];
+        if (!hasAny(counts)) missingColumns.push("templates");
 
         return {
           isValid: missingColumns.length === 0,
@@ -494,38 +515,31 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
         };
       }
 
-      if (format === "mixcr") {
-        // MiXCR minimal requirements aligned with infer-columns-mixcr.lib.tengo
-        const mixcrRequiredHeaders = ["readCount", "nSeqCDR3", "aaSeqCDR3"];
-
-        const missingColumns = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
-
-        return {
-          isValid: missingColumns.length === 0,
-          missingColumns,
-          format: "mixcr",
-        };
-      }
-
-      if (format === "mixcr-sc") {
-        // Same as MiXCR plus at least one tagValueCELL* column
-        const mixcrRequiredHeaders = ["readCount", "nSeqCDR3", "aaSeqCDR3"];
-        const missingBase = mixcrRequiredHeaders.filter((col) => !headers.includes(col));
-        const hasTagValueCell = headers.some((h) => h.startsWith("tagValueCELL"));
-        const missingColumns = [
-          ...missingBase,
-          ...(hasTagValueCell ? ([] as string[]) : ["tagValueCELL*"]),
+      if (format === "mixcr" || format === "mixcr-sc") {
+        // Aliases as in infer-columns-mixcr.lib.tengo, MiXCR 4 name first
+        const required: string[][] = [
+          ["readCount", "uniqueMoleculeCount", "umiCount", "cloneCount", "Clone count"],
+          ["nSeqCDR3", "nSeqImputedCDR3", "N. Seq. CDR3"],
+          ["aaSeqCDR3", "aaSeqImputedCDR3", "AA. Seq. CDR3", "AA. seq. CDR3"],
         ];
-        return {
-          isValid: missingColumns.length === 0,
-          missingColumns,
-          format: "mixcr-sc",
-        };
+        const missingColumns = required.filter((a) => !hasAny(a)).map((a) => a[0]);
+        if (format === "mixcr-sc" && !headers.some((h) => /^tagValueCell/i.test(h))) {
+          missingColumns.push("tagValueCELL");
+        }
+        return { isValid: missingColumns.length === 0, missingColumns, format };
       }
 
       if (format === "cellranger") {
         // Cell Ranger VDJ clones per-chain table minimal required headers
-        const cellrangerRequired = ["cdr3_nt", "cdr3", "v_gene", "j_gene", "barcode"];
+        const cellrangerRequired = [
+          "cdr3_nt",
+          "cdr3",
+          "v_gene",
+          "j_gene",
+          "barcode",
+          "productive",
+          "umis",
+        ];
         const missingColumns = cellrangerRequired.filter((col) => !headers.includes(col));
         return {
           isValid: missingColumns.length === 0,

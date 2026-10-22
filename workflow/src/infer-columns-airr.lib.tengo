@@ -6,6 +6,8 @@ common := import(":infer-columns-common")
 readColumnSpecs := common.readColumnSpecs
 umiColumnSpecs := common.umiColumnSpecs
 propertyColumnSpecs := common.propertyColumnSpecs
+assemblingFeatures := common.assemblingFeatures
+assemblingFeatureLabels := common.assemblingFeatureLabels
 
 // AIRR rearrangement schema headers (case-insensitive)
 sourceAliases := {
@@ -62,22 +64,6 @@ optionalProperties := [
 	"sequence-alignment", "germline-alignment",
 	"sequence-alignment-aa", "germline-alignment-aa"
 ]
-
-// MiXCR's assembling-feature vocabulary, region by region; the mixcr-clonotyping panel offers the same list
-assemblingFeatures := {
-	"CDR3": ["cdr3"],
-	"VDJRegion": ["fr1", "cdr1", "fr2", "cdr2", "fr3", "cdr3", "fr4"],
-	"FR2_TO_FR4": ["fr2", "cdr2", "fr3", "cdr3", "fr4"],
-	"{FR1Begin:CDR3End}": ["fr1", "cdr1", "fr2", "cdr2", "fr3", "cdr3"],
-	"CDR1_TO_FR4": ["cdr1", "fr2", "cdr2", "fr3", "cdr3", "fr4"],
-	"{CDR1Begin:CDR3End}": ["cdr1", "fr2", "cdr2", "fr3", "cdr3"],
-	"{FR2Begin:CDR3End}": ["fr2", "cdr2", "fr3", "cdr3"],
-	"CDR2_TO_FR4": ["cdr2", "fr3", "cdr3", "fr4"],
-	"{CDR2Begin:CDR3End}": ["cdr2", "fr3", "cdr3"],
-	"FR3_TO_FR4": ["fr3", "cdr3", "fr4"],
-	"{FR3Begin:CDR3End}": ["fr3", "cdr3"],
-	"CDR3_TO_FR4": ["cdr3", "fr4"]
-}
 
 // What a file must cover before a column counts as one it carries
 DEFAULT_ASSEMBLING_FEATURE := "CDR3"
@@ -266,6 +252,7 @@ getColumns := func(header, ...opts) {
 		cellTagColumns: cellTagColumns,
 		cdr3FallbackToAa: columnMapping["cdr3-aa"] != undefined,
 		assemblingFeature: feature,
+		assemblingFeatureLabel: assemblingFeatureLabels[feature],
 		spanNt: spanNt,
 		spanAa: spanAa
 	}

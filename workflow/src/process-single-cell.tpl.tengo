@@ -54,7 +54,7 @@ self.body(func(inputs) {
 	// Import per-chain, producing clonotype and per-cell-tag TSVs
 	importOutputs := [{
 		type: "TsvContent",
-		settings: { axes: [], columns: processUtils.buildRecordStatsColumns(blockId, columnsInfo, importCfg.alleleMode) },
+		settings: { axes: [], columns: processUtils.buildRecordStatsColumns(blockId, columnsInfo, importCfg.alleleMode, importCfg.productivityMode) },
 		traceSteps: processUtils.recordStatsTrace(blockId, formatSpec),
 		name: "recordStats",
 		path: ["recordStats"]
@@ -79,7 +79,7 @@ self.body(func(inputs) {
 				}
 			}
 		]
-		statsColumns := processUtils.buildStatsColumns(chain, blockId, columnsInfo)
+		statsColumns := processUtils.buildStatsColumns(chain, blockId, columnsInfo, true)
 		traceSteps := [{ type: "milaboratories.importVDJ", id: blockId + ".chain", importance: 81, label: chain }]
 		importOutputs += [
 			{
@@ -158,6 +158,13 @@ self.body(func(inputs) {
 			}
 		}
 	}
+
+	// Receptors with both chains selected; the stats name the receptor only when there are several
+	receptorLabels := { "IG": "IG", "TCRAB": "TCR-αβ", "TCRGD": "TCR-ɣδ" }
+	pairedReceptors := {}
+	for chain in chains { pairedReceptors[chainToReceptor[chain]] = true }
+	receptorCount := 0
+	for r in ["IG", "TCRAB", "TCRGD"] { if pairedReceptors[r] { receptorCount += 1 } }
 
 	receptorsHandled := {}
 	for chain in chains {
@@ -393,6 +400,30 @@ self.body(func(inputs) {
 			}
 		]
 
+		suffix := receptorCount > 1 ? " (" + receptorLabels[receptor] + ")" : ""
+		statDomain := { "pl7.app/vdj/receptor": receptor, "pl7.app/vdj/clonotypingRunId": blockId }
+		scOutputs += [{
+			// Inline like the other stats: the model cannot read file-backed stat columns into its table
+			type: "TsvContent",
+			settings: {
+				axes: [{ column: "sampleId", spec: sampleIdAxisSpec }],
+				columns: [
+					{ id: "clonotypes-imported", column: "clonotypes-imported", spec: { name: "pl7.app/vdj/stat/clonotypesImported", valueType: "Long", domain: statDomain,
+						annotations: { "pl7.app/label": "Clonotypes" + suffix, "pl7.app/table/visibility": "default", "pl7.app/table/orderPriority": "99900",
+							"pl7.app/description": "Paired clonotypes: distinct combinations of a cell's chains." } } },
+					{ id: "cells-imported", column: "cells-imported", spec: { name: "pl7.app/vdj/stat/cellsImported", valueType: "Long", domain: statDomain,
+						annotations: { "pl7.app/label": "Cells Imported" + suffix, "pl7.app/table/visibility": "optional", "pl7.app/table/orderPriority": "99850",
+							"pl7.app/description": "Cells with both of the receptor's chains, the cells the paired clonotypes are built from." } } },
+					{ id: "cells-unpaired", column: "cells-unpaired", spec: { name: "pl7.app/vdj/stat/cellsUnpaired", valueType: "Long", domain: statDomain,
+						annotations: { "pl7.app/label": "Discarded: Unpaired Cells" + suffix, "pl7.app/table/visibility": "default", "pl7.app/table/orderPriority": "94500",
+							"pl7.app/description": "Cells left out of the paired clonotypes because they carry only one of the receptor's two chains. Counted in cells, not rows." } } }
+				]
+			},
+			name: "pairingTable",
+			path: ["pairingTsv"],
+			traceSteps: scTraceSteps
+		}]
+
 		scResult := pframes.processColumn(
 			importResults.output("clonotypesTsvForSingleCell-" + chainA),
 			processSingleCellKeysTpl,
@@ -457,6 +488,7 @@ self.body(func(inputs) {
 		scResult.addXsvOutputToBuilder(result, "properties_a_secondary", "clonotypeProperties/" + receptor + "/aSecondary/")
 		scResult.addXsvOutputToBuilder(result, "properties_b_primary", "clonotypeProperties/" + receptor + "/bPrimary/")
 		scResult.addXsvOutputToBuilder(result, "properties_b_secondary", "clonotypeProperties/" + receptor + "/bSecondary/")
+		scResult.addXsvOutputToBuilder(stats, "pairingTable", "pairing/" + receptor + "/")
 		for columnName in scResult.listXsvColumns("cellsLinkerTable") {
 			result.add("clonotypeProperties/" + receptor + "/cellsLinkerTable/" + columnName, scResult.outputSpec("cellsLinkerTable", columnName), scResult.outputData("cellsLinkerTable", columnName))
 		}

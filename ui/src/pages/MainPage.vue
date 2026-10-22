@@ -1,7 +1,10 @@
 <script setup lang="ts">
 import type { BareSetScheme } from "@platforma-open/milaboratories.import-vdj.model";
 import {
+  CHAIN_SLOT_LABELS,
+  CHAIN_SLOTS,
   forgetMappedColumns,
+  importedChains,
   SCHEME_LABELS,
 } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
@@ -32,6 +35,7 @@ import {
   chainsOptions,
   countTypeOptions,
   formatOptions,
+  headerAliases,
   LOAD_FROM_FILE,
   optionalCanonical,
   optionalMutations,
@@ -81,9 +85,9 @@ watchEffect(() => {
       parts.push(datasetOption.label);
     }
   }
-  // Add chains if available
+  // The chains the run imports, so a single-cell label names both chains of each receptor.
   if (args.chains && args.chains.length > 0) {
-    parts.push(args.chains.join(", "));
+    parts.push(importedChains(args.format, args.chains).join(", "));
   }
   args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
 });
@@ -95,9 +99,12 @@ const secondaryTypeOptions = computed(() => {
   return countTypeOptions;
 });
 
-// The AIRR formats alone: every other format's producer states its own assembling feature
+// AIRR, bulk or single-cell
 const isAirr = computed(
   () => app.model.data.format === "airr" || app.model.data.format === "airr-sc",
+);
+const isMixcr = computed(
+  () => app.model.data.format === "mixcr" || app.model.data.format === "mixcr-sc",
 );
 
 const isSingleCell = computed(
@@ -107,7 +114,26 @@ const isSingleCell = computed(
     app.model.data.format === "airr-sc",
 );
 
+/**
+ * A bare set on the dataset door, which only init params can set up. It imports the chains its
+ * columns are mapped to, so the chain picker and the custom mapping do not apply.
+ */
+const datasetBareChains = computed(() => {
+  const bare = app.model.data.bareSet;
+  if (loadFromFile.value || app.model.data.format !== "custom" || bare === undefined) return "";
+  return (CHAIN_SLOTS[bare.chainSelection] ?? []).map((c) => CHAIN_SLOT_LABELS[c]).join(", ");
+});
+
+// Keyed on the set of stat columns: a saved layout fixes column order and visibility, so a run
+// with different columns starts from their defaults instead of appending them unordered.
+const statsSourceId = computed(() => {
+  const columns = app.model.outputs.statColumns;
+  if (columns === undefined) return undefined;
+  return columns.map((c) => c.name + JSON.stringify(c.domain)).sort();
+});
+
 const tableSettings = usePlDataTableSettingsV2({
+  sourceId: () => statsSourceId.value,
   model: () => app.model.outputs.stats,
 });
 
@@ -307,6 +333,23 @@ function setMapping(key: string, value: string | undefined) {
   else a.customMapping[key] = value;
 }
 
+/** Map each unmapped column whose header matches a known tool's name. Runs on click only, so block data is never written from an output. */
+function autoMap() {
+  const headers = headerOptions.value.map((o) => o.value);
+  const byLower = new Map(headers.map((h) => [h.toLowerCase(), h]));
+  for (const [key, aliases] of Object.entries(headerAliases)) {
+    if (getMapping(key)) continue;
+    const found = aliases.map((a) => byLower.get(a.toLowerCase())).find((h) => h !== undefined);
+    if (found !== undefined) setMapping(key, found);
+  }
+  // UMIs only: make them primary. Both: the other one is secondary, or its dropdown stays hidden
+  const a = app.model.data;
+  if (!getMapping("read-count") && getMapping("umi-count")) a.primaryCountType = "umi";
+  if (getMapping("read-count") && getMapping("umi-count")) {
+    a.secondaryCountType = a.primaryCountType === "umi" ? "read" : "umi";
+  }
+}
+
 const validationResult = computed(() => app.model.outputs.validationResult);
 
 const validationMessage = computed(() => missingColumnsMessage(validationResult.value));
@@ -402,32 +445,43 @@ watch(
         />
 
         <PlDropdown
-          v-if="isAirr"
+          v-if="isAirr || isMixcr"
           v-model="app.model.data.assemblingFeature"
           :options="assemblingFeatureOptions"
           label="Assemble clonotypes by"
-          placeholder="CDR3"
+          :placeholder="isMixcr ? 'Widest region exported' : 'CDR3'"
+          clearable
         >
           <template #tooltip>
             Which regions of the receptor the sequencing covers. Rearrangements not covering it are
             discarded and counted.
+            <template v-if="isMixcr">
+              Left empty, MiXCR clones are keyed on the widest of VDJRegion and FR1 - CDR3 the file
+              exports, or CDR3.
+            </template>
           </template>
         </PlDropdown>
 
-        <PlDropdownMulti
-          v-if="!isSingleCell"
-          v-model="app.model.data.chains"
-          :options="chainsOptions"
-          label="Chains to import"
-          required
-        />
-        <PlDropdownMulti
-          v-else
-          v-model="selectedReceptors"
-          :options="receptorOptions"
-          label="Immune receptors"
-          required
-        />
+        <PlAlert v-if="datasetBareChains" type="info" :style="{ width: '100%' }">
+          This block imports a sequence set mapped to {{ datasetBareChains }}. Its chains and
+          columns were set when the block was created.
+        </PlAlert>
+        <template v-else>
+          <PlDropdownMulti
+            v-if="!isSingleCell"
+            v-model="app.model.data.chains"
+            :options="chainsOptions"
+            label="Chains to import"
+            required
+          />
+          <PlDropdownMulti
+            v-else
+            v-model="selectedReceptors"
+            :options="receptorOptions"
+            label="Immune receptors"
+            required
+          />
+        </template>
 
         <PlAlert v-if="datasetScanning" type="info" :style="{ width: '100%' }">
           Validating the selected columns. This can take a moment, please wait...
@@ -442,7 +496,16 @@ watch(
           {{ validationMessage }}
         </PlAlert>
 
-        <template v-if="app.model.data.format === 'custom' && !datasetScanning">
+        <template
+          v-if="app.model.data.format === 'custom' && !datasetScanning && !datasetBareChains"
+        >
+          <PlBtnGhost v-if="headerOptions.length > 0" @click="autoMap">
+            Auto-map columns
+            <template #tooltip>
+              Fill unmapped columns from common header names written by MiXCR, AIRR, Cell Ranger,
+              immunoSEQ and QIAseq. Check the result before running.
+            </template>
+          </PlBtnGhost>
           <PlSectionSeparator>Required columns</PlSectionSeparator>
           <div class="field-col">
             <PlDropdown
@@ -452,7 +515,7 @@ watch(
               :options="headerOptions"
               :label="f.label"
               clearable
-              required
+              :required="f.required"
               @update:model-value="
                 (v: string | undefined) => setMapping(f.key, v as string | undefined)
               "

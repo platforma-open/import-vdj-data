@@ -125,15 +125,15 @@ def write_stats(path: str, chains: List[str], disagreed: Dict[str, int]) -> None
     pl.DataFrame(rows, schema=header, orient="row").write_csv(path, separator="\t")
 
 
-def write_record_stats(path: str, failed_to_annotate: int) -> None:
-    """One row: records left out because a sequence could not be numbered.
+def write_record_stats(path: str, failed_to_annotate: int, kept: int) -> None:
+    """One row: records left out because a sequence could not be numbered, and records kept.
 
     Per record rather than per chain: a record failing on both chains counts once. It continues
     the import pass's discard counters, which is what makes rows read minus every discard the
     number imported.
     """
-    header = ["recordsFailedToAnnotate"]
-    row = [str(failed_to_annotate)]
+    header = ["recordsFailedToAnnotate", "records"]
+    row = [str(failed_to_annotate), str(kept)]
     pl.DataFrame([row], schema=header, orient="row").write_csv(path, separator="\t")
 
 
@@ -249,7 +249,7 @@ def main() -> None:
     if args.out_stats:
         write_stats(args.out_stats, chains, disagreed)
     if args.out_record_stats:
-        write_record_stats(args.out_record_stats, failed_to_annotate)
+        write_record_stats(args.out_record_stats, failed_to_annotate, len(kept_keys))
 
     for chain in chains:
         t = tally[chain]

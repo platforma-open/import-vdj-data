@@ -308,3 +308,39 @@ export function bareSetValid(bare: BareSetMapping | undefined): boolean {
   // generated suffix would leave names matching nothing in their file.
   return Object.keys(propertyCollisions(bare.properties ?? [])).length === 0;
 }
+
+const PARTNER: Record<string, string> = {
+  IGHeavy: "IGLight",
+  IGLight: "IGHeavy",
+  TCRAlpha: "TCRBeta",
+  TCRBeta: "TCRAlpha",
+  TCRDelta: "TCRGamma",
+  TCRGamma: "TCRDelta",
+};
+
+/**
+ * Single-cell imports pair a cell's chains, so they take whole receptors: a chain left over from
+ * a bulk selection brings its partner. Bulk chains are returned as they are.
+ */
+export function importedChains(format: ImportFormat | undefined, chains: string[]): string[] {
+  if (format !== "mixcr-sc" && format !== "cellranger" && format !== "airr-sc") return chains;
+  const out: string[] = [];
+  for (const c of chains) {
+    for (const x of [c, PARTNER[c]]) if (x !== undefined && !out.includes(x)) out.push(x);
+  }
+  return out;
+}
+
+/**
+ * The mapping with sequence and gene columns kept only for the chains its selection declares.
+ * The panel shows only those slots, while the workflow imports every mapped one.
+ */
+export function declaredSlotsOnly(bare: BareSetMapping | undefined): BareSetMapping | undefined {
+  if (bare === undefined) return undefined;
+  const slots: string[] = CHAIN_SLOTS[bare.chainSelection] ?? [];
+  const keep = <T>(m: Partial<Record<BareSetChain, T>> | undefined) =>
+    Object.fromEntries(Object.entries(m ?? {}).filter(([slot]) => slots.includes(slot)));
+  const out = { ...bare, sequences: keep(bare.sequences) };
+  if (bare.genes !== undefined) out.genes = keep(bare.genes);
+  return out;
+}

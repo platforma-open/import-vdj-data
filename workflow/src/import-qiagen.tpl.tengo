@@ -4,8 +4,10 @@ pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
+processUtils := import(":process-utils")
+text := import("text")
 
-self.defineOutputs("tsv", "stats")
+self.defineOutputs("tsv", "stats", "recordStats")
 
 self.body(func(inputs) {
 	inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
@@ -24,7 +26,7 @@ self.body(func(inputs) {
 		dataFrames = append(dataFrames, wf.frame(file, {
 			xsvType: xsvType,
 			id: "table_" + key,
-			schema: [{column: "read set", type: "String"}]
+			inferSchema: false
 		}))
 	}
 
@@ -42,28 +44,31 @@ self.body(func(inputs) {
 	}
 	df = df.withColumns(renameExpressions...)
 
-	// For Qiagen data, remove the last 'C' from chain column values to make them compatible
-	// TRAC -> TRA, TRBC -> TRB, TRGC -> TRG, TRDC -> TRD, IGHC -> IGH, IGKC -> IGK, IGLC -> IGL
-	df = df.withColumns(
-		pt.col("chain").strSlice(0, pt.col("chain").strLenChars().minus(1)).alias("chain")
-	)
+	// QIAseq writes the constant region (TRAC), CLC the locus (TRA); either way the first three letters
+	df = df.withColumns(pt.col("chain").fillNull("").strToUpper().strSlice(0, 3).alias("chain"))
 
-	// Drop rows with empty j-gene or v-gene
-	for col in ["j-gene", "v-gene"] {
-		df = df.filter(
-			pt.col(col).isNotNull().and(pt.col(col).neq(""))
-		)
+	// First call only, allele split off, locus added to segment-only names (V5-1). TRAV29/DV5 is one gene.
+	m := columnsInfo.columnMapping
+	geneExprs := []
+	for g in ["v", "d", "j", "c"] {
+		if m[g + "-gene"] == undefined { continue }
+		call := pt.col(g + "-gene").fillNull("").strReplace(",.*$", "", { replaceAll: true }).strToUpper()
+		segment := call.strSlice(0, 1).eq(text.to_upper(g))
+		dashed := call.strSlice(1, 1).eq("-")
+		bare := pt.when(dashed).then(pt.concatStr([call.strSlice(0, 1), call.strSlice(2)], { delimiter: "" })).otherwise(call)
+		allele := pt.when(segment.and(call.neq(""))).then(pt.concatStr([pt.col("chain"), bare], { delimiter: "" })).otherwise(call)
+		geneExprs = append(geneExprs, allele.strReplace("\\*.*$", "", { replaceAll: true }).alias(g + "-gene"))
+		if m[g + "-allele"] != undefined { geneExprs = append(geneExprs, allele.alias(g + "-allele")) }
 	}
-	
-	// For Qiagen data, use the chain column to filter chains (after removing 'C' suffix)
-	chainToLocusMap := {
-		"IGHeavy": "IGH",
-		"IGLight": "IGL", // Special case handled below
-		"TCRAlpha": "TRA",
-		"TCRBeta": "TRB", 
-		"TCRGamma": "TRG",
-		"TCRDelta": "TRD"
-	}
+	df = df.withColumns(geneExprs...)
+
+	df = df.withColumns(pt.col("umi-count").strReplace(",", "", { replaceAll: true }).cast("Float64").fillNull(0).cast("Int64").alias("umi-count"))
+
+	records := processUtils.recordCounts("v-gene", [["records-no-v", pt.col("v-gene").neq("")],
+		["records-no-j", pt.col("j-gene").neq("")], ["records-no-cdr3", pt.col("cdr3-nt").fillNull("").neq("")],
+		["records-not-productive", processUtils.productiveCdr3Aa()]])
+	df.select(records.exprs...).saveContent("records.tsv")
+	df = df.filter(records.kept).withColumns(pt.lit("true").alias("is-productive"))
 
 	keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
 	
@@ -73,41 +78,12 @@ self.body(func(inputs) {
 						alias("clonotypeKey")
 
 	for chain in chains {
-		prefix := chainToLocusMap[chain]
-		
-		// Chain values are matched case-insensitively.
-		// The trailing 'C' has already been stripped from the chain column above, so
-		// this still assumes the source value carried that suffix.
-		chainUpper := pt.col("chain").strToUpper()
-
-		chainDf := undefined
-		if chain == "IGLight" {
-			// For IG light chains, check for both IGK and IGL (after removing 'C' suffix)
-			chainDf = df.filter(
-				chainUpper.eq("IGK").or(chainUpper.eq("IGL"))
-			)
-		} else {
-			// Use exact chain column value for filtering (after removing 'C' suffix)
-			qiagenChainValue := chainToLocusMap[chain]
-			chainDf = df.filter(chainUpper.eq(qiagenChainValue))
+		inChain := undefined
+		for locus in processUtils.chainLoci[chain] {
+			has := pt.col("chain").eq(locus)
+			inChain = is_undefined(inChain) ? has : inChain.or(has)
 		}
-
-		// Calculate "is-productive" column based on CDR3 AA sequence presence.
-		chainDf = chainDf.withColumns(
-			pt.col("cdr3-aa").isNotNull().
-				and(pt.col("cdr3-aa").neq("")).
-				and(pt.col("cdr3-aa").strContains("*", {literal: true}).not()).
-				and(pt.col("cdr3-aa").strContains("_", {literal: true}).not()).
-				alias("is-productive")
-		)
-
-		// Filter for productive sequences.
-		chainDf = chainDf.filter(pt.col("is-productive"))
-
-		// Standardize productivity flag to lowercase string values
-		chainDf = chainDf.withColumns(
-			pt.when(pt.col("is-productive")).then(pt.lit("true")).otherwise(pt.lit("false")).alias("is-productive")
-		)
+		chainDf := df.filter(inChain)
 
 		// For Qiagen, CDR3 nucleotide and amino acid sequences are already provided
 		// Add length columns
@@ -119,9 +95,6 @@ self.body(func(inputs) {
 		)
 		
 		chainDf = chainDf.withColumns(clonotypeKeyExpr)
-
-		// Ensure correct data type for UMI count
-		chainDf = chainDf.withColumns(pt.col("umi-count").cast("Int64").alias("umi-count"))
 
 		// Aggregate by clonotype key
 		aggregations := []
@@ -165,8 +138,9 @@ self.body(func(inputs) {
 		stats[chain] = wf.getFileContent("stats-" + chain + ".tsv")
 	}
 
-    return {
+	return {
 		tsv: tsv,
-		stats: stats
+		stats: stats,
+		recordStats: wf.getFileContent("records.tsv")
 	}
 })

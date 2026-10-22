@@ -1,5 +1,38 @@
 maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
 json := import("json")
+
+// The loci a chain's genes or chain column name; matched by substring, so TRA also covers TRAC and TRAV
+chainLoci := {
+	"IGHeavy": ["IGH"],
+	"IGLight": ["IGK", "IGL"],
+	"TCRAlpha": ["TRA", "TCRA"],
+	"TCRBeta": ["TRB", "TCRB"],
+	"TCRGamma": ["TRG", "TCRG"],
+	"TCRDelta": ["TRD", "TCRD"]
+}
+
+// A CDR3 aa that is present and has no stop codon (*) or frameshift (_)
+productiveCdr3Aa := func() {
+	aa := pt.col("cdr3-aa").fillNull("")
+	return aa.neq("").and(aa.strContains("*", { literal: true }).not()).and(aa.strContains("_", { literal: true }).not())
+}
+
+// Row counts for records.tsv: the rows read, then what each filter drops among the rows every
+// earlier one kept, so the discards and the survivors add up. Steps are [id, keeps] in filter
+// order; an undefined keeps is skipped. Returns the expressions and the combined filter.
+recordCounts := func(countColumn, steps) {
+	exprs := [pt.col(countColumn).fillNull("").count().alias("record-count")]
+	kept := undefined
+	for step in steps {
+		keeps := step[1]
+		if is_undefined(keeps) { continue }
+		dropped := is_undefined(kept) ? keeps.not() : keeps.not().and(kept)
+		exprs = append(exprs, dropped.cast("Int64").sum().alias(step[0]))
+		kept = is_undefined(kept) ? keeps : kept.and(keeps)
+	}
+	return { exprs: exprs, kept: kept }
+}
 
 columnsToSchema := func(columns) {
 	schema := []
@@ -9,7 +42,17 @@ columnsToSchema := func(columns) {
 	return schema
 }
 
-buildStatsColumns := func(chain, blockId, columnsInfo) {
+// How each chain is named in the stats table, in display order; matches the settings panel
+CHAIN_LABELS := [["IGHeavy", "IG Heavy"], ["IGLight", "IG Light"], ["TCRAlpha", "TCR-α"],
+	["TCRBeta", "TCR-β"], ["TCRDelta", "TCR-δ"], ["TCRGamma", "TCR-ɣ"]]
+
+// Per-chain stats, labelled with the chain. Bulk shows each chain's clonotypes right after Rows Read;
+// single cell hides them, as its paired clonotypes are the count that matters.
+buildStatsColumns := func(chain, blockId, columnsInfo, singleCell) {
+	name := chain
+	rank := 0
+	for i, c in CHAIN_LABELS { if c[0] == chain { name = c[1]; rank = i } }
+	order := func(offset) { return string(94000 - rank * 10 - offset) }
 	statsColumns := [
 		{
 			id: "clonotype-count",
@@ -22,14 +65,17 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 					"pl7.app/vdj/clonotypingRunId": blockId
 				},
 				annotations: {
-					"pl7.app/label": "Number of Clonotypes",
-					"pl7.app/description": "The number of clonotypes in the dataset.",
-					"pl7.app/table/visibility": "default"
+					"pl7.app/label": name + " Clonotypes",
+					"pl7.app/table/orderPriority": singleCell ? order(0) : string(99900 - rank * 10),
+					"pl7.app/description": "The number of distinct clonotypes of this chain in the sample.",
+					"pl7.app/table/visibility": singleCell ? "optional" : "default"
 				}
 			}
 		}
 	]
-	hasReads := columnsInfo.columnMapping["read-count"] != undefined
+	// From what is emitted, not the header: an import may build its read count from other columns
+	hasReads := false
+	for col in columnsInfo.abundanceColumns { if col.column == "read-count" { hasReads = true } }
 	if hasReads {
 		statsColumns += [
 			{
@@ -43,9 +89,32 @@ buildStatsColumns := func(chain, blockId, columnsInfo) {
 					"pl7.app/vdj/clonotypingRunId": blockId
 					},
 					annotations: {
-						"pl7.app/label": "Number of Reads",
-						"pl7.app/description": "The number of reads in the dataset.",
-						"pl7.app/table/visibility": "default"
+						"pl7.app/label": name + " Reads",
+					"pl7.app/table/orderPriority": order(1),
+						"pl7.app/description": "The reads of this chain's imported clonotypes in the sample.",
+						"pl7.app/table/visibility": "optional"
+					}
+				}
+			}
+		]
+	}
+	if columnsInfo.hasUMIs {
+		statsColumns += [
+			{
+				id: "umi-count",
+				column: "umi-count",
+				spec: {
+					name: "pl7.app/vdj/stat/umiCount",
+					valueType: "Long",
+					domain: {
+						"pl7.app/vdj/chain": chain,
+						"pl7.app/vdj/clonotypingRunId": blockId
+					},
+					annotations: {
+						"pl7.app/label": name + " UMIs",
+					"pl7.app/table/orderPriority": order(2),
+						"pl7.app/description": "The UMIs of this chain's imported clonotypes in the sample.",
+						"pl7.app/table/visibility": "optional"
 					}
 				}
 			}
@@ -101,32 +170,43 @@ rowsReadColumn := func(blockId, id) {
 
 // What the row filters discarded, per sample and across every chain -- a row with no V call
 // belongs to no chain, and each count is its own filter's cost, not an overlapping total.
-buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode) {
+buildRecordStatsColumns := func(blockId, columnsInfo, alleleMode, productivityMode) {
 	// Descending, so the table reads left to right in the order the filters actually run
 	col := func(id, name, label, description, visibility, order) {
 		return recordStatColumn(blockId, id, name, label, description, visibility, order)
 	}
 
 	cols := [rowsReadColumn(blockId, "record-count")]
+	if columnsInfo.columnMapping["is-cell"] != undefined || columnsInfo.columnMapping["high-confidence"] != undefined {
+		cols += [col("records-not-cell", "recordsNotCell", "Discarded: Not a Cell",
+			"Rows discarded because their barcode was not called a cell or the contig was not high-confidence.", "default", "99500")]
+	}
 	if hasGene(columnsInfo, alleleMode, "v") {
 		cols += [col("records-no-v", "recordsWithoutVGene", "Discarded: No V Gene",
-			"Rows discarded because no V gene was called.", "optional", "99000")]
+			"Rows discarded because no V gene was called.", "default", "99000")]
 	}
 	if hasGene(columnsInfo, alleleMode, "j") {
 		cols += [col("records-no-j", "recordsWithoutJGene", "Discarded: No J Gene",
-			"Rows discarded because no J gene was called, among those that had a V gene.", "optional", "98000")]
+			"Rows discarded because no J gene was called, among those that had a V gene.", "default", "98000")]
 	}
 	if columnsInfo.columnMapping["cdr3-nt"] != undefined {
 		cols += [col("records-no-cdr3", "recordsWithoutCdr3", "Discarded: No CDR3",
-			"Rows discarded because no CDR3 could be read, among those that had V and J genes.", "optional", "97000")]
+			"Rows discarded because no CDR3 could be read, among those that had V and J genes.", "default", "97000")]
 	}
 	// Emitted only when a feature was assembled: with a CDR3 key nothing can fail to cover it
 	if !is_undefined(columnsInfo.spanNt) {
-		feature := columnsInfo.assemblingFeature
+		feature := columnsInfo.assemblingFeatureLabel
 		cols += [col("records-not-covering", "recordsNotCoveringAssemblingFeature",
 			"Discarded: Not Covering " + feature,
 			"Rows discarded because they do not span " + feature + ", among those that had V and J genes and a CDR3.",
 			"default", "96000")]
+	}
+	if productivityMode == "from_cdr3_aa" || productivityMode == "from_column_true" || productivityMode == "from_column_or_cdr3_aa" {
+		why := productivityMode == "from_cdr3_aa" ? "their CDR3 aa is missing or has a stop codon or a frameshift" :
+			productivityMode == "from_column_true" ? "the file marks them not productive" :
+			"the file marks them not productive or, where it does not say, their CDR3 aa is missing or has a stop codon or a frameshift"
+		cols += [col("records-not-productive", "recordsNotProductive", "Discarded: Not Productive",
+			"Rows discarded because " + why + ", among those that passed the other filters.", "default", "95000")]
 	}
 	return cols
 }
@@ -170,6 +250,9 @@ applyXsvType := func(importCfg, datasetSpec) {
 }
 
 export {
+	chainLoci: chainLoci,
+	productiveCdr3Aa: productiveCdr3Aa,
+	recordCounts: recordCounts,
 	columnsToSchema: columnsToSchema,
 	buildStatsColumns: buildStatsColumns,
 	buildRecordStatsColumns: buildRecordStatsColumns,

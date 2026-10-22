@@ -793,7 +793,8 @@ getColumns := func(header, customMapping, primaryCountType) {
         keyColumns = append(keyColumns, "vdj-nt")
         keyStructure = "VDJRegion"
     } else if useFrCdr {
-		keyColumns = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", (hasCdr3Nt ? "cdr3-nt" : "cdr3-aa"), (hasFr4Nt ? "fr4-nt" : "")]
+		keyColumns = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", (hasCdr3Nt ? "cdr3-nt" : "cdr3-aa")]
+		if hasFr4Nt { keyColumns = append(keyColumns, "fr4-nt") }
         keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-" + (hasCdr3Nt ? "CDR3nt" : "CDR3aa") + (hasFr4Nt ? "-FR4nt" : "")
 	} else if hasCdr3Nt {
 		keyColumns = append(keyColumns, "cdr3-nt")
@@ -854,8 +855,19 @@ getColumns := func(header, customMapping, primaryCountType) {
         propertyColumns = append(propertyColumns, propertyColumnSpecs["vdj-aa"])
     }
 
+    // Regions the key spans; rows where one is region_not_covered are dropped and counted
+    spanNt := undefined
+    if hasVdjNt {
+        spanNt = ["vdj-nt"]
+    } else if presentFrCdrNt && hasCdr3Nt {
+        spanNt = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "cdr3-nt"]
+        if hasFr4Nt { spanNt = append(spanNt, "fr4-nt") }
+    }
+
     return {
         hasUMIs: hasUMIs,
+        spanNt: spanNt,
+        assemblingFeatureLabel: common.assemblingFeatureLabels[hasVdjNt || hasFr4Nt ? "VDJRegion" : "{FR1Begin:CDR3End}"],
         abundanceColumns: maps.getValues(abundanceColumns),
         propertyColumns: propertyColumns,
         columnMapping: columnMapping,

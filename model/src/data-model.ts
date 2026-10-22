@@ -1,6 +1,7 @@
 import { createPlDataTableStateV2, DataModelBuilder } from "@platforma-sdk/model";
 import { kind } from "@platforma-open/milaboratories.import-vdj.kind";
 import type { BlockData, LegacyBlockArgs, LegacyUiState } from "./types";
+import { declaredSlotsOnly } from "./types";
 
 /** The six chains a fresh block offers. Unchanged from V1's `withArgs` default. */
 const DEFAULT_CHAINS = ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta", "TCRGamma"];
@@ -48,10 +49,19 @@ function renameSampleIdToDatasetId(data: BlockData): BlockData {
   };
 }
 
+/**
+ * The saved table state lists the hidden columns explicitly, which overrides the columns' own
+ * default visibility. Reset it so the statistics table opens with the current defaults.
+ */
+function resetTableState(data: BlockData): BlockData {
+  return { ...data, tableState: createPlDataTableStateV2() };
+}
+
 export const blockDataModel = new DataModelBuilder({ kind })
   .from<BlockData>("v1")
   .upgradeLegacy<LegacyBlockArgs, LegacyUiState>(upgradeLegacyData)
   .migrate<BlockData>("v2", renameSampleIdToDatasetId)
+  .migrate<BlockData>("v3", resetTableState)
   .init(({ params }) => ({
     ...viewStateDefaults(),
     // Left empty on purpose: the panel derives it from the chosen source, so a
@@ -66,5 +76,6 @@ export const blockDataModel = new DataModelBuilder({ kind })
     primaryCountType: params?.primaryCountType,
     secondaryCountType: params?.secondaryCountType,
     assemblingFeature: params?.assemblingFeature,
-    bareSet: params?.bareSet,
+    // Init params can map chains the selection does not declare; the panel could never show them.
+    bareSet: declaredSlotsOnly(params?.bareSet),
   }));

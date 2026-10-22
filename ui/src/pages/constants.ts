@@ -69,15 +69,46 @@ export const countTypeOptions: ListOptionBase<CountType>[] = [
 export const LOAD_FROM_FILE = "__load_from_file__";
 
 /** A column the custom mapping can name. */
-type MappableColumn = { key: string; label: string };
+type MappableColumn = { key: string; label: string; required?: boolean };
 
-/** Always asked for on the custom format, whichever chains are picked. */
+/** Always asked for on the custom format, whichever chains are picked. One CDR3 is enough. */
 export const requiredCanonicalBase: MappableColumn[] = [
-  { key: "cdr3-aa", label: "CDR3 aa" },
-  { key: "cdr3-nt", label: "CDR3 nt" },
-  { key: "v-gene", label: "V gene" },
-  { key: "j-gene", label: "J gene" },
+  { key: "cdr3-aa", label: "CDR3 aa (or nt)" },
+  { key: "cdr3-nt", label: "CDR3 nt (or aa)" },
+  { key: "v-gene", label: "V gene", required: true },
+  { key: "j-gene", label: "J gene", required: true },
 ];
+
+/** Header names tools write for each mappable column, matched case-insensitively. Ambiguous names (AIRR vs Cell Ranger cdr3) and the C gene, which joins the clonotype key, are left out. */
+export const headerAliases: Record<string, string[]> = {
+  "cdr3-aa": [
+    "aaSeqCDR3",
+    "junction_aa",
+    "cdr3_aa",
+    "amino_acid",
+    "aminoAcid",
+    "CDR3 amino acid seq",
+  ],
+  "cdr3-nt": ["nSeqCDR3", "junction", "cdr3_nt", "CDR3 nucleotide seq"],
+  "v-gene": ["bestVGene", "v_call", "v_gene", "vGeneName", "V-region"],
+  "d-gene": ["bestDGene", "d_call", "d_gene", "dGeneName"],
+  "j-gene": ["bestJGene", "j_call", "j_gene", "jGeneName", "J-region"],
+  "read-count": ["readCount", "reads", "read_count", "consensus_count", "seq_reads", "templates"],
+  "umi-count": ["uniqueMoleculeCount", "umis", "umi_count", "duplicate_count"],
+  isotype: ["isotype"],
+  "fr1-nt": ["nSeqFR1", "fwr1_nt"],
+  "cdr1-nt": ["nSeqCDR1", "cdr1_nt"],
+  "fr2-nt": ["nSeqFR2", "fwr2_nt"],
+  "cdr2-nt": ["nSeqCDR2", "cdr2_nt"],
+  "fr3-nt": ["nSeqFR3", "fwr3_nt"],
+  "fr4-nt": ["nSeqFR4", "fwr4_nt"],
+  "fr1-aa": ["aaSeqFR1", "fwr1_aa"],
+  "cdr1-aa": ["aaSeqCDR1", "cdr1_aa"],
+  "fr2-aa": ["aaSeqFR2", "fwr2_aa"],
+  "cdr2-aa": ["aaSeqCDR2", "cdr2_aa"],
+  "fr3-aa": ["aaSeqFR3", "fwr3_aa"],
+  "fr4-aa": ["aaSeqFR4", "fwr4_aa"],
+};
 
 export const optionalSequence: MappableColumn[] = [
   { key: "fr1-aa", label: "FR1 aa" },

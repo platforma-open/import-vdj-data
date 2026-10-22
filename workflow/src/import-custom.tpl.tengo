@@ -4,8 +4,9 @@ pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 slices := import("@platforma-sdk/workflow-tengo:slices")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 pt := import("@platforma-sdk/workflow-tengo:pt")
+processUtils := import(":process-utils")
 
-self.defineOutputs("tsv", "stats")
+self.defineOutputs("tsv", "stats", "recordStats")
 
 self.body(func(inputs) {
     inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
@@ -64,11 +65,6 @@ self.body(func(inputs) {
         }
     }
 
-    // Basic row filters: require V and J genes to be present
-    for col in ["j-gene", "v-gene"] {
-        df = df.filter(pt.col(col).isNotNull().and(pt.col(col).neq("")))
-    }
-
     keyComponents := slices.map(columnsInfo.clonotypeKeyColumns, func(id) { return pt.col(id).fillNull("NA") })
 
     clonotypeKeyExpr := pt.
@@ -93,6 +89,23 @@ self.body(func(inputs) {
     aa_cols := ["fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "cdr3-aa"]
     if hasFr4Aa { aa_cols = append(aa_cols, "fr4-aa") }
 
+    // MiXCR writes region_not_covered for an unreached region and empty for a zero-length one.
+    // Coverage comes from the marker, which is then blanked.
+    mapped := func(cols) { return slices.filter(cols, func(c) { return columnsInfo.columnMapping[c] != undefined }) }
+    notCovered := func(cols) {
+        expr := pt.lit(false)
+        for c in mapped(cols) { expr = expr.or(pt.col(c).fillNull("").eq("region_not_covered")) }
+        return expr
+    }
+    spanNt := columnsInfo.spanNt == undefined ? [] : columnsInfo.spanNt
+    df = df.withColumns(notCovered(spanNt).not().alias("covers-feature"), notCovered(aa_cols + ["vdj-aa"]).alias("aa-not-covered"))
+    blanked := []
+    for col in mapped(nt_cols + aa_cols + ["vdj-nt", "vdj-aa"]) {
+        v := pt.col(col).fillNull("")
+        blanked = append(blanked, pt.when(v.eq("region_not_covered")).then(pt.lit("")).otherwise(v).alias(col))
+    }
+    if len(blanked) > 0 { df = df.withColumns(blanked...) }
+
     for prop in columnsInfo.propertyColumns {
         isVdjNt := false
         isVdjAa := false
@@ -101,28 +114,25 @@ self.body(func(inputs) {
             isVdjAa = prop.spec.domain["pl7.app/vdj/feature"] == "VDJRegionInFrame"
         }
 
+        // A zero-length region is empty, not missing; an uncovered aa region leaves no sequence
         if isVdjNt && !hasVdjNt {
-            nt_exprs := slices.map(nt_cols, func(c) { return pt.col(c) })
+            nt_exprs := slices.map(nt_cols, func(c) { return pt.col(c).fillNull("") })
             df = df.withColumns(pt.concatStr(nt_exprs, { delimiter: "" }).alias(prop.column))
         }
         if isVdjAa && !hasVdjAa {
-            aa_exprs := slices.map(aa_cols, func(c) { return pt.col(c) })
-            df = df.withColumns(pt.concatStr(aa_exprs, { delimiter: "" }).alias(prop.column))
+            aa_exprs := slices.map(aa_cols, func(c) { return pt.col(c).fillNull("") })
+            df = df.withColumns(pt.when(pt.col("aa-not-covered")).then(pt.lit("")).otherwise(pt.concatStr(aa_exprs, { delimiter: "" })).alias(prop.column))
         }
     }
 
-    // Remove rows where any sequence column contains "region_not_covered"
-    seqCols := nt_cols + aa_cols + ["vdj-nt", "vdj-aa"]
-    invalidExpr := undefined
-    for col in seqCols {
-        if columnsInfo.columnMapping[col] != undefined {
-            cond := pt.col(col).strContains("region_not_covered", { literal: true })
-            if invalidExpr == undefined { invalidExpr = cond } else { invalidExpr = invalidExpr.or(cond) }
-        }
-    }
-    if invalidExpr != undefined {
-        df = df.filter(invalidExpr.not())
-    }
+    // Counted once for the dataset. Without CDR3 nt an empty CDR3 aa counts as not productive.
+    filled := func(col) { return pt.col(col).fillNull("").neq("") }
+    records := processUtils.recordCounts("v-gene", [["records-no-v", filled("v-gene")], ["records-no-j", filled("j-gene")],
+        ["records-no-cdr3", hasNT ? filled("cdr3-nt") : undefined],
+        ["records-not-covering", columnsInfo.spanNt != undefined ? pt.col("covers-feature") : undefined],
+        ["records-not-productive", hasAA ? processUtils.productiveCdr3Aa() : pt.lit(true)]])
+    df.select(records.exprs...).saveContent("records.tsv")
+    df = df.filter(records.kept)
 
     // Convert numeric columns to Int64 (remove floating points and thousand separators if present)
     if hasReads {
@@ -190,22 +200,7 @@ self.body(func(inputs) {
             chainDf = df.filter(filterExpr)
         }
 
-        // If cdr3-aa provided, compute productivity and filter to productive
-        if hasAA {
-            chainDf = chainDf.withColumns(
-                pt.col("cdr3-aa").isNotNull().
-                    and(pt.col("cdr3-aa").neq("")).
-                    and(pt.col("cdr3-aa").strContains("*", { literal: true }).not()).
-                    and(pt.col("cdr3-aa").strContains("_", { literal: true }).not()).
-                    alias("is-productive")
-            )
-            chainDf = chainDf.filter(pt.col("is-productive"))
-
-            // Standardize productivity flag to lowercase string values
-            chainDf = chainDf.withColumns(
-                pt.when(pt.col("is-productive")).then(pt.lit("true")).otherwise(pt.lit("false")).alias("is-productive")
-            )
-        }
+        if hasAA { chainDf = chainDf.withColumns(pt.lit("true").alias("is-productive")) }
 
         // Derive lengths if available
         if hasAA {
@@ -217,7 +212,7 @@ self.body(func(inputs) {
 
         chainDf = chainDf.withColumns(clonotypeKeyExpr)
 
-        // Abundance columns are already cast to Int64 earlier (lines 108-132)
+        // Counts were cast to Int64 above
         // No need to cast again here
 
         // Aggregate by clonotypeKey using whichever abundance exists
@@ -275,6 +270,7 @@ self.body(func(inputs) {
 
     return {
         tsv: tsv,
-        stats: stats
+        stats: stats,
+        recordStats: wf.getFileContent("records.tsv")
     }
 }) 

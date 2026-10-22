@@ -13,10 +13,15 @@
   the identity's hash: a sequence-derived key would merge antibodies that share a sequence.
 */
 
-import { collisionCheckKey, rowReportKey } from "@platforma-open/milaboratories.import-vdj.model";
+import type { ImportFormat } from "@platforma-open/milaboratories.import-vdj.model";
+import {
+  collisionCheckKey,
+  datasetCheckKey,
+  rowReportKey,
+} from "@platforma-open/milaboratories.import-vdj.model";
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
 import { blockSpec as sequencePropertiesSpec } from "@platforma-open/milaboratories.sequence-properties";
-import type { PTableHandle } from "@platforma-sdk/model";
+import type { PlRef, PTableHandle } from "@platforma-sdk/model";
 import { createPlDataTableStateV2, uniquePlId } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
 import { ImportVdjBlockPointer } from "this-block";
@@ -30,7 +35,9 @@ import { ImportVdjBlockPointer } from "this-block";
  */
 type StatsProject = { getBlockState(blockId: string): Parameters<typeof awaitStableState>[0] };
 type StatsDriver = {
-  getSpec(handle: PTableHandle): Promise<{ type: string; spec: { name: string } }[]>;
+  getSpec(
+    handle: PTableHandle,
+  ): Promise<{ type: string; spec: { name: string; domain?: Record<string, string> } }[]>;
   getData(handle: PTableHandle, columns: number[]): Promise<{ data: unknown }[]>;
 };
 
@@ -58,6 +65,7 @@ async function recordStats(
     "recordsWithRepeatedId",
     "recordsWithoutSequence",
     "recordsFailedToAnnotate",
+    "recordsImported",
   ];
   const indices = names.map((n) =>
     specs.findIndex((s) => s.type === "column" && s.spec.name === `pl7.app/vdj/stat/${n}`),
@@ -71,6 +79,32 @@ async function recordStats(
     result[n] = values[0];
   });
   return result;
+}
+
+/** Every stat of a one-sample, one-chain run by its short name, e.g. `clonotypeCount`. */
+async function statCounts(
+  project: StatsProject,
+  blockId: string,
+  ml: { driverKit: { pFrameDriver: StatsDriver } },
+): Promise<Record<string, number | null>> {
+  const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+    outputs?: Record<string, unknown>;
+  };
+  const handle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })?.value
+    ?.fullTableHandle;
+  if (handle === undefined) throw new Error("no stats table");
+  const driver = ml.driverKit.pFrameDriver;
+  // Keyed by short name, plus the receptor for single-cell stats; a blank cell reads as null
+  const found: Record<string, number | null> = {};
+  for (const [i, s] of (await driver.getSpec(handle)).entries()) {
+    if (s.type !== "column" || !s.spec.name.startsWith("pl7.app/vdj/stat/")) continue;
+    const [vector] = await driver.getData(handle, [i]);
+    const receptor = s.spec.domain?.["pl7.app/vdj/receptor"];
+    const value = (vector.data as ArrayLike<unknown>)[0];
+    found[s.spec.name.slice("pl7.app/vdj/stat/".length) + (receptor ? `.${receptor}` : "")] =
+      value === null || value === undefined ? null : Number(value);
+  }
+  return found;
 }
 
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
@@ -863,6 +897,7 @@ blockTest(
       recordsWithRepeatedId: 0,
       recordsWithoutSequence: 0,
       recordsFailedToAnnotate: 0,
+      recordsImported: 4,
     });
     const statsHandle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
       ?.value?.fullTableHandle;
@@ -1072,6 +1107,7 @@ blockTest(
       recordsWithRepeatedId: 3,
       recordsWithoutSequence: 2,
       recordsFailedToAnnotate: 0,
+      recordsImported: 3,
     });
   },
 );
@@ -1128,6 +1164,7 @@ blockTest(
       recordsWithRepeatedId: 1,
       recordsWithoutSequence: 0,
       recordsFailedToAnnotate: 0,
+      recordsImported: 2,
     });
   },
 );
@@ -1218,5 +1255,285 @@ blockTest(
     expect(report?.key).toBe(rowReportKey(bareSet));
     expect(report?.missingIds).toEqual(["AB\n2"]);
     expect(report?.collapsed).toEqual([{ id: 'AB "1"\tX', rows: 2 }]);
+  },
+);
+
+// Each file drops one contig for a different flag: high_confidence before 6.0, is_cell after
+for (const [label, asset] of [
+  ["pre-6.0", "cellranger-legacy-contigs.csv"],
+  ["6.0+", "cellranger-contigs.csv"],
+]) {
+  blockTest(
+    `imports a ${label} Cell Ranger contig file, cells only`,
+    { timeout: 600000 },
+    async ({ rawPrj: project, helpers, expect, ml }) => {
+      const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+      const sampleId = uniquePlId();
+      const fileHandle = await helpers.getLocalFileHandle(`./assets/${asset}`);
+      await project.mutateBlockStorage(sndBlockId, {
+        operation: "update-block-data",
+        value: {
+          suggestedImport: false,
+          h5adFilesToPreprocess: [],
+          seuratFilesToPreprocess: [],
+          metadata: [],
+          sampleIds: [sampleId],
+          sampleLabelColumnLabel: "Sample Name",
+          sampleLabels: { [sampleId]: "cellranger" },
+          datasets: [
+            {
+              id: uniquePlId(),
+              label: "Cell Ranger",
+              content: { type: "Xsv", xsvType: "csv", data: { [sampleId]: fileHandle } },
+            },
+          ],
+        },
+      });
+      await project.runBlock(sndBlockId);
+      await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+      const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+      const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+        outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
+      };
+      const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
+      expect(option).toBeDefined();
+      const datasetRef = option.ref as PlRef;
+
+      await project.mutateBlockStorage(blockId, {
+        operation: "update-block-data",
+        value: blockData({
+          defaultBlockLabel: "cellranger",
+          customBlockLabel: "",
+          datasetRef,
+          format: "cellranger",
+          chains: ["IGHeavy", "IGLight"],
+          prerunCheck: {
+            check: "dataset",
+            subject: datasetCheckKey({ datasetRef, format: "cellranger" }),
+            columnsPresent: true,
+          },
+        }),
+      });
+      await project.runBlock(blockId);
+      await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+
+      const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+        outputs?: Record<string, unknown>;
+      };
+      const handleStats = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })
+        ?.value?.fullTableHandle;
+      expect(handleStats, "statistics table handle").toBeDefined();
+
+      const specs = await ml.driverKit.pFrameDriver.getSpec(handleStats!);
+      const counts: Record<string, unknown> = {};
+      for (const [i, s] of specs.entries()) {
+        if (s.type !== "column") continue;
+        const [vector] = await ml.driverKit.pFrameDriver.getData(handleStats!, [i]);
+        if (s.spec.name === "pl7.app/vdj/stat/clonotypeCount") {
+          counts[s.spec.domain?.["pl7.app/vdj/chain"] ?? ""] = Number(vector.data[0]);
+        } else if (s.spec.name === "pl7.app/vdj/stat/recordsNotCell") {
+          counts.notCell = Number(vector.data[0]);
+        } else if (s.spec.name === "pl7.app/vdj/stat/clonotypesImported") {
+          counts.imported = Number(vector.data[0]);
+        } else if (s.spec.name === "pl7.app/vdj/stat/cellsUnpaired") {
+          counts.unpaired = Number(vector.data[0]);
+        }
+      }
+      // One cell with a heavy and a light chain: one paired clonotype, no unpaired cell
+      expect(counts).toEqual({ IGHeavy: 1, IGLight: 1, notCell: 1, imported: 1, unpaired: 0 });
+    },
+  );
+}
+
+type BlockTestCtx = Parameters<NonNullable<Parameters<typeof blockTest>[2]>>[0];
+
+/**
+ * Loads one asset as a one-sample dataset and returns a function that imports it with the given
+ * block data and hands back the run's stats by short name.
+ */
+async function loadAsset(
+  project: BlockTestCtx["rawPrj"],
+  helpers: BlockTestCtx["helpers"],
+  ml: { driverKit: { pFrameDriver: StatsDriver } },
+  asset: string,
+) {
+  const sndBlockId = await project.addBlock("Samples & Data", SamplesAndDataBlockPointer);
+  const sampleId = uniquePlId();
+  await project.mutateBlockStorage(sndBlockId, {
+    operation: "update-block-data",
+    value: {
+      suggestedImport: false,
+      h5adFilesToPreprocess: [],
+      seuratFilesToPreprocess: [],
+      metadata: [],
+      sampleIds: [sampleId],
+      sampleLabelColumnLabel: "Sample Name",
+      sampleLabels: { [sampleId]: asset },
+      datasets: [
+        {
+          id: uniquePlId(),
+          label: asset,
+          content: {
+            type: "Xsv",
+            xsvType: "tsv",
+            data: { [sampleId]: await helpers.getLocalFileHandle(`./assets/${asset}`) },
+          },
+        },
+      ],
+    },
+  });
+  await project.runBlock(sndBlockId);
+  await helpers.awaitBlockDoneAndGetStableBlockState(sndBlockId, 200000);
+
+  return async (fields: Record<string, unknown>) => {
+    const blockId = await project.addBlock("Import V(D)J Data", ImportVdjBlockPointer);
+    const beforePick = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
+      outputs?: { datasetOptions?: { value?: { ref: unknown }[] } };
+    };
+    const [option] = beforePick.outputs?.datasetOptions?.value ?? [];
+    const datasetRef = option.ref as PlRef;
+    const format = fields.format as ImportFormat;
+    await project.mutateBlockStorage(blockId, {
+      operation: "update-block-data",
+      value: blockData({
+        datasetRef,
+        // The custom format has no dataset verdict to wait for
+        ...(format === "custom"
+          ? {}
+          : {
+              prerunCheck: {
+                check: "dataset",
+                subject: datasetCheckKey({ datasetRef, format }),
+                columnsPresent: true,
+              },
+            }),
+        ...fields,
+      }),
+    });
+    await project.runBlock(blockId);
+    await helpers.awaitBlockDoneAndGetStableBlockState(blockId, 600000);
+    return statCounts(project, blockId, ml);
+  };
+}
+
+// Rows: two IGHV1-69 clones differing only in FR1 (CDR1 empty), one missing FR1, one missing CDR3,
+// one with a stop codon.
+blockTest(
+  "imports a MiXCR export by its widest region, or by CDR3 when asked",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const importWith = await loadAsset(project, helpers, ml, "mixcr-regions.tsv");
+    const mixcr = { format: "mixcr", chains: ["IGHeavy"] };
+
+    // The empty CDR1 is a region of zero length: both clones stay, rather than meeting on a blank key
+    expect(await importWith(mixcr)).toMatchObject({
+      recordCount: 6,
+      recordsWithoutCdr3: 1,
+      recordsNotCoveringAssemblingFeature: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 3,
+    });
+    // Keyed on CDR3 the FR1-less clone is kept and joins its CDR3, as do the two FR1 variants
+    const byCdr3 = await importWith({ ...mixcr, assemblingFeature: "CDR3" });
+    expect(byCdr3).toMatchObject({
+      recordCount: 6,
+      recordsWithoutCdr3: 1,
+      clonotypeCount: 2,
+    });
+    expect(byCdr3.recordsNotCoveringAssemblingFeature).toBeUndefined();
+  },
+);
+
+// Adaptive v2: templates filled and reads written as null; a V gene with no single best match keeps
+// its family; an out-of-frame rearrangement has no amino acids; one row resolves no V at all.
+blockTest(
+  "imports an immunoSEQ export, unresolved genes by their family",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const importWith = await loadAsset(project, helpers, ml, "immunoseq-v2.tsv");
+    expect(await importWith({ format: "immunoSeq", chains: ["TCRBeta"] })).toMatchObject({
+      recordCount: 4,
+      recordsWithoutVGene: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 2,
+      readCount: 15,
+    });
+  },
+);
+
+// QIAseq's clonotypes table without its analytical-threshold column: the least strict UMI threshold
+// is the count. Two good alpha rows, one beta row, one alpha row with a stop codon and one with no V call.
+blockTest(
+  "imports a QIAseq clonotypes table, counting UMIs at the least strict threshold",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const importWith = await loadAsset(project, helpers, ml, "qiaseq-clonotypes.tsv");
+    expect(await importWith({ format: "qiagen", chains: ["TCRAlpha"] })).toMatchObject({
+      recordCount: 5,
+      recordsWithoutVGene: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 2,
+      umiCount: 15,
+    });
+  },
+);
+
+// A custom mapping of a MiXCR-style file whose regions are separate columns. Two IGHV1-69 rows have
+// an empty (zero-length) CDR1, one of them FR1 not covered; one row has a stop codon, one no V call.
+blockTest(
+  "imports a custom mapping keyed on assembled regions, or on regions and CDR3 aa",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const importWith = await loadAsset(project, helpers, ml, "custom-regions.tsv");
+    const custom = (customMapping: Record<string, string>) =>
+      importWith({
+        format: "custom",
+        chains: ["IGHeavy"],
+        customMapping: { "v-gene": "v", "j-gene": "j", "read-count": "count", ...customMapping },
+        primaryCountType: "read",
+      });
+    const regions = {
+      "fr1-nt": "fr1",
+      "cdr1-nt": "cdr1",
+      "fr2-nt": "fr2",
+      "cdr2-nt": "cdr2",
+      "fr3-nt": "fr3",
+    };
+
+    // The empty CDR1 is zero length and keyed; the uncovered FR1 is counted, not keyed on a blank
+    expect(await custom({ ...regions, "cdr3-nt": "cdr3", "cdr3-aa": "cdr3_aa" })).toMatchObject({
+      recordCount: 5,
+      recordsWithoutVGene: 1,
+      recordsNotCoveringAssemblingFeature: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 2,
+    });
+    // Without CDR3 nt the regions and CDR3 aa are keyed as they are; this mapping used to fail the run
+    expect(await custom({ ...regions, "cdr3-aa": "cdr3_aa" })).toMatchObject({
+      recordCount: 5,
+      recordsWithoutVGene: 1,
+      recordsNotProductive: 1,
+      clonotypeCount: 3,
+    });
+  },
+);
+
+// MiXCR single cell: two cells share one heavy and light pair, a third has a heavy chain only.
+// TCR-ab is selected too, with no such chains in the file: its counts must be 0, not blank.
+blockTest(
+  "imports MiXCR single-cell clones as paired clonotypes, counting unpaired cells",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const importWith = await loadAsset(project, helpers, ml, "mixcr-sc-cells.tsv");
+    const chains = ["IGHeavy", "IGLight", "TCRBeta", "TCRAlpha"];
+    expect(await importWith({ format: "mixcr-sc", chains })).toMatchObject({
+      recordCount: 5,
+      "clonotypesImported.IG": 1,
+      "cellsImported.IG": 2,
+      "cellsUnpaired.IG": 1,
+      "clonotypesImported.TCRAB": 0,
+      "cellsUnpaired.TCRAB": 0,
+    });
   },
 );

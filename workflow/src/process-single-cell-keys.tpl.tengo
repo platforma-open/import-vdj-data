@@ -12,7 +12,7 @@ math := import("math")
 
 // Outputs mirror @mixcr-clonotyping single-cell stage so that upstream UI can reuse surfaces
 // For SC, this template returns files that upstream step will convert to Xsv with proper axes.
-self.defineOutputs("abundanceTsv", "clonotypeTsv",
+self.defineOutputs("abundanceTsv", "clonotypeTsv", "pairingTsv",
 	"propertiesAPrimaryTsv", "propertiesASecondaryTsv", "propertiesBPrimaryTsv", "propertiesBSecondaryTsv",
 	"cellsTsv")
 
@@ -152,6 +152,31 @@ self.body(func(inputs) {
 	)
 	allChainsFilteredDf := allChainsMergedWithScKeyDf.filter(filterCondition)
 
+	// Per sample: paired clonotypes and cells imported, and cells left out for lacking one of the two chains
+	unpairedDf := allChainsMergedDf.filter(pt.or(pt.col("clonotypeKeyA1").isNull(), pt.col("clonotypeKeyB1").isNull())).
+		groupBy("sampleId").agg(pt.col("cellKey").count().alias("cells-unpaired"))
+	importedDf := allChainsFilteredDf.groupBy("sampleId").agg(
+		pt.col("scClonotypeKey").nUnique().alias("clonotypes-imported"),
+		pt.col("cellKey").count().alias("cells-imported")
+	)
+	// Every sample of the dataset, so one with no chains of this receptor reports zeros, not blanks.
+	// Counting a sample's rows gives one row even when it has none.
+	sampleFrames := []
+	maps.forEach(byCellTagA.inputs(), func(sKey, inputFile) {
+		sampleFrames = append(sampleFrames, cellGroupingWf.frame(inputFile, {
+			xsvType: "tsv",
+			schema: [{ column: "cellKey", type: "String" }],
+			inferSchema: false
+		}).select(pt.col("cellKey").count().alias("rows"), pt.lit(json.decode(sKey)[0]).cast("String").alias("sampleId")).
+			select(pt.col("sampleId")))
+	})
+	samplesDf := len(sampleFrames) > 1 ? pt.concat(sampleFrames) : sampleFrames[0]
+	samplesDf.join(importedDf, { how: "left", on: ["sampleId"] }).
+		join(unpairedDf, { how: "left", on: ["sampleId"] }).
+		withColumns(pt.col("clonotypes-imported").fillNull(0).alias("clonotypes-imported"), pt.col("cells-imported").fillNull(0).alias("cells-imported"),
+			pt.col("cells-unpaired").fillNull(0).alias("cells-unpaired")).
+		saveContent("pairing.tsv")
+
 	allChainsFilteredDf.
 		withColumns(pt.lit(1).alias("1")).
 		save("cells.tsv", {columns: ["sampleId", "cellKey", "scClonotypeKey", "1"]})
@@ -182,6 +207,7 @@ self.body(func(inputs) {
 	cellGroupingRunResult := cellGroupingWf.run()
 
 	clonotypeTsv := cellGroupingRunResult.getFile("clonotype.tsv")
+	pairingTsv := cellGroupingRunResult.getFileContent("pairing.tsv")
 	abundanceTsv := cellGroupingRunResult.getFile("abundance.tsv")
 	cellsTsv := cellGroupingRunResult.getFile("cells.tsv")
 
@@ -228,6 +254,7 @@ self.body(func(inputs) {
 	return {
 		abundanceTsv: abundanceTsv,
 		clonotypeTsv: clonotypeTsv,
+		pairingTsv: pairingTsv,
 		cellsTsv: cellsTsv,
 		propertiesAPrimaryTsv: outputProcessingRunResult.getFile("properties_a_primary.tsv"),
 		propertiesASecondaryTsv: outputProcessingRunResult.getFile("properties_a_secondary.tsv"),

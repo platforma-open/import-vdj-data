@@ -1,0 +1,72 @@
+test := import("@platforma-sdk/workflow-tengo:test")
+mixcr := import(":infer-columns-mixcr")
+
+REGIONS := ["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"]
+
+header := func(regions) {
+	out := ["cloneId", "readCount", "readFraction", "allVHitsWithScore", "allJHitsWithScore"]
+	for r in regions { out = append(out, "nSeq" + r, "aaSeq" + r) }
+	return out
+}
+
+Test_fullRegions_areKeyedOnVDJRegion := func() {
+	info := mixcr.getColumns(header(REGIONS))
+	test.isEqual("VDJRegion", info.assemblingFeature, "feature")
+	test.isEqual(["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "cdr3-nt", "fr4-nt"], info.spanNt, "span")
+	test.isEqual(["vdj-nt", "v-gene", "j-gene"], info.clonotypeKeyColumns, "key")
+}
+
+Test_withoutFr4_isKeyedOnFr1ToCdr3 := func() {
+	info := mixcr.getColumns(header(["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3"]))
+	test.isEqual("{FR1Begin:CDR3End}", info.assemblingFeature, "feature")
+}
+
+Test_cdr3Only_isKeyedOnCdr3 := func() {
+	info := mixcr.getColumns(header(["CDR3"]))
+	test.isEqual("CDR3", info.assemblingFeature, "feature")
+	test.isEqual(undefined, info.spanNt, "no span")
+	test.isEqual(["cdr3-nt", "v-gene", "j-gene"], info.clonotypeKeyColumns, "key")
+}
+
+Test_requestedCdr3_overridesTheWidest := func() {
+	info := mixcr.getColumns(header(REGIONS), { assemblingFeature: "CDR3" })
+	test.isEqual("CDR3", info.assemblingFeature, "feature")
+}
+
+Test_requestedFeatureTheFileLacks_fallsBackToTheWidest := func() {
+	info := mixcr.getColumns(header(["FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3"]), { assemblingFeature: "FR2_TO_FR4" })
+	test.isEqual("{FR1Begin:CDR3End}", info.assemblingFeature, "feature")
+}
+
+Test_exportedVDJRegion_isKeptUnderCdr3 := func() {
+	info := mixcr.getColumns(header(["CDR3"]) + ["nSeqVDJRegion"], { assemblingFeature: "CDR3" })
+	test.isEqual("nSeqVDJRegion", info.columnMapping["vdj-nt"], "kept")
+}
+
+Test_exportedVDJRegion_isTheSpan := func() {
+	info := mixcr.getColumns(header(["CDR3"]) + ["nSeqVDJRegion", "aaSeqVDJRegion"])
+	test.isEqual(["vdj-nt"], info.spanNt, "span")
+	test.isEqual(["vdj-aa"], info.spanAa, "aa span")
+}
+
+Test_exportedVDJRegion_isDroppedUnderAnotherFeature := func() {
+	info := mixcr.getColumns(header(REGIONS) + ["nSeqVDJRegion"], { assemblingFeature: "FR3_TO_FR4" })
+	test.isEqual(undefined, info.columnMapping["vdj-nt"], "dropped")
+	test.isEqual(["fr3-nt", "cdr3-nt", "fr4-nt"], info.spanNt, "span")
+}
+
+Test_legacyHeaders_areMapped := func() {
+	v3 := mixcr.getColumns(["cloneCount", "cloneFraction", "nSeqImputedCDR3", "aaSeqImputedCDR3", "allVHitsWithScore"])
+	test.isEqual("cloneCount", v3.columnMapping["read-count"], "v3 count")
+	test.isEqual("nSeqImputedCDR3", v3.columnMapping["cdr3-nt"], "v3 cdr3")
+	v1 := mixcr.getColumns(["Clone count", "N. Seq. CDR3", "AA. Seq. CDR3", "All V hits"])
+	test.isEqual("Clone count", v1.columnMapping["read-count"], "v1 count")
+	test.isEqual("All V hits", v1.columnMapping["allVHitsWithScore"], "v1 V")
+	test.isEqual("AA. Seq. CDR3", v1.columnMapping["cdr3-aa"], "v1 aa")
+}
+
+Test_umiOnly_isPrimary := func() {
+	info := mixcr.getColumns(["uniqueMoleculeCount", "nSeqCDR3", "aaSeqCDR3"])
+	test.isTrue(info.hasUMIs, "umis")
+	test.isEqual(undefined, info.columnMapping["read-count"], "no reads")
+}

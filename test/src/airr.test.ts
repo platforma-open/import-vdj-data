@@ -44,7 +44,7 @@
 
 import { datasetCheckKey } from "@platforma-open/milaboratories.import-vdj.model";
 import { SamplesAndDataBlockPointer } from "@platforma-open/milaboratories.samples-and-data";
-import type { PlRef } from "@platforma-sdk/model";
+import type { PlRef, PTableHandle } from "@platforma-sdk/model";
 import { createPlDataTableStateV2, uniquePlId } from "@platforma-sdk/model";
 import { awaitStableState, blockTest } from "@platforma-sdk/test";
 import { ImportVdjBlockPointer } from "this-block";
@@ -60,7 +60,7 @@ type Emitted = {
 /** The pieces of a blockTest's fixture the helpers below need. */
 type TestCtx = Pick<
   Parameters<NonNullable<Parameters<typeof blockTest>[2]>>[0],
-  "rawPrj" | "helpers" | "expect"
+  "rawPrj" | "helpers" | "expect" | "ml"
 >;
 
 const FIXTURES = [
@@ -153,6 +153,7 @@ async function importFrom(
   columns: Emitted[];
   stats: Emitted[];
   emptyChains?: { emptySamples: string[]; sampleCount: number };
+  notCovering: number[];
 }> {
   const { rawPrj: project, helpers, expect } = ctx;
 
@@ -212,7 +213,23 @@ async function importFrom(
       | undefined
   )?.value;
   expect(columns.length).toBeGreaterThan(0);
-  return { columns, stats, emptyChains };
+  // Per sample: rows discarded for not covering the assembling feature, or none when not counted
+  const notCovering: number[] = [];
+  const handle = (state.outputs?.stats as { value?: { fullTableHandle?: PTableHandle } })?.value
+    ?.fullTableHandle;
+  if (handle !== undefined) {
+    const driver = ctx.ml.driverKit.pFrameDriver;
+    const i = (await driver.getSpec(handle)).findIndex(
+      (s) =>
+        s.type === "column" &&
+        s.spec.name === "pl7.app/vdj/stat/recordsNotCoveringAssemblingFeature",
+    );
+    if (i >= 0) {
+      const [vector] = await driver.getData(handle, [i]);
+      notCovering.push(...Array.from(vector.data as ArrayLike<number | bigint>, Number));
+    }
+  }
+  return { columns, stats, emptyChains, notCovering };
 }
 
 /** The feature the import actually assembled on, read off the column it marked as the main one. */
@@ -249,8 +266,8 @@ const has = (columns: Emitted[], name: string) => columns.some((c) => c.name ===
 blockTest(
   "imports AIRR files from each toolchain that writes them",
   { timeout: 1800000 },
-  async ({ rawPrj, helpers, expect }) => {
-    const ctx = { rawPrj, helpers, expect };
+  async ({ rawPrj, helpers, expect, ml }) => {
+    const ctx = { rawPrj, helpers, expect, ml };
     await loadFixtures(ctx);
 
     // --- Change-O, asked for VDJRegion -------------------------------------------------
@@ -297,6 +314,8 @@ blockTest(
       expect(has(stats, "pl7.app/vdj/stat/recordCount")).toBe(true);
       expect(has(stats, "pl7.app/vdj/stat/recordsWithoutCdr3")).toBe(true);
       expect(has(stats, "pl7.app/vdj/stat/recordsNotCoveringAssemblingFeature")).toBe(true);
+      // AIRR drops non-productive rows like every other format
+      expect(has(stats, "pl7.app/vdj/stat/recordsNotProductive")).toBe(true);
 
       // No chain in the domain: the standards do not differ by chain, and a row with no V call
       // belongs to none of them.
@@ -325,13 +344,12 @@ blockTest(
     {
       // The IMGT sample outnumbers the other 4 rows to 2. Pooled, its fwr4 would carry the vote,
       // trim the second sample's single-codon fwr4 to nothing and leave it with no clonotype.
-      const { emptyChains } = await importFrom(ctx, {
+      // Counted, not checked by clonotypes: both of its rows are non-productive anyway.
+      const { notCovering } = await importFrom(ctx, {
         label: "twoconv",
         assemblingFeature: "VDJRegion",
       });
-      expect(emptyChains, "per-sample clonotype counts resolved").toBeDefined();
-      expect(emptyChains!.sampleCount, "both samples counted").toBe(2);
-      expect(emptyChains!.emptySamples, "each sample votes on its own rows").toEqual([]);
+      expect(notCovering, "each sample's FR4 is trimmed from its own rows").toEqual([0, 0]);
     }
 
     // --- no junction column, in both boundary conventions ------------------------------
@@ -445,9 +463,7 @@ blockTest(
       expect(has(columns, "pl7.app/vdj/geneHit")).toBe(true);
       expect(has(columns, "pl7.app/vdj/geneHitWithAllele")).toBe(true);
 
-      // The counters follow the import template, not the format: MiXCR goes through
-      // `import-common`, so it gets them. immunoSeq, qiagen and custom do not and must not --
-      // their templates return tsv and stats alone, and a path nothing fills never resolves.
+      // MiXCR reports the record counters too.
       expect(has(stats, "pl7.app/vdj/stat/recordCount")).toBe(true);
     }
   },

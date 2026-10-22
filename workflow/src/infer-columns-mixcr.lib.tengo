@@ -6,6 +6,8 @@ a := common.a
 readColumnSpecs := common.readColumnSpecs
 umiColumnSpecs := common.umiColumnSpecs
 propertyColumnSpecs := common.propertyColumnSpecs
+assemblingFeatures := common.assemblingFeatures
+assemblingFeatureLabels := common.assemblingFeatureLabels
 
 // MiXCR header aliases (common column names)
 sourceAliases := {
@@ -14,6 +16,28 @@ sourceAliases := {
     "readFraction": "read-fraction",
     "uniqueMoleculeCount": "umi-count",
     "umiCount": "umi-count",
+    "uniqueMoleculeFraction": "umi-fraction",
+    // MiXCR 3
+    "cloneCount": "read-count",
+    "cloneFraction": "read-fraction",
+    // MiXCR 3 imputes framework regions from the germline; CDR3 is always read, never imputed
+    "nSeqImputedCDR3": "cdr3-nt",
+    "aaSeqImputedCDR3": "cdr3-aa",
+    // MiXCR 1 and 2 human-readable headers. Their framework columns are left out: these
+    // versions wrote an uncovered region empty, which reads as a covered one of zero length.
+    "Clone count": "read-count",
+    "Clone fraction": "read-fraction",
+    "N. Seq. CDR3": "cdr3-nt",
+    "AA. seq. CDR3": "cdr3-aa",
+    "AA. Seq. CDR3": "cdr3-aa",
+    "All V hits": "allVHitsWithScore",
+    "All D hits": "allDHitsWithScore",
+    "All J hits": "allJHitsWithScore",
+    "All C hits": "allCHitsWithScore",
+    "Best V hit": "v-allele",
+    "Best D hit": "d-allele",
+    "Best J hit": "j-allele",
+    "Best C hit": "c-allele",
 
     // Sequences
     "nSeqCDR3": "cdr3-nt",
@@ -63,205 +87,141 @@ sourceAliases := {
     "allCGenes": "allCGenes"
 }
 
-requiredColumns := ["read-count", "cdr3-nt", "cdr3-aa"]
+// Widest first: what is keyed on when the scientist did not choose
+AUTO_FEATURES := ["VDJRegion", "{FR1Begin:CDR3End}"]
 
-getColumns := func(header) {
-    columnMapping := {}
-    for h in header {
-        s := sourceAliases[h]
-        if s != undefined && columnMapping[s] == undefined {
-            columnMapping[s] = h
-        }
-    }
+getColumns := func(header, ...opts) {
+	options := len(opts) > 0 && !is_undefined(opts[0]) ? opts[0] : {}
 
-    // Detect single-cell tag columns: accept MiXCR variants 'tagValueCELL' and case-insensitive 'tagValueCell*'
-    isSingleCell := false
-    cellTagColumns := []
-    for h in header {
-        if text.re_match("^(?i)tagValueCell", h) {
-            isSingleCell = true
-            // Preserve original header name; also expose canonical mapping to itself
-            // Ensure we don't add duplicates if the header appears multiple times
-            alreadyAdded := false
-            for ex in cellTagColumns { if ex == h { alreadyAdded = true } }
-            if !alreadyAdded {
-                cellTagColumns = append(cellTagColumns, h)
-            }
-            if columnMapping[h] == undefined { columnMapping[h] = h }
-        }
-    }
-
-    // ll.print("sc tags:", cellTagColumns)
-   
-    // Validate minimal requirements (do not panic; UI will show alert)
-    missingRequired := []
-    for col in requiredColumns {
-        if is_undefined(columnMapping[col]) {
-            missingRequired = append(missingRequired, col)
-        }
-    }
-
-    // No allele fallbacks: only use allele columns if the source bestXHit is present
-
-    hasUMIs := !is_undefined(columnMapping["umi-count"]) || !is_undefined(columnMapping["umi-fraction"])
-
-    // Include available abundance types only; avoid referencing missing specs
-    abundanceColumns := {}
-    hasReads := !is_undefined(columnMapping["read-count"]) || !is_undefined(columnMapping["read-fraction"])
-    if hasReads {
-        abundanceColumns = maps.merge(abundanceColumns, readColumnSpecs)
-    }
-    if hasUMIs {
-        abundanceColumns = maps.merge(abundanceColumns, umiColumnSpecs)
-    }
-    mainAbundance := hasUMIs ? "umi-count" : (hasReads ? "read-count" : "")
-    mainFractionAbundance := hasUMIs ? "umi-fraction" : (hasReads ? "read-fraction" : "")
-
-    if mainAbundance != "" && abundanceColumns[mainAbundance] != undefined {
-        abundanceColumns[mainAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
-        abundanceColumns[mainAbundance].spec.annotations["pl7.app/isAnchor"] = "true"
-    }
-    if mainFractionAbundance != "" && abundanceColumns[mainFractionAbundance] != undefined {
-        abundanceColumns[mainFractionAbundance].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
-    }
-
-    // Property columns we will show
-    // Always include main sequences and gene hits (v/d/j/c)
-    propertyColumns := [
-        propertyColumnSpecs["cdr3-nt"],
-        propertyColumnSpecs["cdr3-aa"],
-        propertyColumnSpecs["cdr3-aa-length"],
-        propertyColumnSpecs["cdr3-nt-length"],
-        propertyColumnSpecs["is-productive"],
-        propertyColumnSpecs["v-gene"],
-        propertyColumnSpecs["d-gene"],
-        propertyColumnSpecs["j-gene"],
-        propertyColumnSpecs["c-gene"]
-    ]
-    // Include allele columns if any of bestXHit/allXHits/allXHitsWithScore present in header
-    if columnMapping["v-allele"] != undefined || columnMapping["allVHits"] != undefined || columnMapping["allVHitsWithScore"] != undefined {
-        propertyColumns = append(propertyColumns, propertyColumnSpecs["v-allele"]) 
-    }
-    if columnMapping["d-allele"] != undefined || columnMapping["allDHits"] != undefined || columnMapping["allDHitsWithScore"] != undefined {
-        propertyColumns = append(propertyColumns, propertyColumnSpecs["d-allele"]) 
-    }
-    if columnMapping["j-allele"] != undefined || columnMapping["allJHits"] != undefined || columnMapping["allJHitsWithScore"] != undefined {
-        propertyColumns = append(propertyColumns, propertyColumnSpecs["j-allele"]) 
-    }
-    if columnMapping["c-allele"] != undefined || columnMapping["allCHits"] != undefined || columnMapping["allCHitsWithScore"] != undefined {
-        propertyColumns = append(propertyColumns, propertyColumnSpecs["c-allele"]) 
-    }
-	// Optional FR/CDR/isotype feature columns
-	optKeys := [
-		"fr1-nt", "cdr1-nt", "fr2-nt", "fr3-nt", "fr4-nt",
-		"fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "fr4-aa",
-        "vdj-nt", "vdj-aa", "isotype"
-	]
-	for k in optKeys {
-		if columnMapping[k] != undefined {
-			propertyColumns = append(propertyColumns, propertyColumnSpecs[k])
+	columnMapping := {}
+	for h in header {
+		s := sourceAliases[h]
+		if s != undefined && columnMapping[s] == undefined {
+			columnMapping[s] = h
 		}
 	}
 
-	// Do not add these to propertyColumns; tag values are internal and used only to derive cellKey
-
-    // Check for present sequences
-    presentFrCdrNt := columnMapping["fr1-nt"] != undefined && 
-                        columnMapping["cdr1-nt"] != undefined && 
-                        columnMapping["fr2-nt"] != undefined && 
-                        columnMapping["cdr2-nt"] != undefined && 
-                        columnMapping["fr3-nt"] != undefined
-    presentFrCdrAa := columnMapping["fr1-aa"] != undefined && 
-                        columnMapping["cdr1-aa"] != undefined && 
-                        columnMapping["fr2-aa"] != undefined && 
-                        columnMapping["cdr2-aa"] != undefined && 
-                        columnMapping["fr3-aa"] != undefined
-	hasCdr3Nt := columnMapping["cdr3-nt"] != undefined
-	hasCdr3Aa := columnMapping["cdr3-aa"] != undefined
-	useFrCdr := presentFrCdrNt && (hasCdr3Nt || hasCdr3Aa)
-    hasFr4Nt := columnMapping["fr4-nt"] != undefined
-    hasVdjNt := columnMapping["vdj-nt"] != undefined
-    hasVdjAa := columnMapping["vdj-aa"] != undefined
-
-    // Add specs for columns that will be computed from existing ones
-    if (hasVdjNt == false) && (presentFrCdrNt && hasCdr3Nt) {
-        propertyColumns = append(propertyColumns, propertyColumnSpecs["vdj-nt"])
-    }
-    if (hasVdjAa == false) && (presentFrCdrAa && hasCdr3Aa) {
-        propertyColumns = append(propertyColumns, propertyColumnSpecs["vdj-aa"])
-    }
-
-    // Build clonotype key based on AA or NT (prefer NT if present), plus V/J and optional C gene
-    keyColumns := []
-    keyStructure := ""
-    if hasVdjNt || (presentFrCdrNt && hasCdr3Nt) {
-        keyColumns = append(keyColumns, "vdj-nt")
-        keyStructure = "VDJRegion"
-    } else if useFrCdr {
-		keyColumns = ["fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", (hasCdr3Nt ? "cdr3-nt" : "cdr3-aa")]
-        if hasFr4Nt { keyColumns = append(keyColumns, "fr4-nt") }
-        keyStructure = "FR1nt-CDR1nt-FR2nt-CDR2nt-FR3nt-" + (hasCdr3Nt ? "CDR3nt" : "CDR3aa") + (hasFr4Nt ? "-FR4nt" : "")
-	} else if hasCdr3Nt {
-		keyColumns = append(keyColumns, "cdr3-nt")
-        keyStructure = keyStructure + "CDR3-nt"
-	} else if hasCdr3Aa {
-		keyColumns = append(keyColumns, "cdr3-aa")
-        keyStructure = keyStructure + "CDR3-aa"
+	// MiXCR writes tagValueCELL; older or hand-edited exports vary the case or add a suffix
+	cellTagColumns := []
+	for h in header {
+		if text.re_match("^(?i)tagValueCell", h) && columnMapping[h] == undefined {
+			cellTagColumns = append(cellTagColumns, h)
+			columnMapping[h] = h
+		}
 	}
-	// Include v-gene and j-gene in key if available (either directly or derivable from all* columns)
-	hasVGeneInKey := columnMapping["v-gene"] != undefined || 
-		columnMapping["v-allele"] != undefined || 
-		columnMapping["allVHitsWithScore"] != undefined || 
-		columnMapping["allVHits"] != undefined || 
-		columnMapping["allVGenes"] != undefined
-	if hasVGeneInKey {
-        keyColumns = append(keyColumns, "v-gene")
-        keyStructure = keyStructure + "-VGene"
-    }
-	hasJGeneInKey := columnMapping["j-gene"] != undefined || 
-		columnMapping["j-allele"] != undefined || 
-		columnMapping["allJHitsWithScore"] != undefined || 
-		columnMapping["allJHits"] != undefined || 
-		columnMapping["allJGenes"] != undefined
-	if hasJGeneInKey {
-        keyColumns = append(keyColumns, "j-gene")
-        keyStructure = keyStructure + "-JGene"
-    }
-    includeCGene := columnMapping["c-gene"] != undefined 
-	if includeCGene { 
-        keyColumns = append(keyColumns, "c-gene") 
-        keyStructure = keyStructure + "-CGene"
-    }
 
-    // define mainSequence and assemblingFeature sequence columns
-    // Only the specs for which we have columns will be loaded
-    // @TODO: check this. For now we just set vdj as main if we have aa and nt
-    if (hasVdjNt && hasVdjAa) || ((presentFrCdrNt && hasCdr3Nt) && (presentFrCdrAa && hasCdr3Aa)) {
-        propertyColumnSpecs["vdj-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-        propertyColumnSpecs["vdj-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
-        propertyColumnSpecs["vdj-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-        propertyColumnSpecs["vdj-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
-    } else {
-        propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-        propertyColumnSpecs["cdr3-nt"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
-        propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isMainSequence"] = "true"
-        propertyColumnSpecs["cdr3-aa"].spec.annotations["pl7.app/vdj/isAssemblingFeature"] = "true"
-    }
+	hasReads := columnMapping["read-count"] != undefined
+	hasUMIs := columnMapping["umi-count"] != undefined
+	abundanceColumns := {}
+	if hasReads { abundanceColumns = maps.merge(abundanceColumns, readColumnSpecs) }
+	if hasUMIs { abundanceColumns = maps.merge(abundanceColumns, umiColumnSpecs) }
+	mainAbundance := hasUMIs ? "umi" : "read"
+	if hasReads || hasUMIs {
+		abundanceColumns[mainAbundance + "-count"].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+		abundanceColumns[mainAbundance + "-count"].spec.annotations["pl7.app/isAnchor"] = "true"
+		abundanceColumns[mainAbundance + "-fraction"].spec.annotations["pl7.app/abundance/isPrimary"] = "true"
+	}
 
-    return {
-        hasUMIs: hasUMIs,
-        abundanceColumns: maps.getValues(abundanceColumns),
-        propertyColumns: propertyColumns,
-        columnMapping: columnMapping,
-        clonotypeKeyStructure: keyStructure,
-        clonotypeKeyColumns: keyColumns,
-        cellTagColumns: cellTagColumns,
-        isSingleCell: isSingleCell
-    }
+	// The regions a feature spans, or undefined when the file lacks one of them
+	spanFor := func(feature, suffix) {
+		// An exported VDJRegion is that span already
+		if feature == "VDJRegion" && columnMapping["vdj" + suffix] != undefined { return ["vdj" + suffix] }
+		ids := []
+		for r in assemblingFeatures[feature] {
+			if columnMapping[r + suffix] == undefined { return undefined }
+			ids = append(ids, r + suffix)
+		}
+		return ids
+	}
+
+	// The chosen feature when the file carries it; otherwise the widest one it does, or CDR3
+	feature := "CDR3"
+	requested := options.assemblingFeature
+	if !is_undefined(requested) && !is_undefined(assemblingFeatures[requested]) && !is_undefined(spanFor(requested, "-nt")) {
+		feature = requested
+	} else {
+		for f in AUTO_FEATURES {
+			if feature == "CDR3" && !is_undefined(spanFor(f, "-nt")) { feature = f }
+		}
+	}
+	// An exported VDJRegion would collide with a narrower span assembled under the same column
+	if feature != "VDJRegion" && feature != "CDR3" {
+		delete(columnMapping, "vdj-nt")
+		delete(columnMapping, "vdj-aa")
+	}
+	spanNt := undefined
+	spanAa := undefined
+	if feature != "CDR3" {
+		spanNt = spanFor(feature, "-nt")
+		spanAa = spanFor(feature, "-aa")
+	}
+
+	// A fresh copy, so the shared spec map carries no mark into the next call
+	marked := func(col) {
+		return maps.deepMerge(col, { spec: { annotations: {
+			"pl7.app/vdj/isMainSequence": "true",
+			"pl7.app/vdj/isAssemblingFeature": "true"
+		} } })
+	}
+
+	propertyColumns := [
+		is_undefined(spanNt) ? marked(propertyColumnSpecs["cdr3-nt"]) : propertyColumnSpecs["cdr3-nt"],
+		is_undefined(spanAa) ? marked(propertyColumnSpecs["cdr3-aa"]) : propertyColumnSpecs["cdr3-aa"],
+		propertyColumnSpecs["cdr3-aa-length"],
+		propertyColumnSpecs["cdr3-nt-length"],
+		propertyColumnSpecs["is-productive"],
+		propertyColumnSpecs["v-gene"],
+		propertyColumnSpecs["d-gene"],
+		propertyColumnSpecs["j-gene"],
+		propertyColumnSpecs["c-gene"]
+	]
+	for g in ["V", "D", "J", "C"] {
+		l := text.to_lower(g)
+		if columnMapping[l + "-allele"] != undefined || columnMapping["all" + g + "Hits"] != undefined || columnMapping["all" + g + "HitsWithScore"] != undefined {
+			propertyColumns = append(propertyColumns, propertyColumnSpecs[l + "-allele"])
+		}
+	}
+	for k in [
+		"fr1-nt", "cdr1-nt", "fr2-nt", "cdr2-nt", "fr3-nt", "fr4-nt",
+		"fr1-aa", "cdr1-aa", "fr2-aa", "cdr2-aa", "fr3-aa", "fr4-aa", "isotype"
+	] {
+		if columnMapping[k] != undefined { propertyColumns = append(propertyColumns, propertyColumnSpecs[k]) }
+	}
+
+	if feature == "CDR3" {
+		for k in ["vdj-nt", "vdj-aa"] {
+			if columnMapping[k] != undefined { propertyColumns = append(propertyColumns, propertyColumnSpecs[k]) }
+		}
+	}
+
+	// Assembled in the import template from the regions the feature names
+	if !is_undefined(spanNt) { propertyColumns = append(propertyColumns, marked(common.spanColumnSpec("nucleotide", feature))) }
+	if !is_undefined(spanAa) { propertyColumns = append(propertyColumns, marked(common.spanColumnSpec("aminoacid", feature == "VDJRegion" ? "VDJRegionInFrame" : feature))) }
+
+	// The feature, V and J identify a clonotype; an exported best C gene splits isotypes
+	keyColumns := [is_undefined(spanNt) ? "cdr3-nt" : "vdj-nt", "v-gene", "j-gene"]
+	keyStructure := (is_undefined(spanNt) ? "CDR3-nt" : feature) + "-VGene-JGene"
+	if columnMapping["c-gene"] != undefined {
+		keyColumns = append(keyColumns, "c-gene")
+		keyStructure = keyStructure + "-CGene"
+	}
+
+	return {
+		hasUMIs: hasUMIs,
+		abundanceColumns: maps.getValues(abundanceColumns),
+		propertyColumns: propertyColumns,
+		columnMapping: columnMapping,
+		clonotypeKeyStructure: keyStructure,
+		clonotypeKeyColumns: keyColumns,
+		cellTagColumns: cellTagColumns,
+		isSingleCell: len(cellTagColumns) > 0,
+		assemblingFeature: feature,
+		assemblingFeatureLabel: assemblingFeatureLabels[feature],
+		spanNt: spanNt,
+		spanAa: spanAa
+	}
 }
 
 export {
-    getColumns: getColumns
+	getColumns: getColumns
 }
-
-
