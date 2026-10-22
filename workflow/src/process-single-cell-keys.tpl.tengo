@@ -159,7 +159,18 @@ self.body(func(inputs) {
 		pt.col("scClonotypeKey").nUnique().alias("clonotypes-imported"),
 		pt.col("cellKey").count().alias("cells-imported")
 	)
-	samplesDf := allChainsMergedDf.select(pt.col("sampleId")).unique()
+	// Every sample of the dataset, so one with no chains of this receptor reports zeros, not blanks.
+	// Counting a sample's rows gives one row even when it has none.
+	sampleFrames := []
+	maps.forEach(byCellTagA.inputs(), func(sKey, inputFile) {
+		sampleFrames = append(sampleFrames, cellGroupingWf.frame(inputFile, {
+			xsvType: "tsv",
+			schema: [{ column: "cellKey", type: "String" }],
+			inferSchema: false
+		}).select(pt.col("cellKey").count().alias("rows"), pt.lit(json.decode(sKey)[0]).cast("String").alias("sampleId")).
+			select(pt.col("sampleId")))
+	})
+	samplesDf := len(sampleFrames) > 1 ? pt.concat(sampleFrames) : sampleFrames[0]
 	samplesDf.join(importedDf, { how: "left", on: ["sampleId"] }).
 		join(unpairedDf, { how: "left", on: ["sampleId"] }).
 		withColumns(pt.col("clonotypes-imported").fillNull(0).alias("clonotypes-imported"), pt.col("cells-imported").fillNull(0).alias("cells-imported"),

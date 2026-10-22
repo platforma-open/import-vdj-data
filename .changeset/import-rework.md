@@ -32,6 +32,7 @@ Every format:
 - New stat column `Discarded: Not Productive`, so the discards and the imported rows add up to `Rows Read`.
 - Single-cell imports get a `Clonotypes` stat column: the paired clonotypes, distinct combinations of a cell's chains.
 - Single-cell imports also report `Cells Imported`, the cells with both chains, hidden by default.
+- Single-cell stats show 0, not a blank, for a sample with no chains of a selected receptor.
 - Single-cell imports count `Discarded: Unpaired Cells`: cells left out of the paired clonotypes because they carry only one of the receptor's two chains. It counts cells, not rows.
 - The statistics table shows, in order, `Rows Read`, the clonotype counts and every `Discarded:` column. Bulk imports count clonotypes per chain (`IG Heavy Clonotypes`, ...); single-cell imports show the paired `Clonotypes` and hide the per-chain counts. Read and UMI counts and `Cells Imported` are hidden and can be turned on under Columns. A saved table layout is kept per set of stat columns, so a run with different columns opens with these defaults; existing blocks reset theirs once.
 - Single-cell imports (MiXCR single cell, Cell Ranger, AIRR single cell) always take both chains of a selected receptor. A chain left over from a bulk selection (for example IG Light alone) used to be imported without its partner, so no cell was paired and the paired output was empty.

@@ -35,7 +35,9 @@ import { ImportVdjBlockPointer } from "this-block";
  */
 type StatsProject = { getBlockState(blockId: string): Parameters<typeof awaitStableState>[0] };
 type StatsDriver = {
-  getSpec(handle: PTableHandle): Promise<{ type: string; spec: { name: string } }[]>;
+  getSpec(
+    handle: PTableHandle,
+  ): Promise<{ type: string; spec: { name: string; domain?: Record<string, string> } }[]>;
   getData(handle: PTableHandle, columns: number[]): Promise<{ data: unknown }[]>;
 };
 
@@ -83,7 +85,7 @@ async function statCounts(
   project: StatsProject,
   blockId: string,
   ml: { driverKit: { pFrameDriver: StatsDriver } },
-): Promise<Record<string, number>> {
+): Promise<Record<string, number | null>> {
   const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
     outputs?: Record<string, unknown>;
   };
@@ -91,13 +93,15 @@ async function statCounts(
     ?.fullTableHandle;
   if (handle === undefined) throw new Error("no stats table");
   const driver = ml.driverKit.pFrameDriver;
-  const found: Record<string, number> = {};
+  // Keyed by short name, plus the receptor for single-cell stats; a blank cell reads as null
+  const found: Record<string, number | null> = {};
   for (const [i, s] of (await driver.getSpec(handle)).entries()) {
     if (s.type !== "column" || !s.spec.name.startsWith("pl7.app/vdj/stat/")) continue;
     const [vector] = await driver.getData(handle, [i]);
-    found[s.spec.name.slice("pl7.app/vdj/stat/".length)] = Number(
-      (vector.data as ArrayLike<unknown>)[0],
-    );
+    const receptor = s.spec.domain?.["pl7.app/vdj/receptor"];
+    const value = (vector.data as ArrayLike<unknown>)[0];
+    found[s.spec.name.slice("pl7.app/vdj/stat/".length) + (receptor ? `.${receptor}` : "")] =
+      value === null || value === undefined ? null : Number(value);
   }
   return found;
 }
@@ -1507,6 +1511,25 @@ blockTest(
       recordsWithoutVGene: 1,
       recordsNotProductive: 1,
       clonotypeCount: 3,
+    });
+  },
+);
+
+// MiXCR single cell: two cells share one heavy and light pair, a third has a heavy chain only.
+// TCR-ab is selected too, with no such chains in the file: its counts must be 0, not blank.
+blockTest(
+  "imports MiXCR single-cell clones as paired clonotypes, counting unpaired cells",
+  { timeout: 600000 },
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const importWith = await loadAsset(project, helpers, ml, "mixcr-sc-cells.tsv");
+    const chains = ["IGHeavy", "IGLight", "TCRBeta", "TCRAlpha"];
+    expect(await importWith({ format: "mixcr-sc", chains })).toMatchObject({
+      recordCount: 5,
+      "clonotypesImported.IG": 1,
+      "cellsImported.IG": 2,
+      "cellsUnpaired.IG": 1,
+      "clonotypesImported.TCRAB": 0,
+      "cellsUnpaired.TCRAB": 0,
     });
   },
 );
