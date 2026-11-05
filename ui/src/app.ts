@@ -21,8 +21,8 @@ export const useApp = sdkPlugin.useApp;
 type AppModel = ReturnType<typeof useApp>["model"];
 
 /**
- * Carry prerun's verdicts into `data` so the args projection can refuse the run on them. An output
- * written back into state a derivation reads — the hairpin — kept safe by the contract on
+ * Carry prerun's verdicts into `data` so the model's run check can refuse the run on them. An
+ * output written back into state a derivation reads — the hairpin — kept safe by the contract on
  * `BlockData.prerunCheck`: the verdict carries what it is about, so a stale one is ignored rather
  * than applied.
  */
@@ -42,7 +42,7 @@ function syncPrerunChecks(model: AppModel) {
   });
 
   // A copy, not a comparison: `validationResult` states which dataset and format it judged, so
-  // there is nothing here to match up and so nothing to get wrong. The args projection does the
+  // there is nothing here to match up and so nothing to get wrong. The model's run check does the
   // comparing, against whatever is selected when it runs.
   watchEffect(() => {
     const result = model.outputs.validationResult;
