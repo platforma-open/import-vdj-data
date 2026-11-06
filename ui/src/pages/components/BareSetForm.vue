@@ -230,9 +230,10 @@ const acceptedProperties = computed<string[]>({
     const types = app.model.outputs.columnProfile?.types ?? {};
     a.bareSet = {
       ...a.bareSet,
-      properties: headers.map(
-        (h): ImportedProperty => ({ header: h, valueType: types[h] ?? "String" }),
-      ),
+      properties: headers.map((h): ImportedProperty => ({
+        header: h,
+        valueType: types[h] ?? "String",
+      })),
     };
   },
 });

@@ -394,11 +394,13 @@ blockTest(
     // Not the verbatim repeat: stating one record twice discards nothing.
     expect(collisions).not.toContain("AB-003");
 
-    // Enforced by the platform, not only by the interface: invalid args means no args to render a
-    // production from, so an API caller cannot drive a colliding set through either. This was a
-    // documented gap while the collision verdict sat outside the gate — args stayed valid, and
-    // `runBlock` imported a set that merged records without complaint.
-    await expect(project.runBlock(blockId)).rejects.toThrow(/currentArgs not set/);
+    // Enforced by the platform, not only by the interface: the platform refuses to render a
+    // production from args with an error issue, so an API caller cannot drive a colliding set
+    // through either. This was a documented gap while the collision verdict sat outside the gate —
+    // args stayed valid, and `runBlock` imported a set that merged records without complaint.
+    await expect(project.runBlock(blockId)).rejects.toThrow(
+      /"mAb ID" repeats on rows that are not identical/,
+    );
 
     // Drop every sequence and leave only the id: the check does not need them, so a column that
     // does not identify the records is reported at the point it is picked.

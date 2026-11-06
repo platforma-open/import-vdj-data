@@ -113,7 +113,7 @@ export type BlockData = {
   defaultBlockLabel: string;
   customBlockLabel: string;
 
-  // --- the two doors. Exactly one is set; the args lambda enforces it.
+  // --- the two doors. Exactly one is set; the run check enforces it.
   /** A dataset somebody already loaded into the project. */
   datasetRef?: PlRef;
   /** A file this block imports itself. */
@@ -141,11 +141,11 @@ export type BlockData = {
   bareSet?: BareSetMapping;
 
   /**
-   * What prerun found, kept here so the args projection — which sees only `data` — can gate the run
+   * What prerun found, kept here so the run check — which sees only `data` — can gate the run
    * on it. Written by the UI (`ui/src/app.ts`).
    *
    * The verdict carries what it is *about*, so one reached for something no longer selected is
-   * ignored rather than applied. Tagged by which check it is: the two paths through `projectArgs`
+   * ignored rather than applied. Tagged by which check it is: the two paths through `runRefusal`
    * that consult a verdict return before reaching each other, so only ever one is live.
    */
   prerunCheck?:

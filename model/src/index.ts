@@ -1,4 +1,5 @@
 import type {
+  ArgsIssue,
   InferOutputsType,
   PColumnKey,
   PColumnSpec,
@@ -50,137 +51,18 @@ type JsonColumnData = {
   data: Record<string, PColumnValue>;
 };
 
-/**
- * The mapping fields that belong to the dataset door and mean nothing on a bare set: the bare
- * path in the workflow reads `bareSet`, `fileSource` and `datasetRef` and nothing else.
- *
- * Stripping them is not tidiness. A scientist who configures a custom mapping, switches to a
- * bare set and runs would otherwise ship the abandoned mapping to the workflow, where it is
- * dead weight in the args and in every diff a reader of the run later looks at.
- */
-function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
-  return {
-    datasetRef: args.datasetRef,
-    fileSource: args.fileSource,
-    chains: args.chains,
-    bareSet: args.bareSet,
-  };
-}
-
-/**
- * Refuse a bare set whose mapped columns prerun has not cleared — including when there is no
- * verdict yet. The record key is the identity's hash, so running before the answer is in is how two
- * different records silently become one.
- */
-function requireCheckedColumns(data: BlockData): void {
-  const columns = collisionCheckKey(data.bareSet);
-  if (columns === undefined) return; // bareSetValid has already refused
-  const check = data.prerunCheck;
-  if (check?.check !== "columns" || check.subject !== columns) {
-    throw new Error("Validating the selected columns");
-  }
-  if (check.identityCollides) {
-    throw new Error(`"${data.bareSet?.identity}" repeats on rows that are not identical`);
-  }
-}
-
-/**
- * Refuse the run until prerun has judged the dataset and format actually selected.
- *
- * The verdict carries the dataset it was reached for, so one left over from a previous selection
- * reads as "not judged yet" rather than being applied to this one. That is the whole of the rule
- * the old per-format flags broke: they were keyed on the format alone, so switching between two
- * datasets of the same format left the previous verdict standing and Run armed on it.
- */
-function requireCheckedDataset(data: BlockData): void {
-  const dataset = datasetCheckKey(data);
-  if (dataset === undefined) return; // the file door, or nothing picked yet
-  const check = data.prerunCheck;
-  if (check?.check !== "dataset" || check.subject !== dataset) {
-    throw new Error("Validating the selected columns");
-  }
-  if (!check.columnsPresent) {
-    throw new Error(`The dataset does not carry the columns a ${data.format} dataset needs`);
-  }
-}
-
-function projectArgs(data: BlockData): BlockArgs {
-  const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
-  const assemblingFeature = data.assemblingFeature;
-
-  // Exactly one door. Both set is a UI bug rather than a choice, and neither means nothing
-  // has been picked yet.
-  if ((datasetRef === undefined) === (fileSource === undefined)) {
-    throw new Error("Select a dataset, or load a file");
-  }
-
-  const args: BlockArgs = {
-    datasetRef,
-    fileSource,
-    format,
-    // Not sorted: canonicalising an order the user chose would change the args of every project
-    // already on disk, to buy the rare re-pick of the same chains in a different order.
-    chains,
-    customMapping,
-    primaryCountType,
-    assemblingFeature,
-    bareSet: data.bareSet,
-  };
-
-  // The direct door serves the custom format and no other, so the door decides which
-  // validation applies. Making the interface set `format` instead was worse than redundant:
-  // the value outlived the door, so switching back to a dataset left the whole per-format
-  // mapping unfurled under a format nobody had chosen.
-  if (fileSource !== undefined) {
-    if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the file's columns");
-    requireCheckedColumns(data);
-    return withoutDatasetDoorMapping(args);
-  }
-
-  if (format === undefined) throw new Error("Choose a data format");
-  if (!Array.isArray(chains) || chains.length === 0) throw new Error("Choose at least one chain");
-
-  if (format === "custom") {
-    // A bare set drops the V gene, the J gene and the abundance — it supplies none of them,
-    // and the rule that demanded all three could not tell a bare set from a malformed
-    // repertoire export. What it requires instead is a sequence mapped to a chain and an
-    // identity column, because the key is the identity's hash and the label is its value.
-    if (data.bareSet !== undefined) {
-      if (!bareSetValid(data.bareSet)) throw new Error("Finish mapping the record's columns");
-      requireCheckedColumns(data);
-      return withoutDatasetDoorMapping(args);
-    }
-
-    const m = customMapping ?? {};
-    const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
-    const hasV = !!m["v-gene"];
-    const hasJ = !!m["j-gene"];
-    const pct = primaryCountType ?? "read";
-    const hasPrimaryAbundance = pct === "umi" ? !!m["umi-count"] : !!m["read-count"];
-    if (!hasSeq || !hasV || !hasJ || !hasPrimaryAbundance) {
-      throw new Error("Map a sequence, a V gene, a J gene and an abundance column");
-    }
-    return args;
-  }
-
-  // The check needs the dataset's headers, which live in prerun, and a V3 args lambda receives
-  // `data` only. So the verdict is mirrored in — the same hairpin the collision check uses, under
-  // the same contract, which is what keeps it from repeating the per-format flags' mistake.
-  requireCheckedDataset(data);
-
-  return args;
-}
-
 // Named `platforma` because the structurer-generated block facade
 // (block/src/index.ts) imports that name. Every V3 block uses it too.
 export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind })
 
   .args<BlockArgs>(projectArgs)
 
+  .argsIssues(({ data }) => blockArgsIssues(data))
+
   /**
    * Prerun reads the file's header, infers the mapping and checks the identity column for
    * collisions — discovery, all of it, and all of it expected to be current without the
-   * scientist pressing Run. So the projection is deliberately permissive where `args` is
+   * scientist pressing Run. So the projection is deliberately permissive where the run is
    * strict: it must survive a half-finished mapping, because a half-finished mapping is
    * exactly when the panel needs the headers back.
    *
@@ -683,3 +565,146 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
   .done();
 
 export type BlockOutputs = InferOutputsType<typeof platforma>;
+
+// Internals
+
+/**
+ * The mapping fields that belong to the dataset door and mean nothing on a bare set: the bare
+ * path in the workflow reads `bareSet`, `fileSource` and `datasetRef` and nothing else.
+ *
+ * Stripping them is not tidiness. A scientist who configures a custom mapping, switches to a
+ * bare set and runs would otherwise ship the abandoned mapping to the workflow, where it is
+ * dead weight in the args and in every diff a reader of the run later looks at.
+ */
+function withoutDatasetDoorMapping(args: BlockArgs): BlockArgs {
+  return {
+    datasetRef: args.datasetRef,
+    fileSource: args.fileSource,
+    chains: args.chains,
+    bareSet: args.bareSet,
+  };
+}
+
+/**
+ * What keeps the import from running, as one error: the first refusal met.
+ *
+ * Kept apart from {@link projectArgs} so that args exist while the setup is unfinished: a dataset
+ * already picked is then visible as a link to the block that produced it.
+ */
+function blockArgsIssues(data: BlockData): ArgsIssue[] {
+  const refusal = runRefusal(data);
+  return refusal === undefined ? [] : [{ severity: "error", message: refusal }];
+}
+
+function projectArgs(data: BlockData): BlockArgs {
+  const args: BlockArgs = {
+    datasetRef: data.datasetRef,
+    fileSource: data.fileSource,
+    format: data.format,
+    // Not sorted: canonicalising an order the user chose would change the args of every project
+    // already on disk, to buy the rare re-pick of the same chains in a different order.
+    chains: data.chains,
+    customMapping: data.customMapping,
+    primaryCountType: data.primaryCountType,
+    assemblingFeature: data.assemblingFeature,
+    bareSet: data.bareSet,
+  };
+
+  // The direct door serves the custom format and no other, so the door decides which mapping
+  // applies. Making the interface set `format` instead was worse than redundant: the value
+  // outlived the door, so switching back to a dataset left the whole per-format mapping unfurled
+  // under a format nobody had chosen.
+  if (data.fileSource !== undefined) return withoutDatasetDoorMapping(args);
+  if (data.format === "custom" && data.bareSet !== undefined) {
+    return withoutDatasetDoorMapping(args);
+  }
+  return args;
+}
+
+/**
+ * Why the import cannot run yet, or `undefined` when it can. The message is what the scientist
+ * reads, so each names the step left to do.
+ */
+function runRefusal(data: BlockData): string | undefined {
+  const { datasetRef, format, chains, customMapping, primaryCountType, fileSource } = data;
+
+  // Exactly one door. Both set is a UI bug rather than a choice, and neither means nothing
+  // has been picked yet.
+  if ((datasetRef === undefined) === (fileSource === undefined)) {
+    return "Select a dataset, or load a file";
+  }
+
+  if (fileSource !== undefined) {
+    if (!bareSetValid(data.bareSet)) return "Finish mapping the file's columns";
+    return checkedColumnsRefusal(data);
+  }
+
+  if (format === undefined) return "Choose a data format";
+  if (!Array.isArray(chains) || chains.length === 0) return "Choose at least one chain";
+
+  if (format === "custom") {
+    // A bare set drops the V gene, the J gene and the abundance — it supplies none of them,
+    // and the rule that demanded all three could not tell a bare set from a malformed
+    // repertoire export. What it requires instead is a sequence mapped to a chain and an
+    // identity column, because the key is the identity's hash and the label is its value.
+    if (data.bareSet !== undefined) {
+      if (!bareSetValid(data.bareSet)) return "Finish mapping the record's columns";
+      return checkedColumnsRefusal(data);
+    }
+
+    const m = customMapping ?? {};
+    const hasSeq = !!m["cdr3-nt"] || !!m["cdr3-aa"];
+    const hasV = !!m["v-gene"];
+    const hasJ = !!m["j-gene"];
+    const pct = primaryCountType ?? "read";
+    const hasPrimaryAbundance = pct === "umi" ? !!m["umi-count"] : !!m["read-count"];
+    if (!hasSeq || !hasV || !hasJ || !hasPrimaryAbundance) {
+      return "Map a sequence, a V gene, a J gene and an abundance column";
+    }
+    return undefined;
+  }
+
+  // The check needs the dataset's headers, which live in prerun, while the run is judged on
+  // `data` only. So the verdict is mirrored in — the same hairpin the collision check uses, under
+  // the same contract, which is what keeps it from repeating the per-format flags' mistake.
+  return checkedDatasetRefusal(data);
+}
+
+/**
+ * Refuse a bare set whose mapped columns prerun has not cleared — including when there is no
+ * verdict yet. The record key is the identity's hash, so running before the answer is in is how two
+ * different records silently become one.
+ */
+function checkedColumnsRefusal(data: BlockData): string | undefined {
+  const columns = collisionCheckKey(data.bareSet);
+  if (columns === undefined) return undefined; // bareSetValid has already refused
+  const check = data.prerunCheck;
+  if (check?.check !== "columns" || check.subject !== columns) {
+    return "Validating the selected columns";
+  }
+  if (check.identityCollides) {
+    return `"${data.bareSet?.identity}" repeats on rows that are not identical`;
+  }
+  return undefined;
+}
+
+/**
+ * Refuse the run until prerun has judged the dataset and format actually selected.
+ *
+ * The verdict carries the dataset it was reached for, so one left over from a previous selection
+ * reads as "not judged yet" rather than being applied to this one. That is the whole of the rule
+ * the old per-format flags broke: they were keyed on the format alone, so switching between two
+ * datasets of the same format left the previous verdict standing and Run armed on it.
+ */
+function checkedDatasetRefusal(data: BlockData): string | undefined {
+  const dataset = datasetCheckKey(data);
+  if (dataset === undefined) return undefined; // the file door, or nothing picked yet
+  const check = data.prerunCheck;
+  if (check?.check !== "dataset" || check.subject !== dataset) {
+    return "Validating the selected columns";
+  }
+  if (!check.columnsPresent) {
+    return `The dataset does not carry the columns a ${data.format} dataset needs`;
+  }
+  return undefined;
+}
