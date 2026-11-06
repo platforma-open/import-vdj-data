@@ -1,5 +1,11 @@
 # @platforma-open/milaboratories.import-vdj.workflow
 
+## 1.19.1
+
+### Patch Changes
+
+- f1200f2: Update SDK to 1.88.0 (workflow-tengo 6.20.0, block-tools 2.17.5, tengo-builder 4.1.17, test 1.88.2)
+
 ## 1.19.0
 
 ### Minor Changes

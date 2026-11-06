@@ -1,5 +1,16 @@
 # @platforma-open/milaboratories.import-vdj
 
+## 1.13.0
+
+### Minor Changes
+
+- 6b2309c: Warns when blocks that use data of this block no longer find it — an output it does not export or values it no longer has — and suggests adding the data or reconfiguring those blocks. The warning shows in desktop versions that compute links between blocks.
+  A dataset picked from the project is linked to the block that provides it while the import is still being set up, not only once it has run: what keeps the import from running is reported as an issue of the block, with the same messages as before, instead of leaving the block without settings.
+
+### Patch Changes
+
+- f1200f2: Update SDK to 1.88.0 (workflow-tengo 6.20.0, block-tools 2.17.5, tengo-builder 4.1.17, test 1.88.2)
+
 ## 1.12.0
 
 ### Minor Changes
