@@ -1,6 +1,6 @@
 import { createPlDataTableStateV2, DataModelBuilder } from "@platforma-sdk/model";
 import { kind } from "@platforma-open/milaboratories.import-vdj.kind";
-import type { BlockData, LegacyBlockArgs, LegacyUiState } from "./types";
+import type { BlockData, BlockDataV2, LegacyBlockArgs, LegacyUiState } from "./types";
 
 /** The six chains a fresh block offers. Unchanged from V1's `withArgs` default. */
 const DEFAULT_CHAINS = ["IGHeavy", "IGLight", "TCRAlpha", "TCRBeta", "TCRDelta", "TCRGamma"];
@@ -17,7 +17,7 @@ export function upgradeLegacyData({
 }: {
   args?: LegacyBlockArgs;
   uiState?: LegacyUiState;
-}): BlockData {
+}): BlockDataV2 {
   return {
     ...viewStateDefaults(),
     ...(uiState ?? {}),
@@ -38,25 +38,32 @@ export function upgradeLegacyData({
 /** `FileSource.sampleId` became `datasetId`. The value mints an axis key, so it must carry over. */
 type FileSourceV1 = { sampleId?: string; datasetId?: string } & Record<string, unknown>;
 
-function renameSampleIdToDatasetId(data: BlockData): BlockData {
+function renameSampleIdToDatasetId(data: BlockDataV2): BlockDataV2 {
   const fileSource = data.fileSource as FileSourceV1 | undefined;
   if (fileSource === undefined) return data;
   const { sampleId, ...rest } = fileSource;
   return {
     ...data,
-    fileSource: { ...rest, datasetId: fileSource.datasetId ?? sampleId } as BlockData["fileSource"],
+    fileSource: {
+      ...rest,
+      datasetId: fileSource.datasetId ?? sampleId,
+    } as BlockDataV2["fileSource"],
   };
 }
 
 export const blockDataModel = new DataModelBuilder({ kind })
-  .from<BlockData>("v1")
+  .from<BlockDataV2>("v1")
   .upgradeLegacy<LegacyBlockArgs, LegacyUiState>(upgradeLegacyData)
-  .migrate<BlockData>("v2", renameSampleIdToDatasetId)
+  .migrate<BlockDataV2>("v2", renameSampleIdToDatasetId)
+  // The old label mixed the pool dataset's name with the chains, and the pool is out of reach
+  // here, so the dataset part cannot be split out. The subtitle shows the chains (or the file)
+  // until the source is picked again.
+  .migrate<BlockData>("v3", ({ defaultBlockLabel: _, ...rest }) => ({
+    ...rest,
+    subtitleLabel: "",
+  }))
   .init(({ params }) => ({
     ...viewStateDefaults(),
-    // Left empty on purpose: the panel derives it from the chosen source, so a
-    // value put here could only disagree with what the block is showing.
-    defaultBlockLabel: "",
     customBlockLabel: params?.customBlockLabel ?? "",
     datasetRef: params?.datasetRef,
     fileSource: params?.fileSource,

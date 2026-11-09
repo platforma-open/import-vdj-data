@@ -71,6 +71,5 @@ const unwatch = watch(sdkPlugin, ({ loaded }) => {
   if (!loaded) return;
   const app = useApp();
   app.model.data.customBlockLabel ??= "";
-  app.model.data.defaultBlockLabel ??= "Select Dataset";
   unwatch();
 });

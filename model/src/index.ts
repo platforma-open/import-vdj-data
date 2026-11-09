@@ -24,7 +24,13 @@ import type {
   ImportFormat,
 } from "./types";
 import { parseTsvRows } from "./tsv";
-import { bareSetValid, collisionCheckKey, datasetCheckKey, rowReportKey } from "./types";
+import {
+  bareSetValid,
+  collisionCheckKey,
+  datasetCheckKey,
+  rowReportKey,
+  SCHEME_LABELS,
+} from "./types";
 
 export * from "./types";
 export { parseTsvRows } from "./tsv";
@@ -90,7 +96,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
    * is how the columns are read: the block a template seeds is this import waiting for its
    * file, and the mapping is already the one that was set up.
    *
-   * `defaultBlockLabel` is not sent either -- the panel derives it from the chosen source.
+   * `subtitleLabel` is not sent either -- the panel writes it when the source is picked.
    */
   .templateParams((data) => ({
     datasetRef: data.datasetRef,
@@ -560,13 +566,31 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
   .title(() => "Import V(D)J Data")
 
-  .subtitle((ctx) => ctx.data.customBlockLabel || ctx.data.defaultBlockLabel || "")
+  .subtitle(
+    (ctx) =>
+      ctx.data.customBlockLabel ||
+      [ctx.data.subtitleLabel, labelFromParams(ctx.data)].filter(Boolean).join(" - "),
+  )
 
   .done();
 
 export type BlockOutputs = InferOutputsType<typeof platforma>;
 
 // Internals
+
+/**
+ * The settings part of the subtitle. On the file door the file is the dataset, so its name and a
+ * non-default numbering scheme say what was imported; the chain list would be the same six
+ * defaults on every such block. On the dataset door it is the chains.
+ */
+function labelFromParams(data: BlockData): string {
+  if (data.fileSource !== undefined) {
+    const scheme = data.bareSet?.scheme;
+    const schemeLabel = scheme && scheme !== "imgt" ? SCHEME_LABELS[scheme] : "";
+    return [data.fileSource.label, schemeLabel].filter(Boolean).join(" - ");
+  }
+  return data.chains.join(", ");
+}
 
 /**
  * The mapping fields that belong to the dataset door and mean nothing on a bare set: the bare

@@ -76,7 +76,7 @@ async function recordStats(
 function blockData(fields: Record<string, unknown>): Record<string, unknown> {
   const bareSet = fields.bareSet as { identity: string } | undefined;
   return {
-    defaultBlockLabel: "",
+    subtitleLabel: "",
     customBlockLabel: "",
     chains: [],
     tableState: createPlDataTableStateV2(),
@@ -154,7 +154,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "bare-paired-set",
+        subtitleLabel: "bare-paired-set",
         customBlockLabel: "",
         datasetRef: datasetOptions[0].ref,
         format: "custom",
@@ -340,7 +340,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "duplicate-id",
+        subtitleLabel: "duplicate-id",
         customBlockLabel: "",
         datasetRef: datasetOptions[0].ref,
         format: "custom",
@@ -414,7 +414,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "duplicate-id",
+        subtitleLabel: "duplicate-id",
         customBlockLabel: "",
         datasetRef: datasetOptions[0].ref,
         format: "custom",
@@ -498,7 +498,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "heavy-only",
+        subtitleLabel: "heavy-only",
         customBlockLabel: "",
         datasetRef: datasetOptions[0].ref,
         format: "custom",
@@ -564,7 +564,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "direct",
+        subtitleLabel: "direct",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],
@@ -659,7 +659,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "direct",
+        subtitleLabel: "direct",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],
@@ -734,7 +734,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "chain",
+        subtitleLabel: "chain",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],
@@ -892,7 +892,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "workbook",
+        subtitleLabel: "workbook",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],
@@ -944,7 +944,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "genes",
+        subtitleLabel: "genes",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],
@@ -1024,7 +1024,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "row-report",
+        subtitleLabel: "row-report",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],
@@ -1096,7 +1096,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "incomplete-duplicate",
+        subtitleLabel: "incomplete-duplicate",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],
@@ -1150,7 +1150,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "header-only",
+        subtitleLabel: "header-only",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],
@@ -1193,7 +1193,7 @@ blockTest(
     await project.mutateBlockStorage(blockId, {
       operation: "update-block-data",
       value: blockData({
-        defaultBlockLabel: "quoted-ids",
+        subtitleLabel: "quoted-ids",
         customBlockLabel: "",
         format: "custom",
         chains: ["IGHeavy", "IGLight"],

@@ -1,9 +1,5 @@
 <script setup lang="ts">
-import type { BareSetScheme } from "@platforma-open/milaboratories.import-vdj.model";
-import {
-  forgetMappedColumns,
-  SCHEME_LABELS,
-} from "@platforma-open/milaboratories.import-vdj.model";
+import { forgetMappedColumns } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
 import canonicalize from "canonicalize";
@@ -26,7 +22,7 @@ import {
   usePlDataTableSettingsV2,
 } from "@platforma-sdk/ui-vue";
 import type { ImportedFiles } from "@platforma-sdk/ui-vue";
-import { computed, ref, watch, watchEffect } from "vue";
+import { computed, ref, watch } from "vue";
 import { useApp } from "../app";
 import {
   assemblingFeatureOptions,
@@ -53,42 +49,6 @@ const emptySamplesMessage = computed(() =>
   buildEmptySamplesMessage(app.model.outputs.emptyChainSamples),
 );
 
-// updating defaultBlockLabel
-watchEffect(() => {
-  const args = app.model.data as any;
-  const parts: string[] = [];
-
-  // On the file door the file IS the dataset, so its name is the only useful thing to show.
-  // Falling through to the chain list below would title every such block with the same six
-  // chain names, which are a default the scientist never chose and which say nothing about
-  // what was imported.
-  if (args.fileSource) {
-    parts.push(args.fileSource.label);
-    const scheme = args.bareSet?.scheme as BareSetScheme | undefined;
-    if (scheme && scheme !== "imgt") {
-      parts.push(SCHEME_LABELS[scheme] ?? scheme);
-    }
-    args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
-    return;
-  }
-
-  // Add dataset name if available
-  if (args.datasetRef) {
-    const datasetOptions = app.model.outputs.datasetOptions ?? [];
-    const datasetOption = datasetOptions.find(
-      (p: any) => args.datasetRef && plRefsEqual(p.ref, args.datasetRef),
-    );
-    if (datasetOption?.label) {
-      parts.push(datasetOption.label);
-    }
-  }
-  // Add chains if available
-  if (args.chains && args.chains.length > 0) {
-    parts.push(args.chains.join(", "));
-  }
-  args.defaultBlockLabel = parts.filter(Boolean).join(" - ");
-});
-
 const secondaryTypeOptions = computed(() => {
   const p = app.model.data.primaryCountType;
   if (p === "read") return [{ label: "UMIs", value: "umi" }];
@@ -114,6 +74,10 @@ const tableSettings = usePlDataTableSettingsV2({
 
 const setDataset = (datasetRef: PlRef | undefined) => {
   app.model.data.datasetRef = datasetRef;
+  const picked = datasetRef
+    ? datasetOptions.value.find((o) => plRefsEqual(o.ref, datasetRef))
+    : undefined;
+  app.model.data.subtitleLabel = picked?.label ?? "";
   // Exactly one door. Picking a dataset clears the file and the reverse, so the two can never
   // both be set and the block never has to guess which the scientist meant.
   if (datasetRef !== undefined) app.model.data.fileSource = undefined;
@@ -175,6 +139,7 @@ function setSource(value: string | undefined) {
 
   if (value === undefined) {
     a.datasetRef = undefined;
+    a.subtitleLabel = "";
     return;
   }
   const picked = datasetOptions.value.find((o) => canonicalize(o.ref) === value);
@@ -253,6 +218,7 @@ async function setFile(handle: ImportFileHandle | undefined) {
     extension,
   };
   a.datasetRef = undefined;
+  a.subtitleLabel = "";
 
   // This is what disables Run: a mapping that passed against the last file still satisfies
   // `bareSetValid`.
