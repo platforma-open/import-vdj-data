@@ -3,7 +3,7 @@
 "@platforma-open/milaboratories.import-vdj.ui": patch
 ---
 
-Compute the block subtitle without opening the block
+Compute the block subtitle's settings part in the model
 
 The subtitle is now built by the model from the chosen chains, or from the loaded file
 and its numbering scheme, so a block that was never opened shows it too. The name of a
