@@ -34,7 +34,6 @@ const bareSet: BareSetMapping = {
 };
 
 const nothingPicked: BlockData = {
-  defaultBlockLabel: "",
   customBlockLabel: "",
   chains: [],
   tableState: createPlDataTableStateV2(),

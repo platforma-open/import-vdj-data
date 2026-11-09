@@ -1,10 +1,12 @@
 import { platforma } from "@platforma-open/milaboratories.import-vdj.model";
+import { plRefsEqual } from "@platforma-sdk/model";
 import { defineAppV3 } from "@platforma-sdk/ui-vue";
 import MainPage from "./pages/MainPage.vue";
-import { watch, watchEffect } from "vue";
+import { computed, watch, watchEffect } from "vue";
 
 export const sdkPlugin = defineAppV3(platforma, (app) => {
   syncPrerunChecks(app.model);
+  syncSubtitleLabel(app.model);
 
   return {
     // Main run only: the loader covers the whole block, and prerun re-runs while the settings
@@ -66,11 +68,32 @@ function syncPrerunChecks(model: AppModel) {
   );
 }
 
+/**
+ * Keep the picked pool dataset's label in `subtitleLabel`. The file door has no pool dataset, so
+ * it gets "" there; the model adds the file name and the chains to the subtitle itself.
+ */
+function syncSubtitleLabel(model: AppModel) {
+  // undefined while the picked dataset is not among the options yet.
+  const subtitleLabel = computed<string | undefined>(() => {
+    const datasetRef = model.data.datasetRef;
+    if (!datasetRef) return "";
+    return model.outputs.datasetOptions?.find((o) => plRefsEqual(o.ref, datasetRef))?.label;
+  });
+
+  watch(
+    subtitleLabel,
+    (label) => {
+      if (label !== undefined && label !== model.data.subtitleLabel)
+        model.data.subtitleLabel = label;
+    },
+    { immediate: true },
+  );
+}
+
 // Make sure labels are initialized
 const unwatch = watch(sdkPlugin, ({ loaded }) => {
   if (!loaded) return;
   const app = useApp();
   app.model.data.customBlockLabel ??= "";
-  app.model.data.defaultBlockLabel ??= "Select Dataset";
   unwatch();
 });

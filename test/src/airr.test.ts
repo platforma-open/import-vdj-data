@@ -178,7 +178,7 @@ async function importFrom(
   await project.mutateBlockStorage(blockId, {
     operation: "update-block-data",
     value: {
-      defaultBlockLabel: opts.label,
+      subtitleLabel: opts.label,
       customBlockLabel: "",
       datasetRef,
       format,

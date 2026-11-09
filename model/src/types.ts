@@ -110,8 +110,9 @@ export type BlockArgs = {
 export type BlockData = {
   // --- naming. UI-only: the workflow reads neither, and projecting them would mean a rename
   // --- stales the block.
-  defaultBlockLabel: string;
   customBlockLabel: string;
+  /** Label of the picked pool dataset, shown in the subtitle; the UI keeps it in sync. */
+  subtitleLabel?: string;
 
   // --- the two doors. Exactly one is set; the run check enforces it.
   /** A dataset somebody already loaded into the project. */
@@ -168,6 +169,9 @@ export type BlockData = {
   tableState: PlDataTableStateV2;
   settingsOpen: boolean;
 };
+
+/** Block data up to v2, when the panel stored the whole subtitle text it had derived. */
+export type BlockDataV2 = Omit<BlockData, "subtitleLabel"> & { defaultBlockLabel: string };
 
 /** The V1 `args` bucket, as it sits in projects saved before the V3 migration. */
 export type LegacyBlockArgs = {
