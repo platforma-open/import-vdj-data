@@ -111,7 +111,7 @@ export type BlockData = {
   // --- naming. UI-only: the workflow reads neither, and projecting them would mean a rename
   // --- stales the block.
   customBlockLabel: string;
-  /** Label of the picked pool dataset, shown in the subtitle; written when the source is picked. */
+  /** Label of the picked pool dataset, shown in the subtitle; the UI keeps it in sync. */
   subtitleLabel?: string;
 
   // --- the two doors. Exactly one is set; the run check enforces it.

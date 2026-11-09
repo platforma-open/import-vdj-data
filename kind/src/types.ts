@@ -181,7 +181,7 @@ export type BareSetMapping = {
  * This block's init-params contract — the import as a scientist set it up: which door they
  * came in by, how the columns map, and the subtitle they type.
  *
- * `subtitleLabel` is absent: the panel writes it when the source is picked.
+ * `subtitleLabel` is absent: the UI keeps it in sync with the picked dataset.
  *
  * `fileSource` is accepted but is not what the block's own projection sends. A file travels
  * only when it is a storage reference — `index://` names a `{storageId, path}` any installation

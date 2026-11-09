@@ -96,7 +96,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
    * is how the columns are read: the block a template seeds is this import waiting for its
    * file, and the mapping is already the one that was set up.
    *
-   * `subtitleLabel` is not sent either -- the panel writes it when the source is picked.
+   * `subtitleLabel` is not sent either -- the UI keeps it in sync with the picked dataset.
    */
   .templateParams((data) => ({
     datasetRef: data.datasetRef,

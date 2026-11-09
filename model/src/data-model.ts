@@ -57,7 +57,7 @@ export const blockDataModel = new DataModelBuilder({ kind })
   .migrate<BlockDataV2>("v2", renameSampleIdToDatasetId)
   // The old label mixed the pool dataset's name with the chains, and the pool is out of reach
   // here, so the dataset part cannot be split out. The subtitle shows the chains (or the file)
-  // until the source is picked again.
+  // until the block is opened.
   .migrate<BlockData>("v3", ({ defaultBlockLabel: _, ...rest }) => ({
     ...rest,
     subtitleLabel: "",

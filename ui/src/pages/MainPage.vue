@@ -74,10 +74,6 @@ const tableSettings = usePlDataTableSettingsV2({
 
 const setDataset = (datasetRef: PlRef | undefined) => {
   app.model.data.datasetRef = datasetRef;
-  const picked = datasetRef
-    ? datasetOptions.value.find((o) => plRefsEqual(o.ref, datasetRef))
-    : undefined;
-  app.model.data.subtitleLabel = picked?.label ?? "";
   // Exactly one door. Picking a dataset clears the file and the reverse, so the two can never
   // both be set and the block never has to guess which the scientist meant.
   if (datasetRef !== undefined) app.model.data.fileSource = undefined;
@@ -139,7 +135,6 @@ function setSource(value: string | undefined) {
 
   if (value === undefined) {
     a.datasetRef = undefined;
-    a.subtitleLabel = "";
     return;
   }
   const picked = datasetOptions.value.find((o) => canonicalize(o.ref) === value);
@@ -218,7 +213,6 @@ async function setFile(handle: ImportFileHandle | undefined) {
     extension,
   };
   a.datasetRef = undefined;
-  a.subtitleLabel = "";
 
   // This is what disables Run: a mapping that passed against the last file still satisfies
   // `bareSetValid`.
