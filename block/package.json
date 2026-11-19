@@ -51,7 +51,7 @@
       "support": "mailto:support@milaboratories.com",
       "description": "Imports V(D)J sequencing data from various formats (MiXCR, immunoSeq, QIAseq, Cell Ranger, CSV, TSV) and normalizes it for downstream analysis in standardized pipelines.",
       "longDescription": "file:../docs/description.md",
-      "changelog": "file:../CHANGELOG.md",
+      "changelog": "file:CHANGELOG.md",
       "tags": [
         "upstream",
         "airr",

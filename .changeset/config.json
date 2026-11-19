@@ -2,7 +2,14 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.1/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [],
+  "fixed": [
+    [
+      "@platforma-open/milaboratories.import-vdj",
+      "@platforma-open/milaboratories.import-vdj.model",
+      "@platforma-open/milaboratories.import-vdj.ui",
+      "@platforma-open/milaboratories.import-vdj.workflow"
+    ]
+  ],
   "linked": [],
   "access": "restricted",
   "baseBranch": "main",
