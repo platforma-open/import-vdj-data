@@ -181,13 +181,13 @@ export type BareSetMapping = {
   properties?: ImportedProperty[];
 };
 
-/** How to read a peptide count table, one file per sample. */
+/** Which columns of a peptide count table hold the sequences and the counts. */
 export type PeptideMapping = {
   /** Header of the amino-acid sequence column. The peptide key when no nucleotide column is mapped. */
   aminoAcid: string;
   /** Header of the nucleotide sequence column, if the table has one. The peptide key when mapped. */
   nucleotide?: string;
-  /** Integer count columns. Unique UMIs are the primary abundance when mapped, reads otherwise. */
+  /** Integer count columns. `primaryCountType` picks the one that is the primary abundance. */
   counts: {
     uniqueMolecules?: string;
     reads?: string;

@@ -483,20 +483,50 @@ blockTest(
 );
 
 blockTest(
-  "flags a non-integer count before Run",
+  "reads counts with thousands separators as whole numbers",
   { timeout: 900000 },
-  async ({ rawPrj: project, helpers, expect }) => {
-    await samplesAndData(project, helpers, { S1: "./assets/peptide-aa-reads-decimal.csv" }, "csv");
-    const setUp = await setUpImport(project, {
+  async ({ rawPrj: project, helpers, expect, ml }) => {
+    const ids = await samplesAndData(
+      project,
+      helpers,
+      { S1: "./assets/peptide-aa-reads-grouped.tsv" },
+      "tsv",
+    );
+    const { blockId } = await importPeptides(project, helpers, {
       aminoAcid: "Peptide",
       counts: { reads: "Count" },
     });
-    const check = await acceptPeptideCheck(project, setUp);
-    expect(check.problems).toEqual([
-      'Number of Reads ("Count") has values that are not whole numbers in S1',
+
+    // "1,234" reads as 1234 and "2,000.0" as 2000.
+    const bySample = await statsBySample(project, blockId, ml.driverKit.pFrameDriver as Driver, [
+      "peptideCount",
+      "totalReads",
     ]);
+    expect(bySample[ids.S1]).toEqual({ peptideCount: 3, totalReads: 3290 });
   },
 );
+
+// "12.5" has a decimal point; "1,5" a decimal comma, not a thousands separator.
+for (const [fixture, xsvType] of [
+  ["peptide-aa-reads-decimal.csv", "csv"],
+  ["peptide-aa-reads-decimal-comma.tsv", "tsv"],
+] as const) {
+  blockTest(
+    `flags a non-integer count before Run (${fixture})`,
+    { timeout: 900000 },
+    async ({ rawPrj: project, helpers, expect }) => {
+      await samplesAndData(project, helpers, { S1: `./assets/${fixture}` }, xsvType);
+      const setUp = await setUpImport(project, {
+        aminoAcid: "Peptide",
+        counts: { reads: "Count" },
+      });
+      const check = await acceptPeptideCheck(project, setUp);
+      expect(check.problems).toEqual([
+        'Number of Reads ("Count") has values that are not whole numbers in S1',
+      ]);
+    },
+  );
+}
 
 blockTest(
   "imports gzipped tables as it imports plain ones",

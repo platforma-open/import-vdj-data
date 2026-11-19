@@ -44,6 +44,7 @@ export const peptideHeaderAliases = {
     "aaSeq",
     "Peptide sequence",
     "Sequence",
+    "seq",
   ],
   nucleotide: ["Peptide nt", "Nucleotide sequence", "Nucleotide", "nt", "nSeq"],
   counts: {

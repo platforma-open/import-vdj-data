@@ -180,7 +180,8 @@ function setCount(slot: PeptideSlot, header: string | undefined) {
 const normalized = (header: string) => header.toLowerCase().replace(/[\s_.-]+/g, "");
 
 /**
- * Fills each empty field with an offered column whose header is a known name for it, so a field
+ * Fills each empty field with an offered column whose header is a known name for it; when none is,
+ * the sequence fields take one with "aa" (amino acid) or "dna" (nucleotide) in its name. A field
  * only gets a column its dropdown offers, and no column goes to two fields. A UMI column found
  * makes UMIs the primary count, with reads, if mapped, as the secondary. On click only, so block
  * data is never written from an output.
@@ -198,13 +199,26 @@ function suggestColumns() {
     if (found !== undefined) used.add(found);
     return found;
   };
+  // The first offered column with `part` in its name ("aa_seq", "DNA sequence").
+  const takeContaining = (part: string, options: { value: string }[]) => {
+    const matching = options.filter((o) => normalized(o.value).includes(part));
+    return take(
+      matching.map((o) => o.value),
+      matching,
+    );
+  };
 
   const next: PeptideMapping = { ...m, counts: { ...m.counts } };
   if (!next.aminoAcid) {
-    next.aminoAcid = take(peptideHeaderAliases.aminoAcid, aminoAcidOptions.value) ?? "";
+    next.aminoAcid =
+      take(peptideHeaderAliases.aminoAcid, aminoAcidOptions.value) ??
+      takeContaining("aa", aminoAcidOptions.value) ??
+      "";
   }
   if (!next.nucleotide) {
-    const found = take(peptideHeaderAliases.nucleotide, nucleotideOptions.value);
+    const found =
+      take(peptideHeaderAliases.nucleotide, nucleotideOptions.value) ??
+      takeContaining("dna", nucleotideOptions.value);
     if (found) next.nucleotide = found;
   }
   let umiFound = false;
