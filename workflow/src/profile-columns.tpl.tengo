@@ -14,6 +14,7 @@ self := import("@platforma-sdk/workflow-tengo:tpl.light")
 exec := import("@platforma-sdk/workflow-tengo:exec")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 ll := import("@platforma-sdk/workflow-tengo:ll")
+json := import("json")
 
 profileSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.column-profile:main")
 
@@ -32,7 +33,29 @@ self.body(func(inputs) {
 		addFile("input.txt", inputs.file).
 		arg("--input").arg("input.txt").
 		arg("--separator").arg(inputs.separator).
-		arg("--output").arg("profile.json").
+		arg("--output").arg("profile.json")
+	// The shortest value that counts as a sequence when the profile decides which columns hold
+	// amino-acid or nucleotide sequences. The default (50) fits antibody and TCR variable domains;
+	// the peptide import passes a lower one, since peptides are much shorter.
+	if inputs.minSequenceLength != undefined {
+		cmd = cmd.arg("--min-sequence-length").arg(string(inputs.minSequenceLength))
+	}
+	// Every sample file's header row, for the columns all files have: `headerIds[i]` is the i-th
+	// file's sample id (repeated when a sample has several files), `header_<i>` the file. Each file
+	// is attached to the job; a manifest says which sample each belongs to, so the command line
+	// stays short however many files there are. Only their first line is read.
+	if inputs.headerIds != undefined {
+		manifest := []
+		for i, id in inputs.headerIds {
+			name := "header-" + string(i) + ".txt"
+			cmd = cmd.addFile(name, inputs["header_" + string(i)])
+			manifest = append(manifest, { sample: id, file: name })
+		}
+		cmd = cmd.
+			writeFile("headers.json", json.encode({ headers: manifest })).
+			arg("--headers-manifest").arg("headers.json")
+	}
+	cmd = cmd.
 		saveFileContent("profile.json").
 		printErrStreamToStdout().
 		run()

@@ -1,0 +1,43 @@
+// Profile the first file of a dataset (by sorted key): headers, value types and sequence-like
+// columns, for the mapping panel. See profile-columns.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+render := import("@platforma-sdk/workflow-tengo:render")
+json := import("json")
+
+profileColumnsTpl := assets.importTemplate(":profile-columns")
+
+self.defineOutputs("profile")
+
+self.body(func(inputs) {
+	dataset := inputs.dataset
+	fileExtension := dataset.spec.domain["pl7.app/fileExtension"]
+
+	inputMap := dataset.data.inputs()
+	keys := maps.getKeys(inputMap)
+	ll.assert(len(keys) > 0, "profile-dataset: no inputs found in the dataset")
+
+	// A separator name, not the character: see profile-columns.
+	separator := (fileExtension == "csv" || fileExtension == "csv.gz") ? "comma" : "tab"
+
+	// Every file's header too, so the panel offers only the columns all files have. Each file is
+	// its own input, not one map of files, because profile-columns reads each the way it reads
+	// `file`. `headerIds` names each file's sample; a sample of a tagged dataset has several.
+	profileInputs := {
+		file: inputMap[keys[0]],
+		separator: separator,
+		minSequenceLength: inputs.minSequenceLength,
+		headerIds: []
+	}
+	for i, key in keys {
+		profileInputs.headerIds = append(profileInputs.headerIds, json.decode(key)[0])
+		profileInputs["header_" + string(i)] = inputMap[key]
+	}
+
+	return {
+		profile: render.create(profileColumnsTpl, profileInputs).output("profile")
+	}
+})

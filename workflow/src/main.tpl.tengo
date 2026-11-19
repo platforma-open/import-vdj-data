@@ -16,6 +16,7 @@ inferColumnsTpl := assets.importTemplate(":infer-columns")
 processBulkTpl := assets.importTemplate(":process-bulk")
 processSingleCellTpl := assets.importTemplate(":process-single-cell")
 processBareSetTpl := assets.importTemplate(":process-bare-set")
+processPeptideTpl := assets.importTemplate(":process-peptide")
 
 wf.setPreRun(assets.importTemplate(":prerun"))
 
@@ -165,6 +166,29 @@ wf.body(func(args) {
 		return {
 			outputs: bareOutputs,
 			exports: bareExports
+		}
+	}
+
+	// Peptide count tables: their own path, in the shape of a Peptide Profiling dataset.
+	if format == "peptide-custom" {
+		ll.assert(args.peptide != undefined, "the peptide format needs a peptide mapping")
+		peptideDataset := wf.resolve(args.datasetRef)
+		peptideResult := render.createEphemeral(processPeptideTpl, {
+			blockId: blockId,
+			datasetSpec: peptideDataset.spec,
+			datasetData: peptideDataset.data,
+			mapping: args.peptide,
+			primaryCountType: args.primaryCountType
+		})
+		return {
+			outputs: {
+				result: peptideResult.output("result"),
+				stats: peptideResult.output("stats")
+			},
+			exports: {
+				result: peptideResult.output("result"),
+				stats: peptideResult.output("stats")
+			}
 		}
 	}
 

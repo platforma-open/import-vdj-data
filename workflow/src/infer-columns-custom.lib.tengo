@@ -778,6 +778,8 @@ getColumns := func(header, customMapping, primaryCountType) {
     mainFractionAbundance := hasUMIs ? "umi-fraction" : "read-fraction"
     if primaryCountType != undefined {
         mainAbundance = primaryCountType == "umi" ? "umi-count" : "read-count"
+        // The primary fraction is the primary count's, or reads would be primary with UMI fractions.
+        mainFractionAbundance = primaryCountType == "umi" ? "umi-fraction" : "read-fraction"
     }
 
     if abundanceColumns[mainAbundance] != undefined {

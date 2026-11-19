@@ -72,6 +72,8 @@ const FIXTURES = [
   // every ungated change in it lands on them too. Five MiXCR clones assembled by CDR3, four
   // productive and one frameshifted, is enough to notice if that path stops working.
   { asset: "mixcr-clones.tsv", label: "mixcr-clones" },
+  // The same file gzipped: a `.gz` header is read through column-profile, not `txt.head`.
+  { asset: "mixcr-clones.tsv.gz", label: "mixcr-clones-gz", gzipped: true },
   // No junction column, so it has to be rebuilt from cdr3 and the framework flanks
   { asset: "airr-igblast-nojunction.tsv", label: "igblast-nojunction" },
   { asset: "airr-mixcr-nojunction.tsv", label: "mixcr-nojunction" },
@@ -111,7 +113,7 @@ async function loadFixtures(ctx: TestCtx): Promise<string> {
     datasets.push({
       id: uniquePlId(),
       label: f.label,
-      content: { type: "Xsv", xsvType: "tsv", data },
+      content: { type: "Xsv", xsvType: "tsv", ...(f.gzipped ? { gzipped: true } : {}), data },
     });
   }
 
@@ -449,6 +451,14 @@ blockTest(
       // `import-common`, so it gets them. immunoSeq, qiagen and custom do not and must not --
       // their templates return tsv and stats alone, and a path nothing fills never resolves.
       expect(has(stats, "pl7.app/vdj/stat/recordCount")).toBe(true);
+    }
+
+    // --- the same MiXCR export, gzipped ----------------------------------------------------
+    {
+      const { columns } = await importFrom(ctx, { label: "mixcr-clones-gz", format: "mixcr" });
+      expect(assembledFeature(columns)).toBe("CDR3");
+      expect(has(columns, "pl7.app/vdj/readCount")).toBe(true);
+      expect(has(columns, "pl7.app/vdj/geneHit")).toBe(true);
     }
   },
 );

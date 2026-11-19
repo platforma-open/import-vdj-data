@@ -10,6 +10,7 @@ import {
   BlockModelV3,
   DataColumn,
   createPlDataTableV3,
+  plRefsEqual,
   TreeNodeAccessor,
 } from "@platforma-sdk/model";
 import { kind } from "@platforma-open/milaboratories.import-vdj.kind";
@@ -22,17 +23,29 @@ import type {
   ColumnDescription,
   ColumnProfile,
   ImportFormat,
+  PeptideCheck,
+  DatasetProfile,
+  DatasetProfileFailure,
 } from "./types";
 import { parseTsvRows } from "./tsv";
 import {
   bareSetValid,
   collisionCheckKey,
   datasetCheckKey,
+  liveCheck,
+  modalityOf,
   rowReportKey,
   SCHEME_LABELS,
 } from "./types";
+import {
+  PEPTIDE_FIELD_LABELS,
+  peptideCheckKey,
+  peptidePrimarySlot,
+  peptideProblems,
+} from "./peptide";
 
 export * from "./types";
+export * from "./peptide";
 export { parseTsvRows } from "./tsv";
 export { upgradeLegacyData } from "./data-model";
 
@@ -107,6 +120,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     secondaryCountType: data.secondaryCountType,
     assemblingFeature: data.assemblingFeature,
     bareSet: data.bareSet,
+    peptide: data.peptide,
     customBlockLabel: data.customBlockLabel,
   }))
 
@@ -203,6 +217,40 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
           domain["pl7.app/fileExtension"] === "tsv.gz")
       );
     });
+  })
+
+  /**
+   * The column profile of the dataset's first sample file, with every file's header row and the
+   * dataset it came from. It keeps its last value while a new one is computed, so editing the
+   * mapping doesn't empty the panel; the dataset tells the panel when that value belongs to a
+   * dataset no longer picked. Made in prerun for peptide tables only, so far. When the files can't
+   * be read, the reason instead, for the panel to show.
+   */
+  .retentiveOutput("datasetProfile", (ctx): DatasetProfile | DatasetProfileFailure | undefined => {
+    const read = readDatasetProfile(ctx.prerun);
+    if (read === undefined) return undefined;
+    if ("failure" in read) return read;
+    return { ...read.profile, datasetRef: read.datasetRef };
+  })
+
+  /**
+   * The check of the peptide mapping now selected, from the dataset's profile: every file's header
+   * row and the first file's columns.
+   */
+  .output("peptideCheck", (ctx): PeptideCheck | undefined => {
+    const { datasetRef, peptide } = ctx.data;
+    const key = peptideCheckKey(datasetRef, peptide);
+    if (key === undefined) return undefined;
+
+    // The profile in prerun may still be the previous dataset's.
+    const read = readDatasetProfile(ctx.prerun);
+    if (read === undefined || !plRefsEqual(read.datasetRef, datasetRef!)) return undefined;
+    if ("failure" in read) return { key, problems: [read.failure] };
+
+    const spec = ctx.resultPool.getPColumnSpecByRef(datasetRef!);
+    const labels =
+      spec === undefined ? {} : (ctx.resultPool.findLabelsForColumnAxis(spec, 0) ?? {});
+    return { key, problems: peptideProblems(read.profile, peptide!, labels) };
   })
 
   .retentiveOutput("columnDescriptions", (ctx) => {
@@ -505,7 +553,8 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     // Anchor on the count its own path always emits — the two paths share this output but no columns.
     const primary =
       pCols.find((c) => c.spec.name.endsWith("/chainDisagreedCount")) ??
-      pCols.find((c) => c.spec.name === "pl7.app/vdj/stat/clonotypeCount");
+      pCols.find((c) => c.spec.name === "pl7.app/vdj/stat/clonotypeCount") ??
+      pCols.find((c) => c.spec.name === "pl7.app/peptide/stat/peptideCount");
     if (primary === undefined) {
       return undefined;
     }
@@ -581,7 +630,8 @@ export type BlockOutputs = InferOutputsType<typeof platforma>;
 /**
  * The settings part of the subtitle. On the file door the file is the dataset, so its name and a
  * non-default numbering scheme say what was imported; the chain list would be the same six
- * defaults on every such block. On the dataset door it is the chains.
+ * defaults on every such block. On the dataset door it is the chains, or "Peptides" for a
+ * peptide table, which has none (`chains` may still hold an earlier V(D)J choice).
  */
 function labelFromParams(data: BlockData): string {
   if (data.fileSource !== undefined) {
@@ -589,6 +639,7 @@ function labelFromParams(data: BlockData): string {
     const schemeLabel = scheme && scheme !== "imgt" ? SCHEME_LABELS[scheme] : "";
     return [data.fileSource.label, schemeLabel].filter(Boolean).join(" - ");
   }
+  if (modalityOf(data) === "peptide") return "Peptides";
   return data.chains.join(", ");
 }
 
@@ -642,6 +693,17 @@ function projectArgs(data: BlockData): BlockArgs {
   if (data.format === "custom" && data.bareSet !== undefined) {
     return withoutDatasetDoorMapping(args);
   }
+  // The peptide path reads only the dataset and its own mapping. `chains` is sent empty so a chain
+  // choice left over from a V(D)J setup doesn't mark the block as needing a re-run.
+  if (data.format === "peptide-custom") {
+    return {
+      datasetRef: data.datasetRef,
+      format: data.format,
+      chains: [],
+      peptide: data.peptide,
+      primaryCountType: data.primaryCountType ?? "read",
+    };
+  }
   return args;
 }
 
@@ -660,10 +722,23 @@ function runRefusal(data: BlockData): string | undefined {
 
   if (fileSource !== undefined) {
     if (!bareSetValid(data.bareSet)) return "Finish mapping the file's columns";
-    return checkedColumnsRefusal(data);
+    return checkedRefusal(data);
   }
 
   if (format === undefined) return "Choose a data format";
+
+  // Peptides have no chains. Their files are checked at prerun: sequences in their alphabets and
+  // integer counts.
+  if (format === "peptide-custom") {
+    const { aminoAcid, counts } = data.peptide ?? { aminoAcid: "", counts: {} };
+    if (!aminoAcid) return `Choose a column for ${PEPTIDE_FIELD_LABELS.aminoAcid}`;
+    const primary = peptidePrimarySlot(data.primaryCountType);
+    if (!counts[primary]) {
+      return `Choose a column for ${PEPTIDE_FIELD_LABELS.counts[primary]} (primary)`;
+    }
+    return checkedRefusal(data);
+  }
+
   if (!Array.isArray(chains) || chains.length === 0) return "Choose at least one chain";
 
   if (format === "custom") {
@@ -673,7 +748,7 @@ function runRefusal(data: BlockData): string | undefined {
     // identity column, because the key is the identity's hash and the label is its value.
     if (data.bareSet !== undefined) {
       if (!bareSetValid(data.bareSet)) return "Finish mapping the record's columns";
-      return checkedColumnsRefusal(data);
+      return checkedRefusal(data);
     }
 
     const m = customMapping ?? {};
@@ -691,7 +766,22 @@ function runRefusal(data: BlockData): string | undefined {
   // The check needs the dataset's headers, which live in prerun, while the run is judged on
   // `data` only. So the verdict is mirrored in — the same hairpin the collision check uses, under
   // the same contract, which is what keeps it from repeating the per-format flags' mistake.
-  return checkedDatasetRefusal(data);
+  return checkedRefusal(data);
+}
+
+/**
+ * Once the setup is complete, the refusal of the prerun verdict that gates this path: the one
+ * {@link liveCheck} names, which is also the one the UI writes.
+ */
+function checkedRefusal(data: BlockData): string | undefined {
+  switch (liveCheck(data)) {
+    case "columns":
+      return checkedColumnsRefusal(data);
+    case "peptide":
+      return checkedPeptideRefusal(data);
+    case "dataset":
+      return checkedDatasetRefusal(data);
+  }
 }
 
 /**
@@ -731,4 +821,70 @@ function checkedDatasetRefusal(data: BlockData): string | undefined {
     return `The dataset does not carry the columns a ${data.format} dataset needs`;
   }
   return undefined;
+}
+
+/**
+ * Reads the dataset profile made in prerun: a summary of the first sample's file (column names,
+ * value types, sequence and whole-number columns) plus every file's header row, together with the
+ * dataset it describes. `undefined` while prerun hasn't made it yet; a failure message instead of
+ * the profile when it can't be read.
+ */
+function readDatasetProfile(
+  prerun: TreeNodeAccessor | undefined,
+):
+  | { datasetRef: PlRef; profile: ColumnProfile }
+  | { datasetRef: PlRef; failure: string }
+  | undefined {
+  const stamp = prerun
+    ?.resolve({ field: "datasetProfileFor", allowPermanentAbsence: true })
+    ?.getDataAsJsonOrUndefined<{ datasetRef?: PlRef }>();
+  if (stamp?.datasetRef === undefined) return undefined;
+  const datasetRef = stamp.datasetRef;
+  try {
+    const raw = prerun
+      ?.resolve({ field: "datasetProfile", allowPermanentAbsence: true })
+      ?.getDataAsString();
+    if (raw === undefined) return undefined;
+    return { datasetRef, profile: JSON.parse(raw) as ColumnProfile };
+  } catch (e) {
+    return { datasetRef, failure: fileReadFailure(e) };
+  }
+}
+
+/**
+ * A message for when a prerun step reading the dataset's files fails, such as the column profile:
+ * the error's own line when the backend gives one, otherwise a generic message.
+ */
+function fileReadFailure(error: unknown): string {
+  const text = error instanceof Error ? error.message : String(error);
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  // The backend's own line when there is one, else the error's first line: never drop the cause.
+  const reason =
+    [...lines].reverse().find((l) => /^(Error during workflow execution|Error):/.test(l)) ??
+    lines[0];
+  const detail = reason?.replace(/^Error during workflow execution:\s*|^Error:\s*/, "");
+  return detail
+    ? `The files could not be read: ${detail.slice(0, 200)}`
+    : "The files could not be read";
+}
+
+/**
+ * Blocks a peptide import until the files have been checked against the dataset and mapping now
+ * selected, and while that check reports a problem (the first one is shown). Counts are
+ * imported as given, so a wrongly read file would import wrong numbers, not fail.
+ */
+function checkedPeptideRefusal(data: BlockData): string | undefined {
+  const subject = peptideCheckKey(data.datasetRef, data.peptide);
+  if (subject === undefined) return undefined; // runRefusal has already refused
+  const check = data.prerunCheck;
+  if (check?.check !== "peptide" || check.subject !== subject) {
+    return "Validating the selected columns";
+  }
+  const [first, ...rest] = check.problems;
+  if (first === undefined) return undefined;
+  const more = rest.length;
+  return more > 0 ? `${first}, and ${more} more problem${more === 1 ? "" : "s"}` : first;
 }

@@ -5,7 +5,7 @@ maps := import("@platforma-sdk/workflow-tengo:maps")
 units := import("@platforma-sdk/workflow-tengo:units")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 
-clonotypeLabel := import(":clonotype-label")
+keyLabel := import(":key-label")
 
 json := import("json")
 math := import("math")
@@ -161,7 +161,7 @@ self.body(func(inputs) {
 	).agg(
 		pt.col("sampleId").nUnique().alias("sampleCount")
 	)
-	clonotypeTableDf = clonotypeLabel.addClonotypeLabelColumnsPt(clonotypeTableDf, "scClonotypeKey", "clonotypeLabel", pt)
+	clonotypeTableDf = keyLabel.addKeyLabelColumnsPt(clonotypeTableDf, "scClonotypeKey", "clonotypeLabel", { prefix: "C" })
 
 	cellCountsDf := allChainsFilteredDf.groupBy("sampleId", "scClonotypeKey").agg(
 		pt.col("cellKey").count().alias("uniqueCellCount")

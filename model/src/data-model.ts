@@ -74,4 +74,5 @@ export const blockDataModel = new DataModelBuilder({ kind })
     secondaryCountType: params?.secondaryCountType,
     assemblingFeature: params?.assemblingFeature,
     bareSet: params?.bareSet,
+    peptide: params?.peptide,
   }));

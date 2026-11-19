@@ -3,7 +3,7 @@ self := import("@platforma-sdk/workflow-tengo:tpl")
 pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
 maps := import("@platforma-sdk/workflow-tengo:maps")
 units := import("@platforma-sdk/workflow-tengo:units")
-clonotypeLabel := import(":clonotype-label")
+keyLabel := import(":key-label")
 pt := import("@platforma-sdk/workflow-tengo:pt")
 math := import("math")
 
@@ -89,7 +89,7 @@ self.body(func(inputs) {
 	aggregatedDf := currentDf.groupBy("clonotypeKey").agg(aggExpressions...)
 	// Cast total to Int64 to match schema (Long), even if individual values were Float64
 	aggregatedDf = aggregatedDf.withColumns(pt.col(primaryAbundance + "-total").cast("Int64").alias(primaryAbundance + "-total"))
-	aggregatedDf = clonotypeLabel.addClonotypeLabelColumnsPt(aggregatedDf, "clonotypeKey", "clonotypeLabel", pt)
+	aggregatedDf = keyLabel.addKeyLabelColumnsPt(aggregatedDf, "clonotypeKey", "clonotypeLabel", { prefix: "C" })
 	aggregatedDf.save("output.tsv")
 
 	wfResult := wf.run()

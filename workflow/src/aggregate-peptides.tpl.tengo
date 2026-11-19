@@ -1,0 +1,105 @@
+// Cross-sample aggregation of imported peptides.
+//
+// Copied from Peptide Profiling aggregate-peptides.tpl.tengo. Changes: memory and CPUs sized by
+// the SDK from the input size, with a measured memory slope; the aggregates of the primary count the scientist chose (reads or
+// UMIs); the sample count on the primary fraction; the nt columns and QC flags for nucleotide
+// input only.
+//
+// Receives the per-sample peptide tables (processColumn with sampleId aggregation), then:
+//   1. unions them
+//   2. groups by variantKey: total and mean of the primary abundance, sample count, the
+//      per-peptide columns via first()
+//   3. derives peptideLabel (hash of variantKey, stable per peptide)
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+json := import("json")
+
+keyLabel := import(":key-label")
+
+self.defineOutputs("properties")
+
+self.body(func(inputs) {
+	// One parquet table per sample, written by import-peptide, keyed by [sampleId].
+	inputData := inputs[pConstants.VALUE_FIELD_NAME]
+	inputDataMeta := inputData.getDataAsJson()
+
+	ll.assert(inputDataMeta.keyLength == 1, "unexpected number of aggregation axes")
+
+	umiPrimary := inputs.umiPrimary
+	isNt := inputs.isNt
+
+	inputMap := inputData.inputs()
+
+	// The SDK sizes the run from the size of the input tables: memory = 4 GiB + slope × size.
+	// Measured for this plan: about 18.5 GiB per GiB of the samples' parquet tables (parquet stores
+	// far fewer bytes than the loaded tables take), above the SDK's default slope (10).
+	wf := pt.workflow().memSlope(20)
+
+	dataFrames := []
+	for sKey in maps.getKeys(inputMap) {
+		key := json.decode(sKey)
+		if len(key) != 1 {
+			ll.panic("malformed key: %v", sKey)
+		}
+		dataFrames = append(dataFrames, wf.frame({
+			file: inputMap[sKey],
+			xsvType: "parquet"
+			}, {
+				id: "table_" + key[0]
+		}))
+	}
+
+	// Stack every sample's table into one: a peptide found in 3 samples has 3 rows.
+	currentDf := undefined
+	if len(dataFrames) == 0 {
+		ll.panic("no input files found")
+	} else if len(dataFrames) == 1 {
+		currentDf = dataFrames[0]
+	} else {
+		currentDf = pt.concat(dataFrames)
+	}
+
+	// Per peptide, over the samples that have it: the total of the primary count, the mean of its
+	// fraction, and the number of those samples.
+	primaryFraction := umiPrimary ? "uniqueMoleculeFraction" : "readFraction"
+	aggExprs := []
+	if umiPrimary {
+		aggExprs = append(aggExprs,
+			pt.col("uniqueMoleculeCount").sum().alias("uniqueMoleculeCountSum"),
+			pt.col("uniqueMoleculeFraction").mean().alias("uniqueMoleculeFractionMean")
+		)
+	} else {
+		aggExprs = append(aggExprs,
+			pt.col("readCount").sum().alias("readCountSum"),
+			pt.col("readFraction").mean().alias("readFractionMean")
+		)
+	}
+	aggExprs = append(aggExprs, pt.col(primaryFraction).count().alias("sampleCount"))
+	// The sequence columns and QC flags are the same in every sample: take the first row's.
+	firstOf := ["aaSeqPeptide", "aaLengthPeptide"]
+	if isNt {
+		firstOf = append(firstOf, "nSeqPeptide", "ntLengthPeptide", "hasTrailingNucleotides", "hasEarlyStopCodon")
+	}
+	for c in firstOf {
+		aggExprs = append(aggExprs, pt.col(c).first().alias(c))
+	}
+	aggregatedDf := currentDf.groupBy("variantKey").agg(aggExprs...)
+
+	// A short readable label from the key, e.g. P-NLLIL, the same for a peptide in every run.
+	aggregatedDf = keyLabel.addKeyLabelColumnsPt(aggregatedDf, "variantKey", "peptideLabel", {
+		prefix: "P",
+		hashFirst: true
+	})
+	// Sorted, so the same input always gives the same file.
+	aggregatedDf.sort(["variantKey"]).save("properties.parquet")
+
+	ptablerResult := wf.run()
+
+	return {
+		properties: ptablerResult.getFile("properties.parquet")
+	}
+})

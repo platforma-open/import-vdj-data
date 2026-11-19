@@ -1,8 +1,9 @@
-import { platforma } from "@platforma-open/milaboratories.import-vdj.model";
+import { liveCheck, platforma } from "@platforma-open/milaboratories.import-vdj.model";
 import { plRefsEqual } from "@platforma-sdk/model";
 import { defineAppV3 } from "@platforma-sdk/ui-vue";
-import MainPage from "./pages/MainPage.vue";
+import canonicalize from "canonicalize";
 import { computed, watch, watchEffect } from "vue";
+import MainPage from "./pages/MainPage.vue";
 
 export const sdkPlugin = defineAppV3(platforma, (app) => {
   syncPrerunChecks(app.model);
@@ -29,27 +30,32 @@ type AppModel = ReturnType<typeof useApp>["model"];
  * than applied.
  */
 function syncPrerunChecks(model: AppModel) {
-  // Both writes are idempotent: every client derives the same verdict from the same output, and
-  // the guard means agreeing clients do not write at all.
+  // Every write is idempotent: every client derives the same verdict from the same output, and
+  // the guard means agreeing clients do not write at all. Compared canonically: stored data comes
+  // back with its keys sorted.
   const put = (next: NonNullable<AppModel["data"]["prerunCheck"]>) => {
     const current = model.data.prerunCheck;
-    if (JSON.stringify(current) === JSON.stringify(next)) return;
+    if (canonicalize(current) === canonicalize(next)) return;
     model.data.prerunCheck = next;
   };
 
+  // One check is live at a time: the one the model's `liveCheck` names, which is the one its run
+  // check reads.
   watchEffect(() => {
-    const found = model.outputs.identityCollisions;
-    if (found === undefined) return;
-    put({ check: "columns", subject: found.key, identityCollides: found.values.length > 0 });
-  });
-
-  // A copy, not a comparison: `validationResult` states which dataset and format it judged, so
-  // there is nothing here to match up and so nothing to get wrong. The model's run check does the
-  // comparing, against whatever is selected when it runs.
-  watchEffect(() => {
-    const result = model.outputs.validationResult;
-    if (result?.dataset === undefined) return;
-    put({ check: "dataset", subject: result.dataset, columnsPresent: result.isValid });
+    const check = liveCheck(model.data);
+    if (check === "columns") {
+      const found = model.outputs.identityCollisions;
+      if (found === undefined) return;
+      put({ check: "columns", subject: found.key, identityCollides: found.values.length > 0 });
+    } else if (check === "peptide") {
+      const found = model.outputs.peptideCheck;
+      if (found === undefined) return;
+      put({ check: "peptide", subject: found.key, problems: found.problems });
+    } else {
+      const result = model.outputs.validationResult;
+      if (result?.dataset === undefined) return;
+      put({ check: "dataset", subject: result.dataset, columnsPresent: result.isValid });
+    }
   });
 
   // A verdict cannot outlive the file or dataset it was reached for. Watching primitives, not the

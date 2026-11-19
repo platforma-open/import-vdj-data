@@ -1,0 +1,57 @@
+// Short readable labels from a key column: <prefix>-XXXXX, or <prefix>-XXXXX-N when several keys
+// give the same 5 letters (the lowest key gets the plain label, the next -2, and so on).
+//
+// The two kinds of key differ, and so do their labels:
+//   - clonotypes: prefix C; the clonotype key is already a hash, so its own letters are used.
+//   - peptides:   prefix P; the key is the raw sequence, so it is hashed first (SHA-256), which
+//                 gives the same labels as Peptide Profiling (its peptide-label.lib.tengo).
+
+pt := import("@platforma-sdk/workflow-tengo:pt")
+
+// opts.prefix: what the label starts with. opts.hashFirst: hash the key before taking its letters.
+addKeyLabelColumnsPt := func(df, keyCol, labelCol, opts) {
+	lettersTempCol := labelCol + "_letters_temp"
+	rankTempCol := labelCol + "_rank_temp"
+	hashTempCol := labelCol + "_hash_temp"
+	tempCols := [lettersTempCol, rankTempCol]
+
+	// The letters come from the key itself, or from its hash (SHA-256 -> base64_alphanumeric,
+	// 120 bits).
+	lettersCol := keyCol
+	if opts.hashFirst {
+		df = df.withColumns(
+			pt.col(keyCol).fillNull("").hash("sha256", "base64_alphanumeric", 120).alias(hashTempCol)
+		)
+		lettersCol = hashTempCol
+		tempCols = append(tempCols, hashTempCol)
+	}
+
+	// The 5-letter prefix: digits removed, first 5 characters, upper case.
+	df = df.withColumns(
+		pt.col(lettersCol).strReplace("\\d", "", { replaceAll: true }).
+			strSlice(0, 5).
+			strToUpper().
+			alias(lettersTempCol)
+	)
+
+	// Rank of each key among the keys with the same 5-letter prefix, in key order.
+	df = df.withColumns(
+		pt.rank(pt.col(keyCol)).
+			over(pt.col(lettersTempCol)).
+			alias(rankTempCol)
+	)
+
+	// <prefix>-XXXXX, or <prefix>-XXXXX-N for the second key with that 5-letter prefix and later.
+	df = df.withColumns(
+		pt.when(pt.col(rankTempCol).gt(pt.lit(1))).
+			then(pt.concatStr([pt.lit(opts.prefix), pt.col(lettersTempCol), pt.col(rankTempCol).cast("String")], { delimiter: "-" })).
+			otherwise(pt.concatStr([pt.lit(opts.prefix), pt.col(lettersTempCol)], { delimiter: "-" })).
+			alias(labelCol)
+	)
+
+	return df.withoutColumns(tempCols...)
+}
+
+export {
+	addKeyLabelColumnsPt: addKeyLabelColumnsPt
+}
