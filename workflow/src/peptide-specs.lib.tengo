@@ -80,15 +80,15 @@ columnsPerSampleFn := func(hasUmi, hasReads, umiPrimary) {
 				valueType: "Long",
 				annotations: a(88000, umiPrimary, umiCountAnnotations)
 			}
-		}, {
-			column: "uniqueMoleculeFraction",
-			id: "umi-fraction",
-			allowNA: false,
-			spec: {
-				name: "pl7.app/uniqueMoleculeFraction",
-				valueType: "Double",
-				annotations: a(87500, umiPrimary, umiFractionAnnotations)
-			}
+			}, {
+				column: "uniqueMoleculeFraction",
+				id: "umi-fraction",
+				allowNA: false,
+				spec: {
+					name: "pl7.app/uniqueMoleculeFraction",
+					valueType: "Double",
+					annotations: a(87500, umiPrimary, umiFractionAnnotations)
+				}
 		})
 	}
 
@@ -127,15 +127,15 @@ columnsPerSampleFn := func(hasUmi, hasReads, umiPrimary) {
 			valueType: "Long",
 			annotations: a(90000, !umiPrimary, readCountAnnotations)
 		}
-	}, {
-		column: "readFraction",
-		id: "read-fraction",
-		allowNA: false,
-		spec: {
-			name: "pl7.app/readFraction",
-			valueType: "Double",
-			annotations: a(89000, !umiPrimary, readFractionAnnotations)
-		}
+		}, {
+			column: "readFraction",
+			id: "read-fraction",
+			allowNA: false,
+			spec: {
+				name: "pl7.app/readFraction",
+				valueType: "Double",
+				annotations: a(89000, !umiPrimary, readFractionAnnotations)
+			}
 	})
 
 	return cols
@@ -182,20 +182,20 @@ columnsPerVariantFn := func(isNt) {
 				"pl7.app/label": "Peptide aa"
 			})
 		}
-	}, {
-		column: "aaLengthPeptide",
-		id: "aa-length-peptide",
-		spec: {
-			name: "pl7.app/sequenceLength",
-			valueType: "Int",
-			domain: {
-				"pl7.app/feature": "peptide",
-				"pl7.app/alphabet": "aminoacid"
-			},
-			annotations: a(79800, true, {
-				"pl7.app/label": "Peptide length (aa)"
-			})
-		}
+		}, {
+			column: "aaLengthPeptide",
+			id: "aa-length-peptide",
+			spec: {
+				name: "pl7.app/sequenceLength",
+				valueType: "Int",
+				domain: {
+					"pl7.app/feature": "peptide",
+					"pl7.app/alphabet": "aminoacid"
+				},
+				annotations: a(79800, true, {
+					"pl7.app/label": "Peptide length (aa)"
+				})
+			}
 	})
 	if isNt {
 		cols = append(cols, {
@@ -238,24 +238,24 @@ columnsAggregatedFn := func(umiPrimary, isNt) {
 					"pl7.app/label": "Supporting UMIs"
 				})
 			}
-		}, {
-			column: "uniqueMoleculeFractionMean",
-			id: "umi-fraction-mean",
-			allowNA: false,
-			spec: {
-				name: "pl7.app/uniqueMoleculeFractionMean",
-				valueType: "Double",
-				annotations: a(87130, false, {
-					"pl7.app/description": "The average UMI fraction of a peptide across all samples where it is present.",
-					"pl7.app/min": "0",
-					"pl7.app/max": "1",
-					"pl7.app/isAbundance": "true",
-					"pl7.app/abundance/unit": "molecules",
-					"pl7.app/abundance/normalized": "true",
-					"pl7.app/label": "Mean Fraction of UMIs",
-					"pl7.app/format": ".2p"
-				})
-			}
+			}, {
+				column: "uniqueMoleculeFractionMean",
+				id: "umi-fraction-mean",
+				allowNA: false,
+				spec: {
+					name: "pl7.app/uniqueMoleculeFractionMean",
+					valueType: "Double",
+					annotations: a(87130, false, {
+						"pl7.app/description": "The average UMI fraction of a peptide across all samples where it is present.",
+						"pl7.app/min": "0",
+						"pl7.app/max": "1",
+						"pl7.app/isAbundance": "true",
+						"pl7.app/abundance/unit": "molecules",
+						"pl7.app/abundance/normalized": "true",
+						"pl7.app/label": "Mean Fraction of UMIs",
+						"pl7.app/format": ".2p"
+					})
+				}
 		})
 	} else {
 		cols = append(cols, {
@@ -273,24 +273,24 @@ columnsAggregatedFn := func(umiPrimary, isNt) {
 					"pl7.app/label": "Supporting Reads"
 				})
 			}
-		}, {
-			column: "readFractionMean",
-			id: "read-fraction-mean",
-			allowNA: false,
-			spec: {
-				name: "pl7.app/readFractionMean",
-				valueType: "Double",
-				annotations: a(87135, false, {
-					"pl7.app/description": "The average read fraction of a peptide across all samples where it is present.",
-					"pl7.app/min": "0",
-					"pl7.app/max": "1",
-					"pl7.app/isAbundance": "true",
-					"pl7.app/abundance/unit": "reads",
-					"pl7.app/abundance/normalized": "true",
-					"pl7.app/label": "Mean Fraction of Reads",
-					"pl7.app/format": ".2p"
-				})
-			}
+			}, {
+				column: "readFractionMean",
+				id: "read-fraction-mean",
+				allowNA: false,
+				spec: {
+					name: "pl7.app/readFractionMean",
+					valueType: "Double",
+					annotations: a(87135, false, {
+						"pl7.app/description": "The average read fraction of a peptide across all samples where it is present.",
+						"pl7.app/min": "0",
+						"pl7.app/max": "1",
+						"pl7.app/isAbundance": "true",
+						"pl7.app/abundance/unit": "reads",
+						"pl7.app/abundance/normalized": "true",
+						"pl7.app/label": "Mean Fraction of Reads",
+						"pl7.app/format": ".2p"
+					})
+				}
 		})
 	}
 
@@ -309,16 +309,16 @@ columnsAggregatedFn := func(umiPrimary, isNt) {
 				"pl7.app/label": "Number of Samples"
 			})
 		}
-	}, {
-		column: "peptideLabel",
-		id: "peptide-label",
-		spec: {
-			name: "pl7.app/label",
-			valueType: "String",
-			annotations: a(100000, true, {
-				"pl7.app/label": "Peptide Id"
-			})
-		}
+		}, {
+			column: "peptideLabel",
+			id: "peptide-label",
+			spec: {
+				name: "pl7.app/label",
+				valueType: "String",
+				annotations: a(100000, true, {
+					"pl7.app/label": "Peptide Id"
+				})
+			}
 	})
 
 	if isNt {
@@ -333,24 +333,24 @@ columnsAggregatedFn := func(umiPrimary, isNt) {
 					"pl7.app/label": "Trailing Nucleotides"
 				})
 			}
-		}, {
-			column: "hasEarlyStopCodon",
-			id: "has-early-stop-codon",
-			allowNA: false,
-			spec: {
-				name: "pl7.app/peptide/qc/hasEarlyStopCodon",
-				valueType: "String",
-				annotations: a(59900, false, {
-					"pl7.app/label": "Early Stop Codon"
-				})
-			}
+			}, {
+				column: "hasEarlyStopCodon",
+				id: "has-early-stop-codon",
+				allowNA: false,
+				spec: {
+					name: "pl7.app/peptide/qc/hasEarlyStopCodon",
+					valueType: "String",
+					annotations: a(59900, false, {
+						"pl7.app/label": "Early Stop Codon"
+					})
+				}
 		})
 	}
 	return cols
 }
 
 // --- Import stats (sampleId axis from the per-sample iteration) ---
-// Each discarded row is counted under the first rule that drops it.
+// Each discarded row, and each dropped peptide, is counted under the first rule that removes it.
 
 statColumn := func(blockId, column, name, label, description, order) {
 	return {
@@ -370,19 +370,50 @@ statColumn := func(blockId, column, name, label, description, order) {
 	}
 }
 
-statsColumns := func(blockId) {
-	return [
-		statColumn(blockId, "peptideCount", "peptideCount", "Peptides",
+// A per-sample mean length, as in Peptide Profiling's QC table; 0 for a sample with no peptides.
+lengthColumn := func(blockId, column, label, description, order) {
+	col := statColumn(blockId, column, column, label, description, order)
+	col.spec.valueType = "Double"
+	col.spec.annotations["pl7.app/format"] = ".1f"
+	return col
+}
+
+// Total Reads needs a read column; trailing nucleotides and the nucleotide length need nucleotide
+// input.
+statsColumns := func(blockId, isNt, hasReads) {
+	// The sequence that tells two peptides apart: the import's key.
+	keySequence := isNt ? "nucleotide" : "amino-acid"
+	cols := [
+		statColumn(blockId, "peptideCount", "peptideCount", "Unique Peptides",
 			"Distinct peptides imported from this sample.", "101000"),
-		statColumn(blockId, "rowCount", "recordCount", "Rows Read",
-			"Rows from this sample.", "100000"),
+		lengthColumn(blockId, "avgLengthAa", "Avg Peptide Length (aa)",
+			"Mean amino-acid length of the peptides imported from this sample; 0 when none is.", "100900"),
+		statColumn(blockId, "rowCount", "recordCount", "Rows in File",
+			"Rows of this sample in the input file.", "100000"),
 		statColumn(blockId, "rowsWithoutSequence", "recordsWithoutSequence", "Discarded: No Sequence",
 			"Rows with an empty peptide sequence.", "99000"),
 		statColumn(blockId, "rowsWithoutCount", "recordsWithoutCount", "Discarded: No Count",
 			"Rows whose primary count is empty or zero.", "98000"),
 		statColumn(blockId, "rowsMerged", "rowsMerged", "Merged: Repeated Peptide",
-			"Rows repeating a peptide of an earlier row in this sample; their counts are added to it.", "97000")
+			"Rows with the same " + keySequence + " sequence as an earlier row in this sample; their counts are added to it.", "97000")
 	]
+	if hasReads {
+		cols = append(cols, statColumn(blockId, "totalReads", "totalReads", "Total Reads",
+			"Reads of the rows with a sequence and a count; the total the read fractions are computed against.",
+			"101100"))
+	}
+	if isNt {
+		cols = append(cols, lengthColumn(blockId, "avgLengthNt", "Avg Peptide Length (nt)",
+			"Mean nucleotide length of the peptides imported from this sample; 0 when none is.", "100800"))
+		cols = append(cols, statColumn(blockId, "peptidesWithTrailingNucleotides",
+			"peptidesWithTrailingNucleotides", "Dropped: Trailing Nucleotides",
+			"Peptides whose nucleotide sequence length is not a multiple of 3.", "96000"))
+	}
+	return append(cols,
+		statColumn(blockId, "peptidesWithEarlyStopCodon", "peptidesWithEarlyStopCodon",
+			"Dropped: Early Stop Codon", "Peptides with a stop codon (*) in the amino-acid sequence.", "95000"),
+		statColumn(blockId, "peptidesTooShort", "peptidesTooShort", "Dropped: Shorter Than 5 aa",
+			"Peptides of fewer than 5 amino acids.", "94000"))
 }
 
 export {

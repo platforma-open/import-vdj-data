@@ -235,11 +235,22 @@ const STAT_NAMES = [
   "rowsMerged",
 ] as const;
 
+/** Peptides dropped by rule; the trailing-nucleotide count exists for nucleotide input only. */
+const NT_DROP_NAMES = [
+  "peptidesWithTrailingNucleotides",
+  "peptidesWithEarlyStopCodon",
+  "peptidesTooShort",
+] as const;
+
+/** Mean peptide lengths; the nucleotide one exists for nucleotide input only. */
+const NT_LENGTH_NAMES = ["avgLengthAa", "avgLengthNt"] as const;
+
 /** The import stats per sample id, read from the block's stats table. */
 async function statsBySample(
   project: Project,
   blockId: string,
   driver: Driver,
+  names: readonly string[] = STAT_NAMES,
 ): Promise<Record<string, Record<string, number>>> {
   const state = (await awaitStableState(project.getBlockState(blockId), 100000)) as {
     outputs?: Record<string, unknown>;
@@ -250,7 +261,7 @@ async function statsBySample(
   const sampleIndex = specs.findIndex(
     (s) => s.type === "axis" && s.spec.name === "pl7.app/sampleId",
   );
-  const indices = STAT_NAMES.map((n) =>
+  const indices = names.map((n) =>
     specs.findIndex((s) => s.type === "column" && s.spec.name === `pl7.app/peptide/stat/${n}`),
   );
   if (sampleIndex < 0 || indices.some((i) => i < 0)) {
@@ -261,7 +272,7 @@ async function statsBySample(
   const result: Record<string, Record<string, number>> = {};
   samples.forEach((sample, row) => {
     result[sample] = Object.fromEntries(
-      STAT_NAMES.map((n, i) => [n, Number((data[i + 1].data as ArrayLike<number | bigint>)[row])]),
+      names.map((n, i) => [n, Number((data[i + 1].data as ArrayLike<number | bigint>)[row])]),
     );
   });
   return result;
@@ -350,17 +361,31 @@ blockTest(
     expect(find(columns, "pl7.app/readCountTotal")).toBeUndefined();
 
     // Stats per sample: S1 reads 7 rows, drops one without a sequence and one with zero UMIs,
-    // merges one lower-case repeat, and keeps 4 peptides.
+    // merges one lower-case repeat, drops a peptide with trailing nucleotides (GDLKRYF, 23 nt) and
+    // one with a stop codon (SPTQ*LA), and keeps 2 peptides, both 7 aa (21 nt).
+    // Total Reads: the reads of the rows kept before the drops, 1000 + 500 + 150 + 40 in S1.
+    const names = [...STAT_NAMES, ...NT_DROP_NAMES, ...NT_LENGTH_NAMES, "totalReads"];
     expect(stats.map((s) => s.name).sort()).toEqual(
-      STAT_NAMES.map((n) => `pl7.app/peptide/stat/${n}`).sort(),
+      names.map((n) => `pl7.app/peptide/stat/${n}`).sort(),
     );
-    const bySample = await statsBySample(project, blockId, ml.driverKit.pFrameDriver as Driver);
+    const bySample = await statsBySample(
+      project,
+      blockId,
+      ml.driverKit.pFrameDriver as Driver,
+      names,
+    );
     expect(bySample[ids.S1]).toEqual({
-      peptideCount: 4,
+      peptideCount: 2,
       recordCount: 7,
       recordsWithoutSequence: 1,
       recordsWithoutCount: 1,
       rowsMerged: 1,
+      peptidesWithTrailingNucleotides: 1,
+      peptidesWithEarlyStopCodon: 1,
+      peptidesTooShort: 0,
+      avgLengthAa: 7,
+      avgLengthNt: 21,
+      totalReads: 1690,
     });
     expect(bySample[ids.S2]).toEqual({
       peptideCount: 3,
@@ -368,6 +393,12 @@ blockTest(
       recordsWithoutSequence: 0,
       recordsWithoutCount: 0,
       rowsMerged: 0,
+      peptidesWithTrailingNucleotides: 0,
+      peptidesWithEarlyStopCodon: 0,
+      peptidesTooShort: 0,
+      avgLengthAa: 7,
+      avgLengthNt: 21,
+      totalReads: 1180,
     });
   },
 );
@@ -499,7 +530,7 @@ blockTest(
     // The same counts as the plain S1 table gives in the first test.
     const bySample = await statsBySample(project, blockId, ml.driverKit.pFrameDriver as Driver);
     expect(bySample[ids.S1]).toEqual({
-      peptideCount: 4,
+      peptideCount: 2,
       recordCount: 7,
       recordsWithoutSequence: 1,
       recordsWithoutCount: 1,
@@ -536,10 +567,11 @@ blockTest(
       "pl7.app/variantKey",
     ]);
 
-    // S1 reads both of its tables: 7 + 3 rows; the repeats across them are merged.
+    // S1 reads both of its tables: 7 + 3 rows; the repeats across them are merged, and the stop-codon
+    // and trailing-nucleotide peptides of the first table are dropped.
     const bySample = await statsBySample(project, blockId, ml.driverKit.pFrameDriver as Driver);
     expect(bySample[ids.S1]).toEqual({
-      peptideCount: 5,
+      peptideCount: 3,
       recordCount: 10,
       recordsWithoutSequence: 1,
       recordsWithoutCount: 1,

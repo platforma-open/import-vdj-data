@@ -197,7 +197,7 @@ blockTest(
     const stat = (name: string) =>
       statBySample(project, blockId, driver, `pl7.app/peptide/stat/${name}`);
     expect(await stat("recordCount")).toEqual({ [ids.S1]: 7, [ids.S2]: 3, [ids.S3]: 3 });
-    expect(await stat("peptideCount")).toEqual({ [ids.S1]: 4, [ids.S2]: 3, [ids.S3]: 3 });
+    expect(await stat("peptideCount")).toEqual({ [ids.S1]: 2, [ids.S2]: 3, [ids.S3]: 3 });
     expect(await stat("rowsMerged")).toEqual({ [ids.S1]: 1, [ids.S2]: 0, [ids.S3]: 0 });
   },
 );

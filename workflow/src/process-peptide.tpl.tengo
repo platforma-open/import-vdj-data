@@ -75,7 +75,7 @@ self.body(func(inputs) {
 				type: "TsvContent",
 				settings: {
 					axes: [],
-					columns: specs.statsColumns(blockId)
+					columns: specs.statsColumns(blockId, isNt, hasReads)
 				},
 				name: "importStats",
 				path: ["importStats", "main"]
