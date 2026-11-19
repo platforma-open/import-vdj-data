@@ -42,7 +42,7 @@ catalog:
   "@changesets/cli": ^2.29.6
 
   # other blocks used in tests
-  "@platforma-open/milaboratories.samples-and-data": 1.18.1
+  "@platforma-open/milaboratories.samples-and-data": 2.15.0
   "@platforma-open/milaboratories.sequence-properties": 1.5.2
   "@platforma-sdk/block-kind": 1.1.1
   cross-env: ~10.1.0

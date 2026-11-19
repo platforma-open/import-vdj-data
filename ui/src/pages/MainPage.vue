@@ -282,13 +282,15 @@ const selectedReceptors = computed<string[]>({
 /**
  * The columns of whatever this block is reading. Each door has its own output — the file door
  * profiles a file we hold, the dataset door takes the pool's inference — so a door never offers
- * columns discovered for the other one.
+ * columns discovered for the other one. A long table's sample column is not offered: it says which
+ * sample a row belongs to.
  */
 const headerOptions = computed(() => {
   const columns = loadFromFile.value
     ? app.model.outputs.fileColumns
     : app.model.outputs.datasetColumns;
-  return (columns ?? []).map((h) => ({ label: h, value: h }));
+  const sampleColumn = loadFromFile.value ? undefined : app.model.outputs.sampleColumn;
+  return (columns ?? []).filter((h) => h !== sampleColumn).map((h) => ({ label: h, value: h }));
 });
 
 function getMapping(key: string): string | undefined {

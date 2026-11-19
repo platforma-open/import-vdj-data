@@ -1,9 +1,0 @@
-sample,peptide_aa,library_id,filter,reads_norm,reads,peptide_nt,v_gene,j_gene,umi_reads,umi_unique,umi_reads_norm
-Sample1,SVLHTPA,LibA,0,4800,2400,TCTGTTCTGCATACCCCGGCT,none,none,1900,95,3800
-Sample1,WPHYQGM,LibB,0,1600,800,TGGCCGCATTATCAGGGTATG,none,none,780,40,1560
-Sample1,TNWEVRS,LibA,0,1220,610,ACCAATTGGGAAGTTCGTTCT,none,none,600,31,1200
-Sample1,QKHMDPI,LibC,0,900,450,CAGAAACATATGGATCCGATT,none,none,300,16,600
-Sample1,HAIYPRH,LibB,0,240,120,CATGCTATTTATCCGCGTCAT,none,none,118,6,236
-,,,,,,,,,,,
-Header notes,,,,,,,,,,,
-Sample ID,Peptide aa,Library ID,Rows above 0 are removed,Normalised reads,Reads,Peptide nt,Ignore,Ignore,Reads with a UMI,Unique UMIs,Normalised reads with a UMI

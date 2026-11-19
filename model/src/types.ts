@@ -1,4 +1,5 @@
-import type { PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
+import type { PlDataTableStateV2, PlRef, PObjectSpec } from "@platforma-sdk/model";
+import { isPColumnSpec } from "@platforma-sdk/model";
 // The import vocabularies, the file source and the bare-set mapping live in the kind: its
 // init-params contract names them and a kind cannot import from the model.
 import type {
@@ -79,7 +80,7 @@ export type ColumnProfile = {
    * or 1e+05.
    */
   wholeNumber?: string[];
-  /** Every sample file's header row, by sample id. Peptide datasets only. */
+  /** Every file's header row, by sample id (by file id for a long table). Peptide datasets only. */
   headersBySample?: Record<string, string[]>;
 };
 
@@ -327,6 +328,17 @@ export function datasetCheckKey(
   const ref = data.datasetRef;
   if (ref === undefined || data.format === undefined) return undefined;
   return [ref.blockId, ref.name, data.format].join("\u0000");
+}
+
+/**
+ * The header of a long table's sample column (Samples & Data's "Multisample CSV/TSV": several
+ * samples per file), read off the dataset spec; `undefined` for any other dataset. The annotation
+ * sits on the file axis and tells a long table from a Bulk Count Matrix, which has the same axis
+ * without it. Same rule as the workflow's `dataset-door.tpl.tengo`.
+ */
+export function sampleColumnOf(spec: PObjectSpec): string | undefined {
+  if (!isPColumnSpec(spec)) return undefined;
+  return spec.axesSpec[0]?.annotations?.["pl7.app/sampleColumnName"];
 }
 
 /**

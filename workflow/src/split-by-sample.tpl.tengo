@@ -1,0 +1,98 @@
+// Split a long table (Samples & Data's "Multisample CSV/TSV") into one file per sample.
+//
+// `sampleGroups` on [sampleGroupId, sampleId] gives each sample's value in the sample column of
+// its file. Each file is read once, as text (no type inference, no trimming, as S&D reads it), and
+// each of its samples' rows is written to a file of its own: plain CSV/TSV with the file's
+// separator and without the sample column, as a file uploaded for that one sample would be. Rows
+// with no sample value belong to no sample and are left out.
+//
+// The output is on S&D's own sample axis, copied from the mapping column, so sample metadata
+// joins as with a dataset of one file per sample.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+pColumn := import("@platforma-sdk/workflow-tengo:pframes.pcolumn")
+json := import("json")
+text := import("text")
+
+self.awaitState("InputsLocked")
+self.awaitState("groupsSpec", "ResourceReady")
+self.awaitState("groupsData", "ResourceReady")
+self.awaitState("sampleGroupsSpec", "ResourceReady")
+self.awaitState("sampleGroupsData", "ResourceReady")
+
+self.body(func(inputs) {
+	groupsSpec := inputs.groupsSpec
+	sampleColumn := inputs.sampleColumn
+
+	// 1. S&D's sample axis, the mapping column's second one: the axis the output is keyed on.
+	sampleAxis := inputs.sampleGroupsSpec.axesSpec[1]
+	ll.assert(sampleAxis.name == "pl7.app/sampleId",
+		"split-by-sample: the sampleGroups column's second axis is %v, not pl7.app/sampleId", sampleAxis.name)
+
+	// 2. The separator, from the file extension; the split files are written uncompressed.
+	extension := groupsSpec.domain["pl7.app/fileExtension"]
+	xsvType := text.has_prefix(extension, "csv") ? "csv" : "tsv"
+
+	// 3. Each file's samples: file id -> { sample id -> its value in the sample column }.
+	samplesByGroup := {}
+	for key, value in inputs.sampleGroupsData.getDataAsJson().data {
+		groupAndSample := json.decode(key)
+		groupId := groupAndSample[0]
+		if is_undefined(samplesByGroup[groupId]) {
+			samplesByGroup[groupId] = {}
+		}
+		samplesByGroup[groupId][groupAndSample[1]] = value
+	}
+
+	// 4. Per file, one ptabler job: read it once, write one file per sample. `data` collects the
+	// files by sample id; `written` guards against a sample found in two files.
+	data := pColumn.resourceMapBuilder(1)
+	written := {}
+	groupFiles := inputs.groupsData.inputs()
+	// Sorted iteration keeps every plan, and so the output, reproducible.
+	for groupKey in maps.getKeys(groupFiles) {
+		samples := samplesByGroup[json.decode(groupKey)[0]]
+		// A file with no S&D sample (none imported for it yet) has nothing to split.
+		if is_undefined(samples) {
+			continue
+		}
+
+		wf := pt.workflow()
+		table := wf.frame(groupFiles[groupKey], { xsvType: xsvType, inferSchema: false })
+		files := {}
+		for i, sampleId in maps.getKeys(samples) {
+			// S&D's "Import samples" gives a value found in several files one sample per file, so
+			// this is just an additional safety check.
+			ll.assert(is_undefined(written[sampleId]), "split-by-sample: sample %v is in more than one file", sampleId)
+			written[sampleId] = true
+			// This sample's rows, without the sample column.
+			name := "sample-" + string(i) + "." + xsvType
+			table.filter(pt.col(sampleColumn).eq(pt.lit(samples[sampleId]))).
+				withoutColumns(sampleColumn).
+				save(name)
+			files[sampleId] = name
+		}
+		// The files exist once the job has run; until then they are futures.
+		result := wf.run()
+		for sampleId, name in files {
+			data.add([sampleId], result.getFile(name))
+		}
+	}
+
+	// 5. The output spec: S&D's dataset spec, keyed on samples instead of files.
+	spec := copy(groupsSpec)
+	spec.axesSpec = [sampleAxis]
+	spec.domain["pl7.app/fileExtension"] = xsvType
+	// S&D lists the keys of axis 0 on the spec: the samples now, not the files.
+	if !is_undefined(spec.annotations) {
+		spec.annotations["pl7.app/axisKeys/0"] = string(json.encode(maps.getKeys(written)))
+	}
+
+	return {
+		spec: spec,
+		data: data.build()
+	}
+})

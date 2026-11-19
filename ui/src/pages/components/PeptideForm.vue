@@ -72,8 +72,12 @@ const profileFailure = computed(() => {
   return found !== undefined && "failure" in found ? found.failure : undefined;
 });
 
-/** Columns every sample's file has: the only ones offered. */
-const common = computed(() => (profile.value ? commonHeaders(profile.value) : []));
+/** Columns every file has: the only ones offered. A long table's sample column is left out. */
+const common = computed(() => {
+  if (profile.value === undefined) return [];
+  const sampleColumn = app.model.outputs.sampleColumn;
+  return commonHeaders(profile.value).filter((h) => h !== sampleColumn);
+});
 
 const toOptions = (headers: string[]) => headers.map((h) => ({ label: h, value: h }));
 
@@ -220,7 +224,7 @@ function suggestColumns() {
   a.peptide = next;
 }
 
-/** Mapped headers some sample's file lacks, e.g. a mapping that came with a template. */
+/** Mapped headers some file lacks, e.g. a mapping that came with a template. */
 const missingHeaders = computed(() => {
   const m = mapping.value;
   if (profile.value === undefined || m === undefined) return [];
@@ -257,7 +261,7 @@ const checkPending = computed(
   </PlAlert>
 
   <PlAlert v-else-if="profile === undefined" type="info" :style="{ width: '100%' }">
-    Reading the first sample's file. This can take a moment, please wait...
+    Reading the first file. This can take a moment, please wait...
   </PlAlert>
 
   <template v-else>
@@ -279,13 +283,13 @@ const checkPending = computed(
       label="No amino-acid sequence column found"
       :style="{ width: '100%' }"
     >
-      No column of the first sample's file reads as an amino-acid sequence. Peptide tables need one;
-      a table with nucleotide sequences only cannot be imported.
+      No column of the first file reads as an amino-acid sequence. Peptide tables need one; a table
+      with nucleotide sequences only cannot be imported.
     </PlAlert>
     <PlAlert
       v-if="missingHeaders.length > 0"
       type="warn"
-      label="Columns not in every sample's file"
+      label="Columns not in every file"
       :style="{ width: '100%' }"
     >
       {{ missingHeaders.map((h) => `"${h}"`).join(", ") }}: pick a column all files have.

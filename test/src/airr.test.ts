@@ -123,6 +123,7 @@ async function loadFixtures(ctx: TestCtx): Promise<string> {
       suggestedImport: false,
       h5adFilesToPreprocess: [],
       seuratFilesToPreprocess: [],
+      xsvFilesToPreprocess: [],
       metadata: [],
       sampleIds,
       sampleLabelColumnLabel: "Sample Name",

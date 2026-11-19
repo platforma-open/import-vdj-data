@@ -10,6 +10,7 @@ import {
   BlockModelV3,
   DataColumn,
   createPlDataTableV3,
+  isPColumnSpec,
   plRefsEqual,
   TreeNodeAccessor,
 } from "@platforma-sdk/model";
@@ -33,6 +34,7 @@ import {
   collisionCheckKey,
   datasetCheckKey,
   liveCheck,
+  sampleColumnOf,
   modalityOf,
   rowReportKey,
   SCHEME_LABELS,
@@ -205,18 +207,32 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
     };
   })
 
+  /**
+   * CSV/TSV datasets with one file per sample, or long tables (several samples per file, split by
+   * the workflow). A Bulk Count Matrix has the long table's file axis without its sample column,
+   * so it is left out.
+   */
   .retentiveOutput("datasetOptions", (ctx) => {
     return ctx.resultPool.getOptions((v) => {
       const domain = v.domain;
+      const axis = isPColumnSpec(v) ? v.axesSpec[0] : undefined;
       return (
         v.name === "pl7.app/sequencing/data" &&
         domain !== undefined &&
         (domain["pl7.app/fileExtension"] === "csv" ||
           domain["pl7.app/fileExtension"] === "csv.gz" ||
           domain["pl7.app/fileExtension"] === "tsv" ||
-          domain["pl7.app/fileExtension"] === "tsv.gz")
+          domain["pl7.app/fileExtension"] === "tsv.gz") &&
+        (axis?.name === "pl7.app/sampleId" || sampleColumnOf(v) !== undefined)
       );
     });
+  })
+
+  /** The picked long table's sample column, which the mapping panels don't offer. */
+  .output("sampleColumn", (ctx) => {
+    const ref = ctx.data.datasetRef;
+    const spec = ref === undefined ? undefined : ctx.resultPool.getPColumnSpecByRef(ref);
+    return spec === undefined ? undefined : sampleColumnOf(spec);
   })
 
   /**

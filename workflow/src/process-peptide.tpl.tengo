@@ -21,6 +21,7 @@ importTpl := assets.importTemplate(":import-peptide")
 aggregateTpl := assets.importTemplate(":aggregate-peptides")
 
 self.awaitState("InputsLocked")
+self.awaitState("datasetSpec", "ResourceReady")
 self.awaitState("datasetData", "ResourceReady")
 
 self.body(func(inputs) {

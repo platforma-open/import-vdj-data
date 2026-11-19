@@ -84,7 +84,8 @@ export function peptideProblems(
   const missing = missingColumns(peptideMappedColumns(mapping), profile.headersBySample, labels);
   if (missing.length > 0) return missing;
 
-  // The profiled file is the dataset's first by sorted key, and the keys are the sample ids.
+  // The profiled file is the dataset's first by sorted key; the keys are sample ids, or file ids
+  // for a long table.
   const first = Object.keys(profile.headersBySample ?? {}).sort()[0];
   const where = first === undefined ? "" : ` in ${labels[first] ?? first}`;
   const problems: string[] = [];
