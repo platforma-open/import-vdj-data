@@ -5,6 +5,10 @@ ll := import("@platforma-sdk/workflow-tengo:ll")
 assets := import("@platforma-sdk/workflow-tengo:assets")
 render := import("@platforma-sdk/workflow-tengo:render")
 txt := import("@platforma-sdk/workflow-tengo:txt")
+exec := import("@platforma-sdk/workflow-tengo:exec")
+text := import("text")
+
+profileSw := assets.importSoftware("@platforma-open/milaboratories.import-vdj.column-profile:main")
 
 inferColumnsTpl := assets.importTemplate(":infer-columns-from-header")
 columnInfoToLabelsTpl := assets.importTemplate(":column-info-to-labels")
@@ -30,7 +34,22 @@ self.body(func(inputs) {
         ll.panic("No inputs found in the dataset")
     }
 
-    headerContent := txt.head(inputFile, {lines: 1})
+    // txt.head reads plain text only; column-profile decompresses a gzip file first.
+    headerContent := undefined
+    if text.has_suffix(fileExtension, ".gz") {
+        headerContent = exec.builder().
+            software(profileSw).
+            cpu(1).
+            mem("1GiB").
+            addFile("input.txt", inputFile).
+            arg("--input").arg("input.txt").
+            arg("--first-line").arg("first-line.txt").
+            saveFileContent("first-line.txt").
+            run().
+            getFileContent("first-line.txt")
+    } else {
+        headerContent = txt.head(inputFile, {lines: 1})
+    }
     separator := "\t"
     if fileExtension == "tsv" || fileExtension == "tsv.gz" {
         separator = "\t"
@@ -44,7 +63,7 @@ self.body(func(inputs) {
         separator: separator
     }).output("result")
 
-    // If format not chosen yet, do not infer columns; let the UI show headers and wait
+    // If format not chosen yet, do not infer columns; let the UI show headers and wait.
     if format == undefined {
         return {
             columnsInfo: header,

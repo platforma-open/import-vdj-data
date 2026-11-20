@@ -24,7 +24,7 @@ jobs:
     with:
       app-name: 'Block: Import Vdj'
       app-name-slug: 'block-import-vdj'
-      node-version: '22.x'
+      node-version: '24.22.1'
       gha-runner-label: hz-ubuntu-dind
       build-script-name: 'build:dev-local'
       build-before-publish-script-name: 'build:release'
@@ -33,7 +33,7 @@ jobs:
       test: true
       test-script-name: 'test'
       pnpm-recursive-tests: false
-      team-id: 'ciplopen'
+      team-id: 'ciplopen-2'   # was 'ciplopen': a new value starts an empty Turbo cache; keep it
 
       publish-to-public: 'true'
       package-path: 'block'

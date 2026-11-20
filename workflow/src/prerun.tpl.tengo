@@ -10,6 +10,10 @@ file := import("@platforma-sdk/workflow-tengo:file")
 inferColumnsTpl := assets.importTemplate(":infer-columns")
 profileColumnsTpl := assets.importTemplate(":profile-columns")
 collisionsTpl := assets.importTemplate(":bare-set-collisions")
+profileDatasetTpl := assets.importTemplate(":profile-dataset")
+
+// Shortest value the column profile counts as a peptide sequence.
+PEPTIDE_MIN_LENGTH := 5
 workbook := import(":workbook")
 
 // Id check and row report from one render, so both arrive together. Each carries the mapping it
@@ -114,6 +118,22 @@ wf.body(func(args) {
 		}
 	}
 
+	// Peptide tables: the profile of the first file, with every file's header row, feeds the mapping
+	// panel and the model's check of the mapping.
+	if args.format == "peptide-custom" {
+		return {
+			outputs: {
+				datasetProfile: render.create(profileDatasetTpl, {
+					dataset: wf.resolve(args.datasetRef),
+					minSequenceLength: PEPTIDE_MIN_LENGTH
+				}).output("profile"),
+				// Which dataset the profile is of; the model ignores a profile of any other.
+				datasetProfileFor: smart.createJsonResource({ datasetRef: args.datasetRef })
+			},
+			exports: {}
+		}
+	}
+
 	inferColumns := render.create(inferColumnsTpl, {
 		format: args.format,
 		dataset: wf.resolve(args.datasetRef),
@@ -126,21 +146,23 @@ wf.body(func(args) {
 	columnDescriptions := inferColumns.output("columnDescriptions")
 	headerColumns := inferColumns.output("headerColumns")
 
+	outputs := {
+		columnsInfo: columnsInfo,
+		columnDescriptions: columnDescriptions,
+		headerColumns: headerColumns,
+		// What the inference above was about — the same stamp the file door emits, under the
+		// same name, because it answers the same question: the model cannot ask which args a
+		// staging context was built with, so without it the panel cannot tell this dataset's
+		// columns from the last one's, still on screen. Exactly one door is ever live.
+		prerunDatasetValidationInfo: smart.createJsonResource({
+			door: "dataset",
+			datasetRef: args.datasetRef,
+			format: args.format
+		})
+	}
+
 	return {
-		outputs: {
-			columnsInfo: columnsInfo,
-			columnDescriptions: columnDescriptions,
-			headerColumns: headerColumns,
-			// What the inference above was about — the same stamp the file door emits, under the
-			// same name, because it answers the same question: the model cannot ask which args a
-			// staging context was built with, so without it the panel cannot tell this dataset's
-			// columns from the last one's, still on screen. Exactly one door is ever live.
-			prerunDatasetValidationInfo: smart.createJsonResource({
-				door: "dataset",
-				datasetRef: args.datasetRef,
-				format: args.format
-			})
-		},
+		outputs: outputs,
 		exports: {}
 	}
 })

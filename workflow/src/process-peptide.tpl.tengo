@@ -1,0 +1,154 @@
+// Assemble a peptide count dataset (one table per sample) into the shape of a Peptide Profiling
+// dataset, keyed on pl7.app/variantKey with the peptide run-id domain.
+//
+//   1. import     per sample   counts, fractions, sequences (import-peptide); the per-sample
+//                              columns and the import stats
+//   2. aggregate  collapse     totals, means, sample count, label and the sequence columns on
+//                              the peptide axis alone (aggregate-peptides)
+//
+// The sample axis is the dataset's own, so Samples & Data metadata joins the counts.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pframes := import("@platforma-sdk/workflow-tengo:pframes")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+processUtils := import(":process-utils")
+specs := import(":peptide-specs")
+text := import("text")
+
+importTpl := assets.importTemplate(":import-peptide")
+aggregateTpl := assets.importTemplate(":aggregate-peptides")
+
+self.awaitState("InputsLocked")
+self.awaitState("datasetSpec", "ResourceReady")
+self.awaitState("datasetData", "ResourceReady")
+
+self.body(func(inputs) {
+	datasetSpec := inputs.datasetSpec
+	dataset := inputs.datasetData
+	blockId := inputs.blockId
+	mapping := inputs.mapping
+
+	hasUmi := mapping.counts.uniqueMolecules != undefined && mapping.counts.uniqueMolecules != ""
+	hasReads := mapping.counts.reads != undefined && mapping.counts.reads != ""
+	isNt := mapping.nucleotide != undefined && mapping.nucleotide != ""
+	// The main abundance is the count the scientist chose as primary; reads unless UMIs.
+	umiPrimary := inputs.primaryCountType == "umi"
+	// A gzipped table needs more memory per stored byte; see the memory slope in import-peptide.
+	fileExtension := datasetSpec.domain["pl7.app/fileExtension"]
+	isGz := is_string(fileExtension) && text.has_suffix(fileExtension, ".gz")
+	ll.assert(umiPrimary ? hasUmi : hasReads, "process-peptide: the primary count column is not mapped")
+
+	keyAxis := specs.variantKeyAxisSpec(blockId)
+
+	perSample := pframes.processColumn(
+		{ spec: datasetSpec, data: dataset },
+		importTpl,
+		[
+			{
+				type: "Resource",
+				spec: {
+					kind: "PColumn",
+					name: "pl7.app/peptide/peptideTable",
+					domain: { "pl7.app/peptide/extractionRunId": blockId },
+					valueType: "File"
+				},
+				name: "peptideTable",
+				path: ["peptides", "main"]
+			},
+			{
+				type: "Xsv",
+				xsvType: "parquet",
+				settings: {
+					axes: [keyAxis],
+					columns: specs.columnsPerSampleFn(hasUmi, hasReads, umiPrimary),
+					storageFormat: "Parquet",
+					partitionKeyLength: 0
+				},
+				mem: "16GiB",
+				cpu: 2,
+				name: "perSample",
+				path: ["peptides", "main"]
+			},
+			{
+				type: "TsvContent",
+				settings: {
+					axes: [],
+					columns: specs.statsColumns(blockId, isNt, hasReads)
+				},
+				name: "importStats",
+				path: ["importStats", "main"]
+			}
+		],
+		{
+			// A "tagged CSV/TSV" dataset holds several tables per sample, told apart by this axis: they
+			// are read together as one sample, so the output keeps the [sampleId, variantKey] shape.
+			aggregate: [{
+				name: "pl7.app/sequencing/tag",
+				optional: true
+			}],
+			passAggregationAxesNames: true,
+
+			// The same trace step as the bare set's; the dataset's label is already in the trace,
+			// from Samples & Data.
+			traceSteps: [{
+				type: "milaboratories.importVDJ",
+				id: blockId,
+				importance: 81,
+				label: "Import V(D)J & Peptide Data"
+			}],
+
+			extra: {
+				mapping: mapping,
+				hasUmi: hasUmi,
+				hasReads: hasReads,
+				umiPrimary: umiPrimary,
+				isGz: isGz,
+				isNt: isNt,
+				xsvType: processUtils.applyXsvType({ xsvType: "tsv" }, datasetSpec).xsvType
+			}
+		}
+	)
+
+	aggregated := pframes.processColumn(
+		perSample.output("peptideTable"),
+		aggregateTpl,
+		[{
+			type: "Xsv",
+			xsvType: "parquet",
+			settings: {
+				axes: [keyAxis],
+				columns: specs.columnsPerVariantFn(isNt) + specs.columnsAggregatedFn(umiPrimary, isNt),
+				storageFormat: "Parquet",
+				partitionKeyLength: 0
+			},
+			mem: "16GiB",
+			cpu: 2,
+			name: "perPeptide",
+			path: ["properties"]
+		}],
+		{
+			aggregate: [{
+				name: "pl7.app/sampleId",
+				anonymize: true
+			}],
+			extra: {
+				umiPrimary: umiPrimary,
+				isNt: isNt
+			}
+		}
+	)
+
+	result := pframes.pFrameBuilder()
+	perSample.addXsvOutputToBuilder(result, "perSample", "perSample/")
+	aggregated.addXsvOutputToBuilder(result, "perPeptide", "perPeptide/")
+
+	stats := pframes.pFrameBuilder()
+	perSample.addXsvOutputToBuilder(stats, "importStats", "importStats/")
+
+	return {
+		result: result.build(),
+		stats: stats.build()
+	}
+})

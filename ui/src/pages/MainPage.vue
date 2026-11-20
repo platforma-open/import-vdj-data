@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import { forgetMappedColumns } from "@platforma-open/milaboratories.import-vdj.model";
+import type { Modality } from "@platforma-open/milaboratories.import-vdj.model";
+import {
+  forgetMappedColumns,
+  forgetPeptideColumns,
+  modalityOf,
+} from "@platforma-open/milaboratories.import-vdj.model";
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 import { getFileNameFromHandle, uniquePlId } from "@platforma-sdk/model";
 import canonicalize from "canonicalize";
@@ -12,6 +17,7 @@ import {
   PlBlockDependencies,
   PlBlockPage,
   PlBtnGhost,
+  PlBtnGroup,
   PlDropdown,
   PlDropdownMulti,
   PlFileDialog,
@@ -28,8 +34,9 @@ import {
   assemblingFeatureOptions,
   chainsOptions,
   countTypeOptions,
-  formatOptions,
+  formatOptionsByModality,
   LOAD_FROM_FILE,
+  modalityOptions,
   optionalCanonical,
   optionalMutations,
   optionalSequence,
@@ -42,6 +49,7 @@ import {
   missingColumnsMessage,
 } from "./messages";
 import BareSetForm from "./components/BareSetForm.vue";
+import PeptideForm from "./components/PeptideForm.vue";
 
 const app = useApp();
 
@@ -60,6 +68,24 @@ const secondaryTypeOptions = computed(() => {
 const isAirr = computed(
   () => app.model.data.format === "airr" || app.model.data.format === "airr-sc",
 );
+
+const modality = computed(() => modalityOf(app.model.data));
+
+/** Peptide count tables: no chains, their own mapping panel. */
+const isPeptide = computed(() => modality.value === "peptide");
+
+/** The format to start from: the data type's only one, or none for the scientist to pick. */
+function soleFormat(m: Modality) {
+  const options = formatOptionsByModality[m];
+  return options.length === 1 ? options[0].value : undefined;
+}
+
+/** The data type follows from the format, so switching it resets the format. */
+function setModality(m: Modality) {
+  const a = app.model.data;
+  if (m === modalityOf(a)) return;
+  a.format = soleFormat(m);
+}
 
 const isSingleCell = computed(
   () =>
@@ -125,19 +151,25 @@ function setSource(value: string | undefined) {
   }
 
   fileSourceError.value = "";
+  const previous = a.datasetRef;
   a.fileSource = undefined;
   a.bareSet = undefined;
   // The dataset door opens on a clean format choice rather than inheriting one. Without this a
   // block that had been on the file door shows the whole per-format mapping unfurled under a
   // format nobody picked. customMapping is deliberately kept: re-picking a format brings the
-  // scientist's own mapping back with it.
-  a.format = undefined;
+  // scientist's own mapping back with it. A data type with one format needs no choice.
+  a.format = soleFormat(modalityOf(a));
 
   if (value === undefined) {
     a.datasetRef = undefined;
     return;
   }
   const picked = datasetOptions.value.find((o) => canonicalize(o.ref) === value);
+  // Peptide column names belong to one dataset's files; left in place they would be checked
+  // against the next dataset's, which may not have them.
+  if (picked === undefined || previous === undefined || !plRefsEqual(previous, picked.ref)) {
+    a.peptide = forgetPeptideColumns(a.peptide);
+  }
   setDataset(picked?.ref);
 }
 
@@ -161,10 +193,11 @@ const fileScanning = computed(() => {
  * the previous dataset's headers and verdict.
  *
  * Needs a format, which is what the inference is asked about. Not raised on the bare-set path,
- * where prerun answers with collisions and never produces columns.
+ * where prerun answers with collisions and never produces columns, nor for peptides, whose panel
+ * waits for their own profile.
  */
 const datasetScanning = computed(() => {
-  if (loadFromFile.value) return false;
+  if (loadFromFile.value || isPeptide.value) return false;
   const ref = app.model.data.datasetRef;
   if (ref === undefined || app.model.data.format === undefined) return false;
   if (app.model.data.bareSet !== undefined) return false;
@@ -179,7 +212,8 @@ const datasetScanning = computed(() => {
  * list shows the previous dataset's columns, or a heading with nothing under it.
  */
 const columnDescriptions = computed(() => {
-  if (loadFromFile.value || app.model.data.format === undefined || datasetScanning.value) return [];
+  if (loadFromFile.value || isPeptide.value || app.model.data.format === undefined) return [];
+  if (datasetScanning.value) return [];
   return app.model.outputs.columnDescriptions ?? [];
 });
 
@@ -248,13 +282,15 @@ const selectedReceptors = computed<string[]>({
 /**
  * The columns of whatever this block is reading. Each door has its own output — the file door
  * profiles a file we hold, the dataset door takes the pool's inference — so a door never offers
- * columns discovered for the other one.
+ * columns discovered for the other one. A long table's sample column is not offered: it says which
+ * sample a row belongs to.
  */
 const headerOptions = computed(() => {
   const columns = loadFromFile.value
     ? app.model.outputs.fileColumns
     : app.model.outputs.datasetColumns;
-  return (columns ?? []).map((h) => ({ label: h, value: h }));
+  const sampleColumn = loadFromFile.value ? undefined : app.model.outputs.sampleColumn;
+  return (columns ?? []).filter((h) => h !== sampleColumn).map((h) => ({ label: h, value: h }));
 });
 
 function getMapping(key: string): string | undefined {
@@ -310,7 +346,7 @@ watch(
 </script>
 
 <template>
-  <PlBlockPage title="Import V(D)J Data">
+  <PlBlockPage title="Import V(D)J & Peptide Data">
     <PlBlockDependencies />
     <template #append>
       <PlBtnGhost @click.stop="() => (app.model.data.settingsOpen = true)">
@@ -356,9 +392,16 @@ watch(
       </template>
 
       <template v-else>
+        <PlBtnGroup
+          :model-value="modality"
+          :options="modalityOptions"
+          label="Data type"
+          @update:model-value="(v: Modality) => setModality(v)"
+        />
+
         <PlDropdown
           v-model="app.model.data.format"
-          :options="formatOptions"
+          :options="formatOptionsByModality[modality]"
           label="Data format"
           required
         />
@@ -377,14 +420,14 @@ watch(
         </PlDropdown>
 
         <PlDropdownMulti
-          v-if="!isSingleCell"
+          v-if="!isPeptide && !isSingleCell"
           v-model="app.model.data.chains"
           :options="chainsOptions"
           label="Chains to import"
           required
         />
         <PlDropdownMulti
-          v-else
+          v-else-if="!isPeptide"
           v-model="selectedReceptors"
           :options="receptorOptions"
           label="Immune receptors"
@@ -396,13 +439,15 @@ watch(
         </PlAlert>
 
         <PlAlert
-          v-if="!datasetScanning && validationMessage"
+          v-if="!isPeptide && !datasetScanning && validationMessage"
           type="warn"
           :label="`Invalid ${formatLabel(validationResult?.format)} dataset`"
           :style="{ width: '100%' }"
         >
           {{ validationMessage }}
         </PlAlert>
+
+        <PeptideForm v-if="app.model.data.format === 'peptide-custom'" />
 
         <template v-if="app.model.data.format === 'custom' && !datasetScanning">
           <PlSectionSeparator>Required columns</PlSectionSeparator>

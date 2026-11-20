@@ -1,6 +1,6 @@
-# Import V(D)J Data
+# Import V(D)J & Peptide Data
 
-Bring V(D)J sequencing results into Platforma from whatever tool produced them. This block reads MiXCR, ImmunoSeq, QIAseq, Cell Ranger, AIRR, and custom CSV/TSV exports — bulk or single-cell — and normalizes them into one standard clonotype dataset that every downstream Platforma block can consume.
+Bring V(D)J sequencing results and peptide count tables into Platforma from whatever tool produced them. This block reads MiXCR, ImmunoSeq, QIAseq, Cell Ranger, AIRR, and custom CSV/TSV exports — bulk or single-cell — and normalizes them into one standard clonotype dataset that every downstream Platforma block can consume. Peptide count tables from phage display selections come in as a peptide dataset in the shape Peptide Profiling produces, so the peptide blocks read them as they read a Peptide Profiling run.
 
 Open-source analysis block for Platforma, the biologics discovery platform by MiLaboratories. For the full no-code workflow, see [platforma.bio](https://platforma.bio/).
 
@@ -17,15 +17,17 @@ The result is a standard Platforma clonotype dataset: the same shape whether it 
 ## Inputs & outputs
 
 * **Input:** clonotype tables in MiXCR (bulk or single-cell), ImmunoSeq, QIAseq Immune Repertoire Analysis, Cell Ranger VDJ, AIRR (bulk or single-cell), or custom CSV/TSV format, optionally gzipped.
+* **Input (peptides):** peptide count tables, one per sample or one long table with a sample column (Samples & Data's Multisample CSV/TSV), with an amino-acid column, an optional nucleotide column, and read and/or UMI counts.
 * **Output:** a normalized clonotype dataset with per-sample abundances, chain assignments, and sequence columns, ready for any downstream V(D)J block.
+* **Output (peptides):** a peptide dataset with per-sample counts and fractions, sequences, lengths and per-sample import stats, ready for Enrichment, Sequence Clustering, Lead Selection and the other peptide blocks.
 
 ## Specifications
 
 | | |
 |---|---|
-| Block title in app | Import V(D)J Data |
+| Block title in app | Import V(D)J & Peptide Data |
 | Formats | MiXCR bulk, MiXCR single cell, ImmunoSeq, QIAseq Immune Repertoire Analysis, Cell Ranger VDJ, AIRR bulk, AIRR single cell, Custom CSV/TSV — gzipped supported |
-| Data types | Bulk and single-cell |
+| Data types | V(D)J bulk and single-cell; peptide count tables |
 | Chains | IG Heavy, IG Light, TRA, TRB, TRG, TRD; receptor groups IG, TCR-αβ, TCR-ɣδ |
 | Count types | Reads or UMIs, with an optional secondary count column |
 | Optional columns | Sequence, mutations, canonical form |
@@ -38,6 +40,7 @@ The result is a standard Platforma clonotype dataset: the same shape whether it 
 * **Cell Ranger single-cell VDJ:** load 10x Genomics output for downstream single-cell repertoire analysis.
 * **Vendor kit output:** import ImmunoSeq or QIAseq results directly.
 * **Mixed-source studies:** normalize repertoires from several tools into one comparable dataset.
+* **Phage display selections:** import peptide counts per panning round from tables made outside Platforma, then run Enrichment and Lead Selection on them.
 * **Anything tabular:** map a custom CSV or TSV column by column when no preset fits.
 
 ## FAQ

@@ -3,19 +3,60 @@ import type {
   ChainSelection,
   CountType,
   ImportFormat,
+  Modality,
 } from "@platforma-open/milaboratories.import-vdj.model";
 import type { ListOptionBase } from "@platforma-sdk/ui-vue";
 
-/** The formats the dataset door can read. `custom` is the mapping-by-hand path. */
+/** What the dataset holds. */
+export const modalityOptions: ListOptionBase<Modality>[] = [
+  { label: "Clonotypes", value: "vdj" },
+  { label: "Peptides", value: "peptide" },
+];
+
+/** The formats the dataset door can read, by data type. `custom` is the mapping-by-hand path. */
+export const formatOptionsByModality: Record<Modality, ListOptionBase<ImportFormat>[]> = {
+  vdj: [
+    { label: "ImmunoSeq", value: "immunoSeq" },
+    { label: "QIAseq Immune Repertoire Analysis", value: "qiagen" },
+    { label: "MiXCR bulk", value: "mixcr" },
+    { label: "MiXCR single cell", value: "mixcr-sc" },
+    { label: "Cell Ranger VDJ", value: "cellranger" },
+    { label: "AIRR bulk", value: "airr" },
+    { label: "AIRR single cell", value: "airr-sc" },
+    { label: "Custom", value: "custom" },
+  ],
+  peptide: [{ label: "Custom", value: "peptide-custom" }],
+};
+
+/**
+ * Header names peptide tables use for each mapping field, in order of preference. Matched ignoring
+ * case, spaces, "_", "-" and ".", so "peptide_aa" matches "Peptide aa". Peptide Profiling's export
+ * comes first. Ambiguous names are left out: "UMI count" holds unique UMIs in some tables and
+ * reads carrying a UMI in others.
+ */
+export const peptideHeaderAliases = {
+  aminoAcid: [
+    "Peptide aa",
+    "Peptide",
+    "Amino acid sequence",
+    "Amino acid",
+    "aa",
+    "aaSeq",
+    "Peptide sequence",
+    "Sequence",
+    "seq",
+  ],
+  nucleotide: ["Peptide nt", "Nucleotide sequence", "Nucleotide", "nt", "nSeq"],
+  counts: {
+    uniqueMolecules: ["Number of UMIs", "Unique UMIs", "UMI unique", "uniqueMoleculeCount", "UMIs"],
+    reads: ["Number of Reads", "Reads", "Read count", "readCount", "Count", "Counts"],
+  },
+} as const;
+
+/** Every format, for messages that name one. */
 export const formatOptions: ListOptionBase<ImportFormat>[] = [
-  { label: "ImmunoSeq", value: "immunoSeq" },
-  { label: "QIAseq Immune Repertoire Analysis", value: "qiagen" },
-  { label: "MiXCR bulk", value: "mixcr" },
-  { label: "MiXCR single cell", value: "mixcr-sc" },
-  { label: "Cell Ranger VDJ", value: "cellranger" },
-  { label: "AIRR bulk", value: "airr" },
-  { label: "AIRR single cell", value: "airr-sc" },
-  { label: "Custom", value: "custom" },
+  ...formatOptionsByModality.vdj,
+  ...formatOptionsByModality.peptide,
 ];
 
 /**

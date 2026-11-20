@@ -1,0 +1,67 @@
+// The dataset picked on the dataset door, with one file per sample whatever its shape.
+//
+// A long table (Samples & Data's "Multisample CSV/TSV") is split into one file per sample
+// (split-by-sample), so every import path reads it as it reads a dataset of one file per sample.
+// Any other dataset passes through unchanged.
+//
+// S&D exports which samples each file holds as `<dataset>.sampleGroups`. That column is resolved
+// here, once the spec shows a long table: other datasets don't have it.
+
+self := import("@platforma-sdk/workflow-tengo:tpl")
+assets := import("@platforma-sdk/workflow-tengo:assets")
+render := import("@platforma-sdk/workflow-tengo:render")
+bquery := import("@platforma-sdk/workflow-tengo:workflow.bquery")
+
+splitTpl := assets.importTemplate(":split-by-sample")
+
+// The header of a long table's sample column, from the annotation S&D puts on the file axis;
+// undefined for any other dataset. The annotation tells a long table from a Bulk Count Matrix,
+// which has the same axis without it. Same rule as the model's `sampleColumnOf`.
+sampleColumnOf := func(spec) {
+	if is_undefined(spec.axesSpec) || len(spec.axesSpec) == 0 {
+		return undefined
+	}
+	annotations := spec.axesSpec[0].annotations
+	if is_undefined(annotations) {
+		return undefined
+	}
+	return annotations["pl7.app/sampleColumnName"]
+}
+
+// Inputs, from main: `dataset`, the picked dataset as resolved (spec + files); `datasetRef`, its
+// ref; `ctx`, the block context, which resolving another column of the pool needs.
+// The body runs once the dataset's spec and files are there: the spec says if it is a long table.
+self.awaitState("InputsLocked")
+self.awaitState("dataset", "ResourceReady")
+
+self.body(func(inputs) {
+	// 1. The dataset as S&D exports it: files keyed by sample, or by file for a long table.
+	spec := inputs.dataset.spec
+	data := inputs.dataset.data
+
+	// 2. Not a long table: passed on unchanged.
+	sampleColumn := sampleColumnOf(spec)
+	if is_undefined(sampleColumn) {
+		return { spec: spec, data: data }
+	}
+
+	// 3. A long table: which samples each file holds, and each one's value in the sample column.
+	// S&D exports it from the same block, under the dataset's name + ".sampleGroups".
+	ref := inputs.datasetRef
+	sampleGroups := bquery.resolve(
+		{ __isRef: true, blockId: ref.blockId, name: ref.name + ".sampleGroups" },
+		inputs.ctx,
+		{ errIfMissing: true }
+	)
+
+	// 4. One file per sample, passed on in place of the long table. The new spec is known at once;
+	// the files come once the split's ptabler job has run.
+	split := render.createEphemeral(splitTpl, {
+		groupsSpec: spec,
+		groupsData: data,
+		sampleGroupsSpec: sampleGroups.getFutureInputField("spec"),
+		sampleGroupsData: sampleGroups.getFutureInputField("data"),
+		sampleColumn: sampleColumn
+	})
+	return { spec: split.output("spec"), data: split.output("data") }
+})

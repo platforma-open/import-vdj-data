@@ -14,6 +14,7 @@ import type {
   ImportedProperty,
   ImportFileHandle,
   ImportFormat,
+  PeptideMapping,
 } from "./types";
 import { ASSEMBLING_FEATURES, SCHEMES_FOR_SELECTION } from "./types";
 
@@ -81,6 +82,7 @@ const IMPORT_FORMATS = {
   airr: true,
   "airr-sc": true,
   custom: true,
+  "peptide-custom": true,
 } as const satisfies Record<ImportFormat, true>;
 
 const COUNT_TYPES = { read: true, umi: true } as const satisfies Record<CountType, true>;
@@ -182,6 +184,20 @@ const isBareSetMapping: Guard<BareSetMapping> = (v): v is BareSetMapping =>
   (isUndefined(v.genes) || isGeneMap(v.genes)) &&
   (isUndefined(v.properties) || arrayOf(isImportedProperty)(v.properties));
 
+const isOptionalString = (v: unknown): v is string | undefined => isUndefined(v) || isString(v);
+
+/**
+ * Checks only the shape of a peptide mapping. Whether it is complete (an amino-acid column and at
+ * least one count) is for the model to decide, as for the bare set.
+ */
+const isPeptideMapping: Guard<PeptideMapping> = (v): v is PeptideMapping =>
+  isPlainObject(v) &&
+  isString(v.aminoAcid) &&
+  isOptionalString(v.nucleotide) &&
+  isPlainObject(v.counts) &&
+  isOptionalString(v.counts.uniqueMolecules) &&
+  isOptionalString(v.counts.reads);
+
 /**
  * The dataset-door column mapping: a canonical slot name to the file's header. `undefined` is a
  * legal value -- the panel writes it when a slot is cleared.
@@ -217,6 +233,10 @@ const CONTRACT = {
     `a bare set mapping with an identity column, one of: ${vocabularyList(CHAIN_SELECTIONS)}, ` +
       `its sequence columns, and a numbering scheme that selection can carry ` +
       `(a TCR selection can only be numbered under imgt)`,
+  ),
+  peptide: check(
+    isPeptideMapping,
+    "a peptide mapping with an amino-acid column, an optional nucleotide column and count columns",
   ),
   customBlockLabel: check(isString, "a string"),
 } satisfies { [K in keyof BlockParams]-?: Check<NonNullable<BlockParams[K]>> };

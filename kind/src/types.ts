@@ -1,7 +1,10 @@
 import type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 export type { ImportFileHandle, PlRef } from "@platforma-sdk/model";
 
-/** The file layouts the block knows how to read. */
+/**
+ * The file layouts the block knows how to read. `custom` is a V(D)J table whose columns the user
+ * maps by hand; `peptide-custom` is the same for peptide tables.
+ */
 export type ImportFormat =
   | "immunoSeq"
   | "qiagen"
@@ -10,7 +13,8 @@ export type ImportFormat =
   | "cellranger"
   | "airr"
   | "airr-sc"
-  | "custom";
+  | "custom"
+  | "peptide-custom";
 
 /**
  * The gene feature a clonotype is assembled by, in MiXCR's own vocabulary — the same twelve
@@ -177,11 +181,25 @@ export type BareSetMapping = {
   properties?: ImportedProperty[];
 };
 
+/** Which columns of a peptide count table hold the sequences and the counts. */
+export type PeptideMapping = {
+  /** Header of the amino-acid sequence column. The peptide key when no nucleotide column is mapped. */
+  aminoAcid: string;
+  /** Header of the nucleotide sequence column, if the table has one. The peptide key when mapped. */
+  nucleotide?: string;
+  /** Integer count columns. `primaryCountType` picks the one that is the primary abundance. */
+  counts: {
+    uniqueMolecules?: string;
+    reads?: string;
+  };
+};
+
 /**
  * This block's init-params contract — the import as a scientist set it up: which door they
  * came in by, how the columns map, and the subtitle they type.
  *
- * `subtitleLabel` is absent: the UI keeps it in sync with the picked dataset.
+ * `subtitleLabel` is absent: the UI keeps it in sync with the picked dataset. The data type (V(D)J
+ * or peptides) is absent too: it follows from `format`.
  *
  * `fileSource` is accepted but is not what the block's own projection sends. A file travels
  * only when it is a storage reference — `index://` names a `{storageId, path}` any installation
@@ -204,5 +222,6 @@ export type BlockParams = Partial<{
   secondaryCountType: CountType;
   assemblingFeature: AssemblingFeature;
   bareSet: BareSetMapping;
+  peptide: PeptideMapping;
   customBlockLabel: string;
 }>;

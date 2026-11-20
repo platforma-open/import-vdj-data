@@ -16,6 +16,8 @@ inferColumnsTpl := assets.importTemplate(":infer-columns")
 processBulkTpl := assets.importTemplate(":process-bulk")
 processSingleCellTpl := assets.importTemplate(":process-single-cell")
 processBareSetTpl := assets.importTemplate(":process-bare-set")
+processPeptideTpl := assets.importTemplate(":process-peptide")
+datasetDoorTpl := assets.importTemplate(":dataset-door")
 
 wf.setPreRun(assets.importTemplate(":prerun"))
 
@@ -39,6 +41,16 @@ wf.body(func(args) {
 			outputs: {},
 			exports: {}
 		}
+	}
+
+	// The picked dataset with one file per sample: a long table is split first (dataset-door).
+	perSampleDataset := func() {
+		door := render.createEphemeral(datasetDoorTpl, {
+			dataset: wf.resolve(args.datasetRef),
+			datasetRef: args.datasetRef,
+			ctx: wf.getParentBCtx()
+		})
+		return { spec: door.output("spec"), data: door.output("data") }
 	}
 
 	// A bare paired set takes its own path. The scientist still chooses "Custom" — the
@@ -97,7 +109,8 @@ wf.body(func(args) {
 			}
 		} else {
 			// Resolved only on this door: on the direct one there is no ref to resolve, and
-			// wf.resolve asserts on undefined rather than returning it.
+			// wf.resolve asserts on undefined rather than returning it. Not split like a long table:
+			// bare sets come with one file per sample.
 			poolDataset := wf.resolve(args.datasetRef)
 			datasetSpec = poolDataset.spec
 			datasetData = poolDataset.data
@@ -168,6 +181,31 @@ wf.body(func(args) {
 		}
 	}
 
+	// Peptide count tables: their own path, in the shape of a Peptide Profiling dataset.
+	if format == "peptide-custom" {
+		ll.assert(args.peptide != undefined, "the peptide format needs a peptide mapping")
+		peptideDataset := perSampleDataset()
+		peptideResult := render.createEphemeral(processPeptideTpl, {
+			blockId: blockId,
+			datasetSpec: peptideDataset.spec,
+			datasetData: peptideDataset.data,
+			mapping: args.peptide,
+			primaryCountType: args.primaryCountType
+		})
+		return {
+			outputs: {
+				result: peptideResult.output("result"),
+				stats: peptideResult.output("stats")
+			},
+			exports: {
+				result: peptideResult.output("result"),
+				stats: peptideResult.output("stats")
+			}
+		}
+	}
+
+	// The header is read off the picked files as they are. A long table's split files lack only the
+	// sample column, which no format maps.
 	dataset := wf.resolve(args.datasetRef)
 
 	columnsInfo := render.create(inferColumnsTpl, {
@@ -186,7 +224,7 @@ wf.body(func(args) {
 	result := render.createEphemeral(tpl, {
 		blockId: blockId,
 		format: format,
-		dataset: dataset,
+		dataset: perSampleDataset(),
 		columnsInfo: columnsInfo,
 		chains: chains,
 		primaryCountType: args.primaryCountType

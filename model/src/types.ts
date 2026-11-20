@@ -1,4 +1,5 @@
-import type { PlDataTableStateV2, PlRef } from "@platforma-sdk/model";
+import type { PlDataTableStateV2, PlRef, PObjectSpec } from "@platforma-sdk/model";
+import { isPColumnSpec } from "@platforma-sdk/model";
 // The import vocabularies, the file source and the bare-set mapping live in the kind: its
 // init-params contract names them and a kind cannot import from the model.
 import type {
@@ -12,6 +13,7 @@ import type {
   FileSource,
   ImportedProperty,
   ImportFormat,
+  PeptideMapping,
 } from "@platforma-open/milaboratories.import-vdj.kind";
 
 export type * from "@platforma-open/milaboratories.import-vdj.kind";
@@ -73,7 +75,50 @@ export type ColumnProfile = {
    * than hide them. Optional: a profile from an older software version does not carry it.
    */
   nucleotide?: string[];
+  /**
+   * Columns whose every value is a whole number the import reads: 120, 120.0 or 1,234; not 12.5
+   * or 1e+05.
+   */
+  wholeNumber?: string[];
+  /** Every file's header row, by sample id (by file id for a long table). Peptide datasets only. */
+  headersBySample?: Record<string, string[]>;
 };
+
+/**
+ * The column profile of a dataset's first sample file, with every file's header row
+ * (`headersBySample`) and the dataset it came from.
+ */
+export type DatasetProfile = ColumnProfile & { datasetRef: PlRef };
+
+/** Why a dataset's files could not be profiled, and the dataset they belong to. */
+export type DatasetProfileFailure = { datasetRef: PlRef; failure: string };
+
+/** A count field of the peptide mapping: UMIs or reads. */
+export type PeptideSlot = keyof PeptideMapping["counts"];
+
+/**
+ * What a dataset holds: V(D)J repertoires or peptide count tables, in the values of the
+ * `pl7.app/modality` annotation. Not stored: it follows from the format.
+ */
+export type Modality = "vdj" | "peptide";
+
+/** The data type each format reads. */
+export const FORMAT_MODALITY = {
+  immunoSeq: "vdj",
+  qiagen: "vdj",
+  mixcr: "vdj",
+  "mixcr-sc": "vdj",
+  cellranger: "vdj",
+  airr: "vdj",
+  "airr-sc": "vdj",
+  custom: "vdj",
+  "peptide-custom": "peptide",
+} as const satisfies Record<ImportFormat, Modality>;
+
+/** The data type the format belongs to. With no format chosen yet, V(D)J. */
+export function modalityOf(data: { format?: ImportFormat }): Modality {
+  return data.format ? FORMAT_MODALITY[data.format] : "vdj";
+}
 
 export type ColumnDescription = {
   label: string;
@@ -97,6 +142,8 @@ export type BlockArgs = {
   /** Absent means CDR3 — the workflow's own default, so an untouched import keys as it always did. */
   assemblingFeature?: AssemblingFeature;
   bareSet?: BareSetMapping;
+  /** Present only with `format: "peptide-custom"`. */
+  peptide?: PeptideMapping;
 };
 
 /**
@@ -141,12 +188,15 @@ export type BlockData = {
   // --- bare set. Its presence is what selects the bare path in the workflow.
   bareSet?: BareSetMapping;
 
+  // --- peptide count tables, read with `format: "peptide-custom"`.
+  peptide?: PeptideMapping;
+
   /**
    * What prerun found, kept here so the run check — which sees only `data` — can gate the run
    * on it. Written by the UI (`ui/src/app.ts`).
    *
    * The verdict carries what it is *about*, so one reached for something no longer selected is
-   * ignored rather than applied. Tagged by which check it is: the two paths through `runRefusal`
+   * ignored rather than applied. Tagged by which check it is: the paths through `runRefusal`
    * that consult a verdict return before reaching each other, so only ever one is live.
    */
   prerunCheck?:
@@ -163,6 +213,13 @@ export type BlockData = {
         subject: string;
         /** The dataset carries the columns its declared format needs. */
         columnsPresent: boolean;
+      }
+    | {
+        check: "peptide";
+        /** The dataset and peptide mapping the verdict was reached for — see {@link peptideCheckKey}. */
+        subject: string;
+        /** What the import would read wrongly or fail on; empty when every file is clean. */
+        problems: string[];
       };
 
   // --- view state. None of this is projected anywhere.
@@ -274,6 +331,30 @@ export function datasetCheckKey(
 }
 
 /**
+ * The header of a long table's sample column (Samples & Data's "Multisample CSV/TSV": several
+ * samples per file), read off the dataset spec; `undefined` for any other dataset. The annotation
+ * sits on the file axis and tells a long table from a Bulk Count Matrix, which has the same axis
+ * without it. Same rule as the workflow's `dataset-door.tpl.tengo`.
+ */
+export function sampleColumnOf(spec: PObjectSpec): string | undefined {
+  if (!isPColumnSpec(spec)) return undefined;
+  return spec.axesSpec[0]?.annotations?.["pl7.app/sampleColumnName"];
+}
+
+/**
+ * Which prerun verdict gates the run: the identity check of a loaded file or bare set, the peptide
+ * check, or the dataset's columns. The run check reads this one, and the UI writes this one.
+ */
+export function liveCheck(
+  data: Pick<BlockData, "fileSource" | "format" | "bareSet">,
+): NonNullable<BlockData["prerunCheck"]>["check"] {
+  if (data.fileSource !== undefined) return "columns";
+  if (data.format === "custom" && data.bareSet !== undefined) return "columns";
+  if (data.format === "peptide-custom") return "peptide";
+  return "dataset";
+}
+
+/**
  * The mapping with everything that names a column dropped. The receptor declaration and the
  * numbering scheme describe the biology and outlive any one file; the column names do not.
  */
@@ -286,6 +367,14 @@ export function forgetMappedColumns(bare: BareSetMapping | undefined): BareSetMa
     scheme: bare.scheme,
   };
 }
+
+/** The check of a peptide mapping against the selected dataset's files. */
+export type PeptideCheck = {
+  /** The dataset and mapping checked; see {@link peptideCheckKey}. */
+  key: string;
+  /** What keeps the import from running, one message per problem; see {@link peptideProblems}. */
+  problems: string[];
+};
 
 /**
  * Whether a bare-set mapping is complete enough to run.

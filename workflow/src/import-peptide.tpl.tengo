@@ -1,0 +1,220 @@
+// Import one sample of a peptide count table.
+//
+// Runs once per sample, as the body of a `pframes.processColumn` step. Writes:
+//   peptides.parquet  variantKey, counts, fractions, sequences, lengths (and QC flags when a
+//                     nucleotide column is mapped), in the per-sample shape of Peptide Profiling
+//                     (downstream-pipeline.tpl.tengo)
+//   import-stats.tsv  one row: peptideCount, rowCount, rowsWithoutSequence, rowsWithoutCount,
+//                     rowsMerged, the dropped peptides by rule, the mean peptide lengths and,
+//                     with a read column, totalReads
+//
+// Sequences are taken as written, trimmed and upper-cased; nothing is translated. The key is the
+// nucleotide sequence when that column is mapped, as in Peptide Profiling, and the amino-acid
+// sequence otherwise. Rows missing a mapped sequence, or with an empty or zero primary count, are
+// dropped; rows repeating a peptide are summed, keeping the first row's amino-acid sequence.
+// Peptides with trailing nucleotides or a stop codon are then dropped, as Peptide Profiling drops
+// them by default, and so are peptides shorter than MIN_PEPTIDE_LENGTH.
+// Counts must be integers: "123.0" reads as 123, and any other non-integer fails the strict cast
+// and stops the run.
+
+self := import("@platforma-sdk/workflow-tengo:tpl.light")
+ll := import("@platforma-sdk/workflow-tengo:ll")
+pConstants := import("@platforma-sdk/workflow-tengo:pframes.constants")
+maps := import("@platforma-sdk/workflow-tengo:maps")
+pt := import("@platforma-sdk/workflow-tengo:pt")
+
+// A whole number with thousands separators: 1,234 or 1,234.0, not 1,5 or 1,234.5.
+GROUPED_INT := "^[+-]?[0-9]{1,3}(,[0-9]{3})+(\\.0+)?$"
+
+// Shortest peptide imported, in residues.
+MIN_PEPTIDE_LENGTH := 5
+
+self.defineOutputs("peptides", "importStats")
+
+self.body(func(inputs) {
+	inputFiles := inputs[pConstants.VALUE_FIELD_NAME]
+	mapping := inputs.mapping
+	hasUmi := inputs.hasUmi
+	hasReads := inputs.hasReads
+	isNt := inputs.isNt
+	xsvType := inputs.xsvType
+
+	ll.assert(mapping != undefined && mapping.aminoAcid != "", "import-peptide: an amino-acid column is required")
+	ll.assert(hasUmi || hasReads, "import-peptide: a count column is required")
+
+	primary := inputs.umiPrimary ? "uniqueMoleculeCount" : "readCount"
+
+	// The SDK sizes the run from the size of the sample's files: memory = 4 GiB + slope × size.
+	// Measured for this plan: about 12 GiB per GiB of uncompressed table, above the SDK's default
+	// slope (10). A gzipped table is counted at its compressed size, about 2–3× smaller, so it gets
+	// a steeper slope.
+	wf := pt.workflow().memSlope(inputs.isGz ? 30 : 13)
+
+	// Sorted iteration keeps the polars plan, and so the output, reproducible.
+	frames := []
+	inputMap := inputFiles.inputs()
+	for key in maps.getKeys(inputMap) {
+		frames = append(frames, wf.frame(inputMap[key], {
+			xsvType: xsvType,
+			id: "table_" + key,
+			inferSchema: false
+		}))
+	}
+	ll.assert(len(frames) > 0, "import-peptide: no input files found")
+	df := pt.concat(frames)
+
+	// Every column is read as text; null reads as empty.
+	text := func(header) {
+		return pt.col(header).fillNull("").strReplace("^\\s+|\\s+$", "", { replaceAll: true })
+	}
+	// Thousands separators are dropped, as V(D)J's custom import does, but only in that form
+	// ("1,234" reads as 1234). Any other comma, such as a decimal comma ("1,5"), is left for the
+	// strict cast to refuse instead of turning 1.5 into 15. Same pattern as column-profile's.
+	count := func(header) {
+		t := text(header)
+		t = pt.when(t.strContains(GROUPED_INT)).then(t.strReplace(",", "", { replaceAll: true })).otherwise(t)
+		t = t.strReplace("\\.0+$", "", { replaceAll: false })
+		return pt.when(t.eq("")).then(pt.lit("0")).otherwise(t).cast("Int64", { strict: true })
+	}
+
+	aminoAcid := text(mapping.aminoAcid).strToUpper()
+	cols := [aminoAcid.alias("variantKey")]
+	sums := []
+	if isNt {
+		cols = [text(mapping.nucleotide).strToUpper().alias("variantKey"), aminoAcid.alias("_aa")]
+		sums = [pt.col("_aa").first().alias("_aa")]
+	}
+	if hasUmi {
+		cols = append(cols, count(mapping.counts.uniqueMolecules).alias("uniqueMoleculeCount"))
+		sums = append(sums, pt.col("uniqueMoleculeCount").sum().alias("uniqueMoleculeCount"))
+	}
+	if hasReads {
+		cols = append(cols, count(mapping.counts.reads).alias("readCount"))
+		sums = append(sums, pt.col("readCount").sum().alias("readCount"))
+	}
+	df = df.select(cols...)
+
+	noSequence := pt.col("variantKey").eq("")
+	if isNt {
+		noSequence = noSequence.or(pt.col("_aa").eq(""))
+	}
+	noCount := noSequence.not().and(pt.col(primary).le(pt.lit(0)))
+	readStats := df.select(
+		pt.col("variantKey").count().alias("rowCount"),
+		noSequence.cast("Int64").sum().alias("rowsWithoutSequence"),
+		noCount.cast("Int64").sum().alias("rowsWithoutCount")
+	)
+	df = df.filter(noSequence.not().and(pt.col(primary).gt(pt.lit(0))))
+
+	// Repeated rows of a peptide are merged into its first row. Two steps, because a pt aggregation
+	// can't contain arithmetic.
+	mergeStats := df.select(
+		pt.col("variantKey").count().alias("rowsKept"),
+		pt.col("variantKey").nUnique().alias("peptidesMerged")
+	).select(
+		pt.col("rowsKept").minus(pt.col("peptidesMerged")).alias("rowsMerged")
+	)
+	df = df.groupBy("variantKey").agg(sums...)
+
+	// Fractions: count ÷ sample total, as Peptide Profiling computes them.
+	computed := []
+	if hasUmi {
+		computed = append(computed, pt.col("uniqueMoleculeCount").cast("Double").truediv(
+			pt.col("uniqueMoleculeCount").sum()
+		).alias("uniqueMoleculeFraction"))
+	}
+	if hasReads {
+		computed = append(computed, pt.col("readCount").cast("Double").truediv(
+			pt.col("readCount").sum()
+		).alias("readFraction"))
+	}
+	keep := ["variantKey"]
+	if hasUmi { keep = append(keep, "uniqueMoleculeCount", "uniqueMoleculeFraction") }
+	if hasReads { keep = append(keep, "readCount", "readFraction") }
+	df = df.withColumns(computed...)
+
+	// The sample's read total, the one the read fractions are computed against.
+	readTotal := undefined
+	if hasReads {
+		readTotal = df.select(pt.col("readCount").sum().alias("totalReads"))
+	}
+
+	// Sequences, lengths and QC flags, as in Peptide Profiling's downstream-pipeline.tpl.tengo
+	if isNt {
+		ntLen := pt.col("variantKey").strLenChars()
+		ntCodonAlignedLen := ntLen.floordiv(pt.lit(3)).multiply(pt.lit(3))
+
+		df = df.withColumns(
+			pt.col("variantKey").alias("nSeqPeptide"),
+			ntLen.alias("ntLengthPeptide"),
+			ntLen.neq(ntCodonAlignedLen).alias("hasTrailingNucleotides"),
+			pt.col("_aa").alias("aaSeqPeptide"),
+			pt.col("_aa").strContains("*", { literal: true }).alias("hasEarlyStopCodon")
+		).withColumns(
+			pt.col("aaSeqPeptide").strLenChars().alias("aaLengthPeptide")
+		)
+		keep = append(keep, "nSeqPeptide", "ntLengthPeptide", "hasTrailingNucleotides",
+			"aaSeqPeptide", "hasEarlyStopCodon", "aaLengthPeptide")
+	} else {
+		df = df.withColumns(
+			pt.col("variantKey").alias("aaSeqPeptide"),
+			pt.col("variantKey").strLenChars().alias("aaLengthPeptide"),
+			pt.col("variantKey").strContains("*", { literal: true }).alias("hasEarlyStopCodon")
+		)
+		keep = append(keep, "aaSeqPeptide", "aaLengthPeptide")
+	}
+
+	// Dropped peptides: trailing nucleotides (nt input), a stop codon, fewer than MIN_PEPTIDE_LENGTH
+	// residues. After the fractions, as in Peptide Profiling: a sample's fractions keep the dropped
+	// peptides in their total. Each is counted under the first rule it breaks.
+	earlyStop := pt.col("hasEarlyStopCodon")
+	short := pt.col("aaLengthPeptide").lt(pt.lit(MIN_PEPTIDE_LENGTH))
+	invalid := undefined
+	dropStats := []
+	if isNt {
+		trailing := pt.col("hasTrailingNucleotides")
+		invalid = trailing.or(earlyStop).or(short)
+		dropStats = [
+			trailing.cast("Int64").sum().alias("peptidesWithTrailingNucleotides"),
+			earlyStop.and(trailing.not()).cast("Int64").sum().alias("peptidesWithEarlyStopCodon"),
+			short.and(trailing.not()).and(earlyStop.not()).cast("Int64").sum().alias("peptidesTooShort")
+		]
+	} else {
+		invalid = earlyStop.or(short)
+		dropStats = [
+			earlyStop.cast("Int64").sum().alias("peptidesWithEarlyStopCodon"),
+			short.and(earlyStop.not()).cast("Int64").sum().alias("peptidesTooShort")
+		]
+	}
+	dropStats = append(dropStats, invalid.not().cast("Int64").sum().alias("peptideCount"))
+	dropCounts := df.select(dropStats...)
+	df = df.filter(invalid.not())
+
+	// Mean lengths of the peptides kept, as Peptide Profiling's QC table reports them.
+	// A sample with no peptide left gets 0 rather than an empty mean.
+	lengthNames := isNt ? ["avgLengthAa", "avgLengthNt"] : ["avgLengthAa"]
+	lengthStats := [pt.col("aaLengthPeptide").mean().alias("avgLengthAa")]
+	if isNt {
+		lengthStats = append(lengthStats, pt.col("ntLengthPeptide").mean().alias("avgLengthNt"))
+	}
+	lengthFilled := []
+	for name in lengthNames {
+		lengthFilled = append(lengthFilled, pt.col(name).fillNull(0).alias(name))
+	}
+	lengthMeans := df.select(lengthStats...).select(lengthFilled...)
+
+	df.select(keep...).sort(["variantKey"]).save("peptides.parquet")
+	stats := mergeStats.join(readStats, { how: "cross" }).join(dropCounts, { how: "cross" }).
+		join(lengthMeans, { how: "cross" })
+	if readTotal != undefined {
+		stats = stats.join(readTotal, { how: "cross" })
+	}
+	stats.saveContent("import-stats.tsv")
+
+	wf = wf.run()
+
+	return {
+		peptides: { main: wf.getFile("peptides.parquet") },
+		importStats: { main: wf.getFileContent("import-stats.tsv") }
+	}
+})
