@@ -1,5 +1,21 @@
 # @platforma-open/milaboratories.import-vdj.model
 
+## 1.20.0
+
+### Minor Changes
+
+- e1e065a: Imports peptide count tables, and the block is renamed to Import V(D)J & Peptide Data.
+
+  - Under Data type, choose Peptides to import peptide count tables, for example from phage display panning. Map the amino-acid column, an optional nucleotide column, and read and/or UMI counts; Suggest columns fills in the fields it recognises. The result works directly in Enrichment, Sequence Clustering, Lead Selection and the other peptide blocks.
+  - Peptides with a stop codon, with trailing nucleotides, or shorter than 5 amino acids are left out. The block's table shows, per sample, the rows in the file, the unique peptides, the total reads, the average peptide length, and how many rows were merged or left out, and why.
+  - Samples & Data "Multisample CSV/TSV" datasets, where one table holds several samples and a column names the sample, can now be imported, for every V(D)J format and for peptides.
+  - Gzipped CSV/TSV datasets now import with every format.
+
+### Patch Changes
+
+- Updated dependencies [e1e065a]
+  - @platforma-open/milaboratories.import-vdj.kind@1.3.0
+
 ## 1.17.1
 
 ### Patch Changes
