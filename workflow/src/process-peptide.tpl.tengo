@@ -96,7 +96,7 @@ self.body(func(inputs) {
 				type: "milaboratories.importVDJ",
 				id: blockId,
 				importance: 81,
-				label: "Import V(D)J Data"
+				label: "Import V(D)J & Peptide Data"
 			}],
 
 			extra: {

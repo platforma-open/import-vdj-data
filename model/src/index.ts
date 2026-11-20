@@ -629,7 +629,7 @@ export const platforma = BlockModelV3.create({ dataModel: blockDataModel, kind }
 
   .sections((_ctx) => [{ type: "link", href: "/", label: "Main" }])
 
-  .title(() => "Import V(D)J Data")
+  .title(() => "Import V(D)J & Peptide Data")
 
   .subtitle(
     (ctx) =>

@@ -44,17 +44,18 @@
       "ui": "@platforma-open/milaboratories.import-vdj.ui/dist"
     },
     "meta": {
-      "title": "Import V(D)J Data",
+      "title": "Import V(D)J & Peptide Data",
       "logo": "file:../logos/block-logo.png",
       "url": "https://github.com/platforma-open/import-vdj-data",
       "docs": "https://docs.platforma.bio/guides/antibody-discovery/data-import/",
       "support": "mailto:support@milaboratories.com",
-      "description": "Imports V(D)J sequencing data from various formats (MiXCR, immunoSeq, QIAseq, Cell Ranger, CSV, TSV) and normalizes it for downstream analysis in standardized pipelines.",
+      "description": "Imports preprocessed sequence tables: V(D)J clonotype tables (MiXCR, AIRR, Cell Ranger VDJ, immunoSEQ, QIAseq, custom CSV/TSV), antibody sequence lists, and peptide count tables from phage display panning or other library selections.",
       "longDescription": "file:../docs/description.md",
       "changelog": "file:CHANGELOG.md",
       "tags": [
         "upstream",
         "airr",
+        "peptide",
         "import"
       ],
       "organization": {

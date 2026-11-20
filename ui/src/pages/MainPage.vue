@@ -346,7 +346,7 @@ watch(
 </script>
 
 <template>
-  <PlBlockPage title="Import V(D)J Data">
+  <PlBlockPage title="Import V(D)J & Peptide Data">
     <PlBlockDependencies />
     <template #append>
       <PlBtnGhost @click.stop="() => (app.model.data.settingsOpen = true)">
